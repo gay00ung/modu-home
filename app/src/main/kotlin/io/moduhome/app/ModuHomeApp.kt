@@ -15,8 +15,12 @@ import androidx.compose.material3.Button
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +59,9 @@ import io.moduhome.app.core.transfer.ProposalApprovalResult
 import io.moduhome.app.core.transfer.ProposalReceiveResult
 import io.moduhome.app.core.transfer.RelayDeliveryStatus
 import io.moduhome.app.core.transfer.RelayMessage
+import io.moduhome.app.core.transfer.CompanionErrandDraft
+import io.moduhome.app.core.transfer.CompanionErrandField
+import io.moduhome.app.core.transfer.CompanionErrandResult
 import io.moduhome.app.core.planning.JourneyProgress
 import io.moduhome.app.core.planning.JourneyStage
 import io.moduhome.app.data.JourneyPreferences
@@ -98,6 +105,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.combine
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
@@ -211,6 +219,18 @@ internal fun ModuHomeApp(
     var sharedProposalMessage by remember { mutableStateOf<String?>(null) }
     var sharedProposalNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var relayState by remember { mutableStateOf(ProposalRelayState()) }
+    var companionDraft by remember { mutableStateOf<CompanionErrandDraft?>(null) }
+    var preparedCompanion by remember { mutableStateOf<CompanionErrandDraft?>(null) }
+    var companionErrors by remember { mutableStateOf<Map<CompanionErrandField, String>>(emptyMap()) }
+    var companionMessage by remember { mutableStateOf<String?>(null) }
+    fun canEditCompanion(): Boolean = !isVehicle && proposalPanelOpen && restrictions.state.value.editingAllowed &&
+        lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+        !relayState.busy && relayState.candidate == null
+    fun dismissCompanion() {
+        companionDraft = null
+        companionErrors = emptyMap()
+        companionMessage = null
+    }
     fun canReviewSharedProposal(): Boolean = sharedMode && restrictions.state.value.editingAllowed &&
         lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
         sharedState.session.progress.stage == JourneyStage.INPUT && !sharedState.busy && !sharedState.dialogOpen &&
@@ -598,6 +618,7 @@ internal fun ModuHomeApp(
         if (!editingAllowed) {
             detailsOpen = false
             proposalPanelOpen = false
+            dismissCompanion()
             cancelRequested = false
             dismissPicker()
             dismissVoice()
@@ -902,7 +923,48 @@ internal fun ModuHomeApp(
         )
     }
 
-    if (!sharedMode && proposalPanelOpen && editingAllowed) {
+    LaunchedEffect(proposalPanelOpen, relayState.candidate) {
+        if (!proposalPanelOpen || relayState.candidate != null) dismissCompanion()
+    }
+    val editedCompanion = companionDraft
+    if (!isVehicle && editedCompanion != null && proposalPanelOpen && editingAllowed && relayState.candidate == null) {
+        val maximumHeight = LocalWindowInfo.current.containerDpSize.height * 0.90f
+        Dialog(onDismissRequest = ::dismissCompanion, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            CompanionErrandEditor(
+                draft = editedCompanion,
+                errors = companionErrors,
+                editingAllowed = !relayState.busy,
+                message = companionMessage,
+                onDraftChange = { next ->
+                    if (canEditCompanion() && companionDraft == editedCompanion && next.original == editedCompanion.original) {
+                        companionDraft = next
+                        companionErrors = emptyMap()
+                        companionMessage = null
+                    }
+                },
+                onPrepare = {
+                    if (canEditCompanion() && companionDraft == editedCompanion) {
+                        val current = inbox.entries.firstOrNull { it.proposal.id == editedCompanion.original.id }
+                        if (current?.proposal != editedCompanion.original || current.status != ProposalReviewStatus.PENDING) {
+                            companionMessage = "받은 볼일이 바뀌었어요. 닫고 최신 내용을 다시 선택해주세요"
+                        } else when (val result = editedCompanion.createProposal(System.currentTimeMillis(), ZoneId.systemDefault())) {
+                            is CompanionErrandResult.Invalid -> companionErrors = result.errors
+                            is CompanionErrandResult.Created -> {
+                                exportName = result.proposal.place.name
+                                exportLink = ProposalLinkCodec.encode(result.proposal)
+                                preparedCompanion = editedCompanion
+                                proposalMessage = "보낼 조건을 확인해주세요. 아직 차량으로 보내지 않았어요"
+                                dismissCompanion()
+                            }
+                        }
+                    }
+                },
+                onDismiss = ::dismissCompanion,
+                modifier = Modifier.widthIn(max = 620.dp).fillMaxWidth(0.92f).heightIn(max = maximumHeight),
+            )
+        }
+    }
+    if (!sharedMode && proposalPanelOpen && editingAllowed && companionDraft == null) {
         val exportedProposal = exportLink?.let { link ->
             (ProposalLinkCodec.decode(link, System.currentTimeMillis()) as? ProposalDecodeResult.Valid)?.proposal
         }
@@ -924,7 +986,9 @@ internal fun ModuHomeApp(
                 exportedProposal = exportedProposal,
                 canSendToVehicle = !isVehicle && relayState.sender != null && !relayState.busy && relayState.candidate == null &&
                     exportedProposal != null && relayState.delivery != RelayDeliveryStatus.QUEUED &&
-                    (!sameRelayPayload || relayDelivery == null))
+                    (!sameRelayPayload || relayDelivery == null),
+                canEdit = !isVehicle && !relayState.busy && relayState.candidate == null,
+                canEditPrepared = !isVehicle && preparedCompanion != null && !relayState.busy && relayState.candidate == null)
         val proposalActions = ProposalActions(
                 onInput = { proposalInput = it.take(ProposalLinkCodec.MAX_LINK_LENGTH + 1) },
                 onReceive = { receiveAppLink(proposalInput) },
@@ -959,6 +1023,7 @@ internal fun ModuHomeApp(
                         val proposal = state.draft.proposal(kind, UUID.randomUUID().toString(), System.currentTimeMillis())
                         if (proposal == null) proposalMessage = "연결된 장소와 체류·도보·마감 시간을 확인해주세요"
                         else {
+                            preparedCompanion = null
                             exportName = proposal.place.name
                             exportLink = ProposalLinkCodec.encode(proposal)
                             proposalMessage = "제안을 만들었어요. 차량으로 보내거나 QR과 링크로 전달할 수 있어요"
@@ -980,8 +1045,46 @@ internal fun ModuHomeApp(
                     }
                 },
                 onDismiss = { proposalPanelOpen = false },
-                onSendToVehicle = { exportLink?.let(relayActions.send) },
+                onSendToVehicle = {
+                    if (canEditCompanion()) exportLink?.let { link ->
+                        proposalMessage = null
+                        relayActions.send(link)
+                    }
+                },
                 onDisconnectVehicle = relayActions.disconnectSender,
+                onEditPrepared = {
+                    if (canEditCompanion()) {
+                        preparedCompanion?.let { previous ->
+                            companionDraft = previous
+                            companionErrors = emptyMap()
+                            companionMessage = null
+                        }
+                    }
+                },
+                onBackToProposals = {
+                    if (canEditCompanion()) {
+                        exportLink = null
+                        exportName = null
+                        preparedCompanion = null
+                        proposalMessage = null
+                    }
+                },
+                onEdit = { id, revision ->
+                    if (canEditCompanion()) {
+                        val source = inbox.entries.firstOrNull {
+                            it.proposal.id == id && it.proposal.revision == revision && it.status == ProposalReviewStatus.PENDING
+                        }?.proposal
+                        val now = System.currentTimeMillis()
+                        val unavailable = if (now < 0) "기기의 날짜와 시간을 확인해주세요" else source?.unavailableReason(now)
+                        if (source == null) proposalMessage = "받은 볼일이 바뀌었어요. 최신 내용을 다시 선택해주세요"
+                        else if (unavailable != null) proposalMessage = unavailable
+                        else {
+                            companionDraft = CompanionErrandDraft.from(source, now, ZoneId.systemDefault())
+                            companionErrors = emptyMap()
+                            companionMessage = null
+                        }
+                    }
+                },
         )
         if (isVehicle) VehicleProposalDialog(proposalState, proposalActions)
         else ProposalContent(proposalState, proposalActions)

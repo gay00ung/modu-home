@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import ai.pleos.playground.navi.constants.NaviErrorCode
 import ai.pleos.playground.navi.constants.NaviMode
+import ai.pleos.playground.navi.constants.RoutePointType
 import ai.pleos.playground.navi.constants.WaypointIndex
 import ai.pleos.playground.navi.data.BookmarkInfo
 import ai.pleos.playground.navi.data.DestinationInfo
@@ -11,8 +12,12 @@ import ai.pleos.playground.navi.data.RecentDestinationInfo
 import ai.pleos.playground.navi.data.RequestWaypointInfo
 import ai.pleos.playground.navi.data.RouteInfo
 import ai.pleos.playground.navi.data.RouteStateInfo
+import ai.pleos.playground.navi.data.RouteStartInfo
 import ai.pleos.playground.navi.data.RouteWithWaypointsRequest
+import ai.pleos.playground.navi.data.TripInfo
+import ai.pleos.playground.navi.data.TripRequest
 import ai.pleos.playground.navi.data.WaypointInfo
+import ai.pleos.playground.navi.data.WaypointChangedInfo
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
 import io.moduhome.app.core.navigation.NavigationConnection
@@ -23,16 +28,21 @@ import io.moduhome.app.core.navigation.NavigationSnapshot
 import io.moduhome.app.core.navigation.ObservedNavigationPlace
 import io.moduhome.app.core.navigation.PlaceCatalogResult
 import io.moduhome.app.core.navigation.RouteRequestResult
+import io.moduhome.app.core.navigation.TripEstimate
+import io.moduhome.app.core.navigation.TripEstimateResult
+import io.moduhome.app.core.navigation.matchesTripDestination
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** SDK calls and listener registration are confined to the main dispatcher. */
 internal class PleosNavigationGateway(context: Context) : NavigationGateway {
@@ -44,6 +54,11 @@ internal class PleosNavigationGateway(context: Context) : NavigationGateway {
     override val connection = mutableConnection.asStateFlow()
     private val operation = Mutex()
     private val listeners = mutableSetOf<NaviHelperEventListener>()
+    // TripInfo has no request ID or source timestamp. Do not issue the same destination twice
+    // on one helper connection: an old callback could otherwise confirm the newer request.
+    // A callback initiated elsewhere for this exact POI cannot be distinguished by this SDK.
+    private val requestedTripDestinations = mutableListOf<NavigationPoint>()
+    private var tripResponseUncertain = false
     private var helper: NaviHelper? = null
     @Volatile private var closed = false
 
@@ -162,6 +177,107 @@ internal class PleosNavigationGateway(context: Context) : NavigationGateway {
         }
     }
 
+    override suspend fun estimateTrip(destination: NavigationPoint): TripEstimateResult = withContext(Dispatchers.Main.immediate) {
+        if (!supported) return@withContext TripEstimateResult.Unsupported
+        val sdk = readyHelper() ?: return@withContext TripEstimateResult.Failed("차량 내비 연결을 먼저 확인해주세요")
+        if (!operation.tryLock()) {
+            return@withContext TripEstimateResult.Failed("내비 응답을 확인하고 있어요. 잠시 뒤 다시 조회해주세요")
+        }
+        var requested = false
+        var received = false
+        try {
+            if (tripResponseUncertain || requestedTripDestinations.any { it.sameTripDestination(destination) }) {
+                return@withContext TripEstimateResult.Failed("새 이동시간을 확인하려면 차량 내비를 다시 연결해주세요")
+            }
+            val before = readSnapshot(sdk)
+                ?: return@withContext TripEstimateResult.Failed("현재 차량 내비 상태를 확인하지 못했어요")
+            if (readyHelper() !== sdk) return@withContext TripEstimateResult.Failed("차량 내비 연결이 끊겼어요")
+            val response = CompletableDeferred<TripInfo>()
+            val failure = CompletableDeferred<NaviErrorCode>()
+            val routeChanged = CompletableDeferred<Unit>()
+            val armed = AtomicBoolean(false)
+            val listener = object : NaviHelperEventListener {
+                override fun onTripInfo(tripInfo: TripInfo) {
+                    if (armed.get() && tripInfo.destinationObservation()?.matchesTripDestination(destination) == true) {
+                        response.complete(tripInfo)
+                    }
+                }
+
+                override fun onError(errorCode: NaviErrorCode) {
+                    if (armed.get() && errorCode == NaviErrorCode.CAUSE_SEARCH_TRIP) failure.complete(errorCode)
+                }
+
+                override fun onRouteStarted(routeStartInfo: RouteStartInfo) { changed() }
+                override fun onRouteEnded() { changed() }
+                override fun onRouteCancelled() { changed() }
+                override fun onDestinationChanged() { changed() }
+                override fun onWaypointChanged(waypointChangedInfo: WaypointChangedInfo) { changed() }
+
+                private fun changed() { if (armed.get()) routeChanged.complete(Unit) }
+            }
+            register(sdk, listener)
+            try {
+                val queriedAt = System.currentTimeMillis()
+                requestedTripDestinations += destination
+                requested = true
+                armed.set(true)
+                sdk.requestTrip(TripRequest(
+                    latitude = destination.latitude,
+                    longitude = destination.longitude,
+                    poiId = destination.placeId,
+                    poiName = destination.name,
+                    poiSubId = destination.subId.takeIf(String::isNotEmpty),
+                ))
+                val info = withTimeoutOrNull(12_000) {
+                    select<TripInfo?> {
+                        response.onAwait { it }
+                        failure.onAwait { null }
+                        routeChanged.onAwait { null }
+                    }
+                }
+                if (info == null) {
+                    return@withContext TripEstimateResult.Failed(
+                        when {
+                            routeChanged.isCompleted -> "조회 중 차량 내비 경로가 바뀌었어요. 현재 안내를 확인해주세요"
+                            failure.isCompleted -> failure.await().userMessage()
+                            else -> "차량 내비에서 이동시간을 받지 못했어요. 내비를 다시 연결한 뒤 조회해주세요"
+                        },
+                    )
+                }
+                received = true
+                val after = readSnapshot(sdk)
+                if (readyHelper() !== sdk) return@withContext TripEstimateResult.Failed("차량 내비 연결이 끊겼어요")
+                if (routeChanged.isCompleted) {
+                    return@withContext TripEstimateResult.Failed("조회 중 차량 내비 경로가 바뀌었어요. 현재 안내를 확인해주세요")
+                }
+                return@withContext TripEstimate.fromObservation(
+                    destination = destination,
+                    observedDestination = info.destinationObservation(),
+                    durationSeconds = info.eta,
+                    distanceMeters = info.distance,
+                    queriedAtEpochMillis = queriedAt,
+                    observedAtEpochMillis = System.currentTimeMillis(),
+                    routeBefore = before,
+                    routeAfter = after,
+                )
+            } finally {
+                armed.set(false)
+                unregister(sdk, listener)
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: SecurityException) {
+            TripEstimateResult.Failed("차량 내비 접근 권한을 확인해주세요")
+        } catch (_: Exception) {
+            TripEstimateResult.Failed("차량 내비의 이동시간을 조회하지 못했어요")
+        } finally {
+            // A timed-out/cancelled request can still complete in the service after our listener
+            // is removed. Fail closed until reconnect rather than attach that reply to a retry.
+            if (requested && !received) tripResponseUncertain = true
+            operation.unlock()
+        }
+    }
+
     private fun readyHelper(): NaviHelper? =
         helper?.takeIf { !closed && mutableConnection.value == NavigationConnection.Ready }
 
@@ -245,6 +361,16 @@ private fun observedPlace(
 
 private fun BookmarkInfo.toPoint() = point(name, latitude, longitude, address, poiId, poiSubId, poiProvider)
 private fun RecentDestinationInfo.toPoint() = point(name, latitude, longitude, address, poiId, poiSubId, poiProvider)
+
+private fun NavigationPoint.sameTripDestination(other: NavigationPoint): Boolean =
+    // TripInfo does not include a provider or entrance sub-ID, so neither may distinguish retries.
+    ObservedNavigationPlace(name, placeId, latitude = latitude, longitude = longitude)
+        .matches(other.copy(provider = "", subId = ""))
+
+private fun TripInfo.destinationObservation(): ObservedNavigationPlace? {
+    val destination = summary.routePoints.singleOrNull { it.pointType == RoutePointType.DESTINATION } ?: return null
+    return observedPlace(destination.poiName, destination.latitude, destination.longitude, destination.poiId, null, null)
+}
 
 private fun NaviErrorCode.userMessage(): String = when (this) {
     NaviErrorCode.CAUSE_LOW_BATTERY -> "차량 내비에서 배터리 부족으로 경로를 설정하지 못했어요"

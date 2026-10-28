@@ -13,6 +13,7 @@ internal interface NavigationGateway {
     suspend fun requestRoute(plan: NavigationPlan): RouteRequestResult
     suspend fun currentRoute(): NavigationSnapshot?
     suspend fun loadPlaces(): PlaceCatalogResult
+    suspend fun estimateTrip(destination: NavigationPoint): TripEstimateResult
 }
 
 internal data class NavigationPoint(

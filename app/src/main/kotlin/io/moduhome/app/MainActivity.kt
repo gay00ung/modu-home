@@ -2,6 +2,7 @@ package io.moduhome.app
 
 import android.os.Bundle
 import android.content.Intent
+import android.content.pm.PackageManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -18,7 +19,7 @@ class MainActivity : ComponentActivity() {
         incomingProposal = savedInstanceState?.getString("pending_proposal") ?: proposalFrom(intent)
         enableEdgeToEdge()
         setContent {
-            ModuHomeTheme {
+            ModuHomeTheme(vehicle = packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
                 ModuHomeApp(incomingProposal = incomingProposal, onProposalConsumed = {
                     incomingProposal = null
                     intent?.data = null

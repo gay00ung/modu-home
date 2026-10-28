@@ -4,12 +4,19 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -24,11 +31,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import io.moduhome.app.core.navigation.NavigationConnection
 import io.moduhome.app.core.navigation.NavigationSnapshot
 import io.moduhome.app.core.navigation.RouteRequestResult
 import io.moduhome.app.core.navigation.TripEstimateResult
 import io.moduhome.app.core.navigation.VehicleLocationResult
+import io.moduhome.app.core.vehicle.DrivingInteraction
+import io.moduhome.app.core.voice.*
+import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.transfer.ErrandProposalInbox
 import io.moduhome.app.core.transfer.ProposalApprovalResult
 import io.moduhome.app.core.transfer.ProposalReceiveResult
@@ -37,6 +50,14 @@ import io.moduhome.app.core.planning.JourneyStage
 import io.moduhome.app.data.JourneyPreferences
 import io.moduhome.app.data.navigation.PleosNavigationGateway
 import io.moduhome.app.data.routing.OsrmRouteEstimateGateway
+import io.moduhome.app.data.vehicle.PleosDrivingRestrictions
+import io.moduhome.app.data.voice.PleosVoiceInputGateway
+import io.moduhome.app.feature.vehicle.VehicleJourneyScreen
+import io.moduhome.app.feature.vehicle.VehiclePlacePicker
+import io.moduhome.app.feature.vehicle.VehicleProposalDialog
+import io.moduhome.app.feature.vehicle.VehicleConfirmationDialog
+import io.moduhome.app.feature.vehicle.VehicleVoiceDialog
+import io.moduhome.app.feature.vehicle.RestrictedJourneyScreen
 import io.moduhome.app.data.transfer.*
 import io.moduhome.app.feature.transfer.ProposalActions
 import io.moduhome.app.feature.transfer.ProposalContent
@@ -65,7 +86,40 @@ import java.util.UUID
 
 @Composable
 internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: () -> Unit = {}) {
-    val context = LocalContext.current.applicationContext
+    val uiContext = LocalContext.current
+    val context = uiContext.applicationContext
+    val isVehicle = remember(context) { context.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE) }
+    val restrictions = remember(uiContext) { PleosDrivingRestrictions(uiContext) }
+    val interaction by restrictions.state.collectAsStateWithLifecycle()
+    val editingAllowed = interaction.editingAllowed
+    val voice = remember(context) { PleosVoiceInputGateway(context) }
+    val voiceState by voice.state.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var detailsOpen by remember { mutableStateOf(false) }
+    var voiceDialogOpen by remember { mutableStateOf(false) }
+    var voiceMessage by remember { mutableStateOf<String?>(null) }
+    var voiceCommand by remember { mutableStateOf<JourneyVoiceCommand?>(null) }
+    var voiceRequest by remember { mutableLongStateOf(0L) }
+    fun dismissVoice() {
+        voiceRequest += 1
+        voice.stop()
+        voiceDialogOpen = false
+        voiceCommand = null
+        voiceMessage = null
+    }
+    DisposableEffect(restrictions, voice, lifecycleOwner) {
+        restrictions.connect()
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) dismissVoice()
+            if (event == Lifecycle.Event.ON_RESUME) restrictions.connect()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            voice.close()
+            restrictions.close()
+        }
+    }
     val preferences = remember(context) { JourneyPreferences(context) }
     val scope = rememberCoroutineScope()
     var gatewayRevision by remember { mutableIntStateOf(0) }
@@ -124,7 +178,7 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
         inbox = next
     }
     fun receiveProposal(link: String) {
-        proposalPanelOpen = true
+        proposalPanelOpen = editingAllowed
         when (val decoded = ProposalLinkCodec.decode(link.trim(), System.currentTimeMillis())) {
             is ProposalDecodeResult.Invalid -> proposalMessage = decoded.reason
             is ProposalDecodeResult.Valid -> when (val received = inbox.receive(decoded.proposal, System.currentTimeMillis())) {
@@ -180,7 +234,7 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
         picker = null
     }
     fun loadPlaces(role: NavigationPlaceRole) {
-        if (state.progress.stage != JourneyStage.INPUT || sending || estimating || planning) return
+        if (!editingAllowed || state.progress.stage != JourneyStage.INPUT || sending || estimating || planning) return
         pickerJob?.cancel()
         pickerRequest += 1
         val request = pickerRequest
@@ -216,7 +270,7 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
 
     fun compareRoadRoutes() {
         val routes = routeGateway ?: return
-        if (planning || sending || reading || estimating || state.progress.stage != JourneyStage.INPUT) return
+        if (!editingAllowed || planning || sending || reading || estimating || state.progress.stage != JourneyStage.INPUT) return
         val previous = state.draft
         val now = LocalDateTime.now()
         val draft = previous.copy(origin = "현재 차량 위치", departure = now.format(DateTimeFormatter.ofPattern("HH:mm")),
@@ -255,24 +309,44 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
             } finally { planning = false }
         }
     }
+    LaunchedEffect(editingAllowed, interaction.voiceTranscriptionAllowed) {
+        if (!editingAllowed) {
+            detailsOpen = false
+            proposalPanelOpen = false
+            cancelRequested = false
+            dismissPicker()
+            dismissVoice()
+        }
+        if (!interaction.voiceTranscriptionAllowed) {
+            dismissVoice()
+        }
+    }
+    LaunchedEffect(state.progress.stage) {
+        if (state.progress.stage != JourneyStage.INPUT) detailsOpen = false
+    }
     val actions = JourneyActions(
         onDraftChange = { draft ->
-            if (state.progress.stage == JourneyStage.INPUT && !sending && !estimating && !planning) {
+            if (editingAllowed && state.progress.stage == JourneyStage.INPUT && !sending && !estimating && !planning) {
                 clearNavigationRead()
                 val next = draft.clearUnmatchedPlaces()
                 update(state.copy(draft = next, progress = JourneyProgress(), routing = state.routing?.takeIf { it.matches(next) }))
             }
         },
         onCompare = {
-            if (roadComparisonAvailable) compareRoadRoutes()
+            if (!editingAllowed) Unit
+            else if (isVehicle && !roadComparisonAvailable) {
+                navigationMessage = "집과 들를 곳을 선택하고 차량 내비 연결을 확인해주세요"
+                navigationError = true
+            }
+            else if (roadComparisonAvailable) compareRoadRoutes()
             else if (state.validation.request == null) update(state.copy(showErrors = true))
             else update(state.copy(progress = state.progress.compare(state.plans), showErrors = false))
         },
-        onSelect = { id -> update(state.copy(progress = state.progress.select(id, state.plans))) },
-        onReview = { update(state.copy(progress = state.progress.review(state.plans))) },
+        onSelect = { id -> if (editingAllowed) update(state.copy(progress = state.progress.select(id, state.plans))) },
+        onReview = { if (editingAllowed) update(state.copy(progress = state.progress.review(state.plans))) },
         onStart = {
             val selected = state.selectedPlan
-            if (!sending && !reading && !estimating && !planning && state.progress.stage == JourneyStage.REVIEW && selected?.isValid == true) {
+            if (editingAllowed && !sending && !reading && !estimating && !planning && state.progress.stage == JourneyStage.REVIEW && selected?.isValid == true) {
                 if (state.routing?.isFresh(System.currentTimeMillis()) == false) {
                     update(state.copy(progress = JourneyProgress()))
                     navigationMessage = "조회 후 5분이 지났어요. 출발 전에 경로를 다시 비교해주세요"
@@ -319,30 +393,32 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
                 }
             }
         },
-        onCompleteVisit = { kind -> update(state.copy(progress = state.progress.completeVisit(state.plans, kind))) },
-        onFinish = { update(state.copy(progress = state.progress.finish(state.plans, System.currentTimeMillis()))) },
-        onBack = { if (!sending) update(state.copy(progress = state.progress.back())) },
-        onEdit = { if (!sending) {
+        onCompleteVisit = { kind -> if (editingAllowed) update(state.copy(progress = state.progress.completeVisit(state.plans, kind))) },
+        onFinish = { if (editingAllowed) update(state.copy(progress = state.progress.finish(state.plans, System.currentTimeMillis()))) },
+        onBack = { if (editingAllowed && !sending) update(state.copy(progress = state.progress.back())) },
+        onEdit = { if (editingAllowed && !sending) {
             clearNavigationRead()
             update(state.copy(progress = JourneyProgress(), showErrors = false))
         } },
-        onCancel = { cancelRequested = true },
+        onCancel = { if (editingAllowed) cancelRequested = true },
         onNewJourney = {
+            if (editingAllowed) {
             clearNavigationRead()
             update(HomeUiState(freshDraft(state.draft)))
+            }
         },
         onChooseNavigationPlace = ::loadPlaces,
         onReadNavigation = ::readNavigation,
         onReconnectNavigation = {
-            if (!sending && !reading && !estimating && !planning) {
+            if (editingAllowed && !sending && !reading && !estimating && !planning) {
                 dismissPicker()
                 gatewayRevision += 1
             }
         },
-        onOpenProposals = { proposalPanelOpen = true },
+        onOpenProposals = { if (editingAllowed) proposalPanelOpen = true },
         onEstimateTrip = { role ->
             val point = state.draft.navigationPoint(role)
-            if (point != null && !sending && !reading && !estimating && !planning && connection == NavigationConnection.Ready) {
+            if (editingAllowed && point != null && !sending && !reading && !estimating && !planning && connection == NavigationConnection.Ready) {
                 estimating = true
                 tripResult = null
                 scope.launch {
@@ -353,7 +429,9 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
         },
     )
     BackHandler(enabled = state.progress.stage != JourneyStage.INPUT) {
-        if (sending || reading || estimating || planning) {
+        if (!editingAllowed) {
+            navigationMessage = "차량의 입력 제한이 해제된 뒤 계획을 바꿀 수 있어요"
+        } else if (sending || reading || estimating || planning) {
             navigationMessage = "차량 내비 응답을 확인하고 있어요"
         } else when (state.progress.stage) {
             JourneyStage.ACTIVE -> cancelRequested = true
@@ -362,18 +440,87 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
             JourneyStage.INPUT -> Unit
         }
     }
-    HomeScreen(state = state, actions = actions, vehicle = VehicleNavigationUiState(
+    val vehicleState = VehicleNavigationUiState(
         connection, sending, reading || estimating || planning, navigationMessage, navigationError, navigationSnapshot,
         tripResult = tripResult, tripNow = tripNow, roadComparisonAvailable = roadComparisonAvailable, planning = planning,
-    ))
-    if (proposalPanelOpen) {
-        ProposalContent(
-            state = ProposalUiState(inbox, proposalInput, proposalMessage,
-                canApply = state.progress.stage == JourneyStage.INPUT && !sending && !reading && !estimating && !planning,
+    )
+    if (isVehicle && !editingAllowed) {
+        RestrictedJourneyScreen(state = state, interaction = interaction)
+    } else if (isVehicle && !detailsOpen) {
+        VehicleJourneyScreen(state, actions, vehicleState, editingAllowed,
+            restrictionMessage = when (val status = interaction) {
+                is DrivingInteraction.Unknown -> status.reason
+                is DrivingInteraction.Known -> if (status.editingAllowed) null else "계획 변경은 정차 후에 할 수 있어요"
+                DrivingInteraction.NotAutomotive -> null
+            },
+            onOpenDetails = { if (editingAllowed) detailsOpen = true },
+            voiceAvailable = BuildConfig.ENABLE_VEHICLE_VOICE && interaction.voiceTranscriptionAllowed &&
+                voiceState !is VoiceInputState.Failed && voiceState != VoiceInputState.Stopping,
+            onVoice = {
+                if (BuildConfig.ENABLE_VEHICLE_VOICE && editingAllowed && interaction.voiceTranscriptionAllowed &&
+                    state.progress.stage == JourneyStage.INPUT && voiceState == VoiceInputState.Idle) {
+                    voiceRequest += 1
+                    val request = voiceRequest
+                    voiceDialogOpen = true
+                    voiceCommand = null
+                    voiceMessage = null
+                    scope.launch {
+                        val result = voice.recognize()
+                        if (request == voiceRequest && voiceDialogOpen && interaction.editingAllowed && interaction.voiceTranscriptionAllowed) {
+                            when (result) {
+                                is VoiceRecognitionResult.Recognized -> when (val parsed = KoreanJourneyVoiceParser.parse(result.text)) {
+                                    is VoiceCommandParseResult.Supported -> voiceCommand = parsed.command
+                                    is VoiceCommandParseResult.Unsupported -> voiceMessage = parsed.reason
+                                }
+                                is VoiceRecognitionResult.Unavailable -> voiceMessage = result.reason
+                                VoiceRecognitionResult.NoSpeech -> voiceMessage = "말씀을 듣지 못했어요. 버튼을 눌러 다시 시작해주세요"
+                                VoiceRecognitionResult.Stopped -> voiceMessage = "음성 입력을 중지했어요"
+                                VoiceRecognitionResult.Busy -> voiceMessage = "이미 음성을 듣고 있어요"
+                            }
+                        }
+                    }
+                }
+            },
+        )
+    } else {
+        Column {
+            if (isVehicle) Button(onClick = { detailsOpen = false }, modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp)) {
+                Text("간단한 차량 화면으로 돌아가기")
+            }
+            HomeScreen(state = state, actions = actions, vehicle = vehicleState, modifier = Modifier.weight(1f))
+        }
+        BackHandler(enabled = isVehicle && detailsOpen) { detailsOpen = false }
+    }
+    if (voiceDialogOpen && editingAllowed && interaction.voiceTranscriptionAllowed) {
+        VehicleVoiceDialog(
+            state = voiceState, message = voiceMessage, command = voiceCommand,
+            onDismiss = ::dismissVoice,
+            onConfirm = {
+                val command = voiceCommand
+                if (editingAllowed && state.progress.stage == JourneyStage.INPUT && command != null) {
+                    val draft = state.draft
+                    val next = when (command) {
+                        is JourneyVoiceCommand.SetVisitEnabled -> when (command.kind) {
+                            VisitKind.PICKUP -> draft.copy(pickup = draft.pickup.copy(enabled = command.enabled))
+                            VisitKind.GROCERIES -> draft.copy(groceries = draft.groceries.copy(enabled = command.enabled))
+                        }
+                        is JourneyVoiceCommand.SetAdditionalBudget -> draft.copy(budget = command.minutes)
+                        is JourneyVoiceCommand.SetPickupReady -> draft.copy(pickup = draft.pickup.copy(ready = command.ready))
+                    }
+                    actions.onDraftChange(next)
+                }
+                dismissVoice()
+            },
+        )
+    }
+
+    if (proposalPanelOpen && editingAllowed) {
+        val proposalState = ProposalUiState(inbox, proposalInput, proposalMessage,
+                canApply = editingAllowed && state.progress.stage == JourneyStage.INPUT && !sending && !reading && !estimating && !planning,
                 exportLink = exportLink, exportName = exportName, qr = proposalQr, qrBusy = generatingQr || readingQr,
                 pickupAvailable = state.draft.navigationPoint(NavigationPlaceRole.PICKUP) != null,
-                groceriesAvailable = state.draft.navigationPoint(NavigationPlaceRole.GROCERIES) != null),
-            actions = ProposalActions(
+                groceriesAvailable = state.draft.navigationPoint(NavigationPlaceRole.GROCERIES) != null)
+        val proposalActions = ProposalActions(
                 onInput = { proposalInput = it.take(ProposalLinkCodec.MAX_LINK_LENGTH + 1) },
                 onReceive = { receiveProposal(proposalInput) },
                 onPaste = {
@@ -382,7 +529,7 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
                 },
                 onReadQr = { qrPicker.launch("image/*") },
                 onApprove = { id, revision ->
-                    if (state.progress.stage == JourneyStage.INPUT && !sending && !reading && !estimating && !planning) {
+                    if (editingAllowed && state.progress.stage == JourneyStage.INPUT && !sending && !reading && !estimating && !planning) {
                         when (val approval = inbox.approve(id, revision, System.currentTimeMillis())) {
                             is ProposalApprovalResult.Rejected -> proposalMessage = approval.reason
                             is ProposalApprovalResult.Approved -> when (val applied = state.draft.withProposal(approval.proposal)) {
@@ -423,34 +570,40 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
                     }
                 },
                 onDismiss = { proposalPanelOpen = false },
-            ),
         )
+        if (isVehicle) VehicleProposalDialog(proposalState, proposalActions)
+        else ProposalContent(proposalState, proposalActions)
     }
-    picker?.let { current ->
-        NavigationPlacePicker(
-            state = current,
-            onChoose = { point ->
-                val role = current.role
-                dismissPicker()
+    picker?.takeIf { editingAllowed }?.let { current ->
+        val choose: (io.moduhome.app.core.navigation.NavigationPoint) -> Unit = { point ->
+            if (editingAllowed && state.progress.stage == JourneyStage.INPUT && !sending && !planning) {
                 clearNavigationRead()
-                update(state.copy(draft = state.draft.chooseNavigationPlace(role, point),
-                    progress = JourneyProgress(), showErrors = false, routing = null))
-            },
-            onRefresh = { loadPlaces(current.role) },
-            onDismiss = ::dismissPicker,
-        )
+                update(state.copy(draft = state.draft.chooseNavigationPlace(current.role, point),
+                    progress = JourneyProgress(), routing = null, showErrors = false))
+                dismissPicker()
+            }
+        }
+        if (isVehicle) VehiclePlacePicker(current, choose, { loadPlaces(current.role) }, ::dismissPicker)
+        else NavigationPlacePicker(current, choose, { loadPlaces(current.role) }, ::dismissPicker)
     }
-    if (cancelRequested) {
-        AlertDialog(
-            onDismissRequest = { cancelRequested = false },
+
+    if (cancelRequested && editingAllowed) {
+        val cancel: () -> Unit = {
+            cancelRequested = false
+            clearNavigationRead()
+            update(state.copy(progress = JourneyProgress(), showErrors = false))
+        }
+        val dismiss: () -> Unit = { cancelRequested = false }
+        if (isVehicle) VehicleConfirmationDialog(
+            title = "진행 중인 계획을 중단할까요?",
+            description = "입력한 장소와 시간은 남겨둘게요. 차량 내비의 길안내는 계속돼요",
+            confirmLabel = "계획 중단", onConfirm = cancel, onDismiss = dismiss,
+        ) else AlertDialog(
+            onDismissRequest = dismiss,
             title = { Text("진행 중인 계획을 중단할까요?") },
             text = { Text("입력한 장소와 시간은 남겨둘게요. 차량 내비의 길안내는 계속돼요") },
-            confirmButton = { TextButton(onClick = {
-                cancelRequested = false
-                clearNavigationRead()
-                update(state.copy(progress = JourneyProgress(), showErrors = false))
-            }) { Text("계획 중단") } },
-            dismissButton = { TextButton(onClick = { cancelRequested = false }) { Text("계속 진행") } },
+            confirmButton = { TextButton(onClick = cancel) { Text("계획 중단") } },
+            dismissButton = { TextButton(onClick = dismiss) { Text("계속 진행") } },
         )
     }
 }

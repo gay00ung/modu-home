@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "io.moduhome.app"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "io.moduhome.app"

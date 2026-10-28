@@ -31,20 +31,20 @@
 | 항목 | 설정 |
 | --- | --- |
 | Application ID / namespace | `io.moduhome.app` |
-| 최소 / 컴파일 / 대상 API | 28 / 36 / 36 |
+| 최소 / 컴파일 / 대상 API | 28 / 37 / 36 |
 | JDK | 17 또는 21 |
 | Java 바이트코드 | 17 |
-| Gradle | 8.13 |
-| Android Gradle Plugin | 8.13.2 |
-| Kotlin / Compose Compiler | 2.3.10 |
-| Compose BOM | 2026.02.01 |
+| Gradle | 9.4.1 |
+| Android Gradle Plugin | 9.2.1 |
+| Kotlin / Compose Compiler | 2.4.21 |
+| Compose BOM | 2026.09.00 |
 | NaviHelper SDK | 3.0.5 |
 | 차량 실행 환경 | Pleos Connect Emulator 2.1.0 / API 34 |
 
 ## 실행
 
 - Android Studio에서 저장소 루트 열기
-- Gradle JDK와 Android SDK Platform 36 설정
+- Gradle JDK와 Android SDK Platform 37 설정
 - 로컬 SDK 경로는 `local.properties`에서 관리
 - 차량 연동은 Pleos AVD에서 실행하고 RAM 4GB·Cold boot로 설정
 

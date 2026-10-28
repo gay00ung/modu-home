@@ -181,18 +181,37 @@ internal data class SharedJourneyPlan(
 
 /** Enumerates candidate combinations and every stop order; the driver's home is always last. */
 internal class SharedJourneyPlanner {
-    fun compare(request: SharedJourneyRequest): List<SharedJourneyPlan> {
+    /** Route loaders use these identities and endpoint chains before collecting any responses. */
+    fun orders(request: SharedJourneyRequest): List<SharedJourneyOrder> =
+        plannedOrders(request).map { order -> describeOrder(request, order) }
+
+    fun compare(request: SharedJourneyRequest): List<SharedJourneyPlan> =
+        sorted(plannedOrders(request).map { order -> schedule(request, order) })
+
+    fun compare(request: SharedJourneyRequest, travel: SharedOrderTravelTimes): List<SharedJourneyPlan> {
+        require(travel.matches(request)) { "장소나 방문 순서가 바뀌었어요. 모든 경로를 다시 조회해주세요" }
+        return sorted(plannedOrders(request).map { order ->
+            schedule(request, order, travel.directHome, travel.legsFor(describeOrder(request, order)))
+        })
+    }
+
+    private fun plannedOrders(request: SharedJourneyRequest): List<List<PlannedStop>> {
         val combinations = candidateCombinations(request.passengers)
         return combinations.flatMap { dropoffs ->
             val stops = dropoffs + listOfNotNull(request.errand?.let { PlannedStop.Errand(it) })
-            permutations(stops).map { schedule(request, it) }
-        }.sortedWith(
-            compareBy<SharedJourneyPlan> { !it.isValid }
-                .thenBy { it.totalPersonMinutes ?: Int.MAX_VALUE }
-                .thenBy { it.driverAdditionalMinutes ?: Int.MAX_VALUE }
-                .thenBy { it.id },
-        )
+            permutations(stops)
+        }
     }
+
+    private fun describeOrder(request: SharedJourneyRequest, order: List<PlannedStop>): SharedJourneyOrder =
+        SharedJourneyOrder(order.map { it.id }, listOf(request.origin) + order.map { it.place } + request.home)
+
+    private fun sorted(plans: List<SharedJourneyPlan>): List<SharedJourneyPlan> = plans.sortedWith(
+        compareBy<SharedJourneyPlan> { !it.isValid }
+            .thenBy { it.totalPersonMinutes ?: Int.MAX_VALUE }
+            .thenBy { it.driverAdditionalMinutes ?: Int.MAX_VALUE }
+            .thenBy { it.id },
+    )
 
     private fun candidateCombinations(passengers: List<SharedPassenger>): List<List<PlannedStop>> =
         passengers.fold(listOf(emptyList<PlannedStop>())) { combinations, passenger ->
@@ -209,10 +228,20 @@ internal class SharedJourneyPlanner {
         }
     }
 
-    private fun schedule(request: SharedJourneyRequest, order: List<PlannedStop>): SharedJourneyPlan {
+    private fun schedule(
+        request: SharedJourneyRequest,
+        order: List<PlannedStop>,
+        orderedDirectHome: SharedOrderedDrivingLeg? = null,
+        orderedLegs: List<SharedOrderedDrivingLeg>? = null,
+    ): SharedJourneyPlan {
         val issues = linkedSetOf<SharedPlanIssue>()
         val evidence = linkedSetOf<TravelEvidence>()
-        fun legMinutes(from: SharedJourneyPlace, to: SharedJourneyPlace): Int? {
+        fun legMinutes(from: SharedJourneyPlace, to: SharedJourneyPlace, index: Int = 0): Int? {
+            if (orderedLegs != null) {
+                val estimate = orderedLegs[index].estimate
+                evidence += estimate.evidence
+                return estimate.minutes
+            }
             if (from.id == to.id) return 0
             val key = DrivingLegKey(from.id, to.id)
             val estimate = request.drivingEstimates[key]
@@ -223,14 +252,18 @@ internal class SharedJourneyPlanner {
             evidence += estimate.evidence
             return estimate.minutes
         }
-        val directHomeMinutes = legMinutes(request.origin, request.home)
+        val directHomeMinutes = if (orderedLegs != null) {
+            val estimate = requireNotNull(orderedDirectHome).estimate
+            evidence += estimate.evidence
+            estimate.minutes
+        } else legMinutes(request.origin, request.home)
         var previous = request.origin
         var minute: Int? = request.departureMinute
         var driving: Int? = 0
         var stopMinutes = 0
         val arrivals = mutableMapOf<String, SharedPassengerArrival>()
-        val scheduled = order.map { stop ->
-            val leg = legMinutes(previous, stop.place)
+        val scheduled = order.mapIndexed { index, stop ->
+            val leg = legMinutes(previous, stop.place, index)
             driving = sumIfKnown(driving, leg)
             val arrival = sumIfKnown(minute, leg)
             val scheduledStop = when (stop) {
@@ -281,7 +314,7 @@ internal class SharedJourneyPlanner {
             previous = stop.place
             scheduledStop
         }
-        val homeLeg = legMinutes(previous, request.home)
+        val homeLeg = legMinutes(previous, request.home, order.size)
         driving = sumIfKnown(driving, homeLeg)
         val homeArrival = sumIfKnown(minute, homeLeg)
         val knownDriving = driving

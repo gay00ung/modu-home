@@ -37,6 +37,8 @@ internal data class JourneyActions(
     val onChooseNavigationPlace: (NavigationPlaceRole) -> Unit = {},
     val onReadNavigation: () -> Unit = {},
     val onReconnectNavigation: () -> Unit = {},
+    val onOpenProposals: () -> Unit = {},
+    val onEstimateTrip: (NavigationPlaceRole) -> Unit = {},
 )
 
 @Composable
@@ -93,6 +95,9 @@ internal fun HomeScreen(
                         }
                     },
                     detailContent = {
+                        OutlinedButton(onClick = actions.onOpenProposals, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                            Text("함께 정하는 볼일 · 보내기 / 받기")
+                        }
                         if (stage != JourneyStage.COMPLETE) {
                             VehicleNavigationContent(state, vehicle, actions)
                             HorizontalDivider()

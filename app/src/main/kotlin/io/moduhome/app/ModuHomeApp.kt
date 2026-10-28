@@ -1,6 +1,12 @@
 package io.moduhome.app
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -15,14 +21,27 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.moduhome.app.core.navigation.NavigationConnection
 import io.moduhome.app.core.navigation.NavigationSnapshot
 import io.moduhome.app.core.navigation.RouteRequestResult
+import io.moduhome.app.core.navigation.TripEstimateResult
+import io.moduhome.app.core.transfer.ErrandProposalInbox
+import io.moduhome.app.core.transfer.ProposalApprovalResult
+import io.moduhome.app.core.transfer.ProposalReceiveResult
 import io.moduhome.app.core.planning.JourneyProgress
 import io.moduhome.app.core.planning.JourneyStage
 import io.moduhome.app.data.JourneyPreferences
 import io.moduhome.app.data.navigation.PleosNavigationGateway
+import io.moduhome.app.data.transfer.*
+import io.moduhome.app.feature.transfer.ProposalActions
+import io.moduhome.app.feature.transfer.ProposalContent
+import io.moduhome.app.feature.transfer.ProposalUiState
+import io.moduhome.app.feature.home.ProposalDraftResult
+import io.moduhome.app.feature.home.withProposal
+import io.moduhome.app.feature.home.proposal
 import io.moduhome.app.feature.home.HomeScreen
 import io.moduhome.app.feature.home.HomeUiState
 import io.moduhome.app.feature.home.JourneyActions
@@ -32,12 +51,16 @@ import io.moduhome.app.feature.home.NavigationPlaceRole
 import io.moduhome.app.feature.home.PlacePickerUiState
 import io.moduhome.app.feature.home.VehicleNavigationUiState
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 
 @Composable
-internal fun ModuHomeApp() {
+internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: () -> Unit = {}) {
     val context = LocalContext.current.applicationContext
     val preferences = remember(context) { JourneyPreferences(context) }
     val scope = rememberCoroutineScope()
@@ -50,6 +73,9 @@ internal fun ModuHomeApp() {
     }
     var sending by remember(gateway) { mutableStateOf(false) }
     var reading by remember(gateway) { mutableStateOf(false) }
+    var estimating by remember(gateway) { mutableStateOf(false) }
+    var tripResult by remember(gateway) { mutableStateOf<TripEstimateResult?>(null) }
+    var tripNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var navigationMessage by remember(gateway) { mutableStateOf<String?>(null) }
     var navigationError by remember(gateway) { mutableStateOf(false) }
     var navigationSnapshot by remember(gateway) { mutableStateOf<NavigationSnapshot?>(null) }
@@ -62,6 +88,17 @@ internal fun ModuHomeApp() {
     }
     var state by remember(preferences) { mutableStateOf(preferences.load(freshDraft())) }
     var cancelRequested by remember { mutableStateOf(false) }
+    val proposalPreferences = remember(context) { ProposalInboxPreferences(context) }
+    val restoredProposals = remember(proposalPreferences) { proposalPreferences.load(System.currentTimeMillis()) }
+    var inbox by remember { mutableStateOf((restoredProposals as? ProposalInboxLoadResult.Loaded)?.inbox ?: ErrandProposalInbox.empty()) }
+    var proposalPanelOpen by remember { mutableStateOf(false) }
+    var proposalInput by remember { mutableStateOf("") }
+    var proposalMessage by remember { mutableStateOf((restoredProposals as? ProposalInboxLoadResult.Failed)?.reason) }
+    var exportLink by remember { mutableStateOf<String?>(null) }
+    var exportName by remember { mutableStateOf<String?>(null) }
+    var proposalQr by remember { mutableStateOf<ImageBitmap?>(null) }
+    var generatingQr by remember { mutableStateOf(false) }
+    var readingQr by remember { mutableStateOf(false) }
     fun update(next: HomeUiState) {
         state = next
         preferences.save(next)
@@ -70,6 +107,62 @@ internal fun ModuHomeApp() {
         navigationMessage = null
         navigationError = false
         navigationSnapshot = null
+        tripResult = null
+    }
+    fun saveInbox(next: ErrandProposalInbox) {
+        proposalPreferences.save(next)
+        inbox = next
+    }
+    fun receiveProposal(link: String) {
+        proposalPanelOpen = true
+        when (val decoded = ProposalLinkCodec.decode(link.trim(), System.currentTimeMillis())) {
+            is ProposalDecodeResult.Invalid -> proposalMessage = decoded.reason
+            is ProposalDecodeResult.Valid -> when (val received = inbox.receive(decoded.proposal, System.currentTimeMillis())) {
+                is ProposalReceiveResult.Pending -> {
+                    saveInbox(received.inbox)
+                    proposalInput = ""
+                    proposalMessage = "제안을 받았어요. 장소와 시간을 확인해주세요"
+                }
+                ProposalReceiveResult.Duplicate -> proposalMessage = "이미 받은 제안이에요"
+                is ProposalReceiveResult.Rejected -> proposalMessage = received.reason
+            }
+        }
+    }
+    LaunchedEffect(incomingProposal) {
+        if (incomingProposal != null) {
+            receiveProposal(incomingProposal)
+            onProposalConsumed()
+        }
+    }
+    LaunchedEffect(exportLink) {
+        proposalQr = null
+        val link = exportLink ?: return@LaunchedEffect
+        generatingQr = true
+        try {
+            proposalQr = withContext(Dispatchers.Default) { ProposalQrCode.encode(link)?.asImageBitmap() }
+            if (proposalQr == null) proposalMessage = "내용이 길어 QR을 만들지 못했어요. 링크로 전달해주세요"
+        } finally { generatingQr = false }
+    }
+    val qrPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null && !readingQr) {
+            readingQr = true
+            scope.launch {
+                try {
+                    val link = readProposalQr(context.contentResolver, uri)
+                    if (link == null) proposalMessage = "이미지에서 QR을 읽지 못했어요. 제안 링크를 붙여넣어주세요"
+                    else receiveProposal(link)
+                } finally { readingQr = false }
+            }
+        }
+    }
+    LaunchedEffect(tripResult) {
+        tripNow = System.currentTimeMillis()
+        if (tripResult is TripEstimateResult.Success) {
+            while (true) {
+                delay(30_000)
+                tripNow = System.currentTimeMillis()
+            }
+        }
     }
     fun dismissPicker() {
         pickerRequest += 1
@@ -77,7 +170,7 @@ internal fun ModuHomeApp() {
         picker = null
     }
     fun loadPlaces(role: NavigationPlaceRole) {
-        if (state.progress.stage != JourneyStage.INPUT || sending) return
+        if (state.progress.stage != JourneyStage.INPUT || sending || estimating) return
         pickerJob?.cancel()
         pickerRequest += 1
         val request = pickerRequest
@@ -88,7 +181,7 @@ internal fun ModuHomeApp() {
         }
     }
     fun readNavigation() {
-        if (reading || sending || connection != NavigationConnection.Ready) return
+        if (reading || sending || estimating || connection != NavigationConnection.Ready) return
         reading = true
         scope.launch {
             try {
@@ -108,7 +201,7 @@ internal fun ModuHomeApp() {
     }
     val actions = JourneyActions(
         onDraftChange = { draft ->
-            if (state.progress.stage == JourneyStage.INPUT && !sending) {
+            if (state.progress.stage == JourneyStage.INPUT && !sending && !estimating) {
                 clearNavigationRead()
                 update(state.copy(draft = draft.clearUnmatchedPlaces(), progress = JourneyProgress()))
             }
@@ -121,7 +214,7 @@ internal fun ModuHomeApp() {
         onReview = { update(state.copy(progress = state.progress.review(state.plans))) },
         onStart = {
             val selected = state.selectedPlan
-            if (!sending && !reading && state.progress.stage == JourneyStage.REVIEW && selected?.isValid == true) {
+            if (!sending && !reading && !estimating && state.progress.stage == JourneyStage.REVIEW && selected?.isValid == true) {
                 if (connection == NavigationConnection.Unsupported) {
                     update(state.copy(progress = state.progress.start(state.plans, System.currentTimeMillis())))
                 } else {
@@ -179,14 +272,26 @@ internal fun ModuHomeApp() {
         onChooseNavigationPlace = ::loadPlaces,
         onReadNavigation = ::readNavigation,
         onReconnectNavigation = {
-            if (!sending && !reading) {
+            if (!sending && !reading && !estimating) {
                 dismissPicker()
                 gatewayRevision += 1
             }
         },
+        onOpenProposals = { proposalPanelOpen = true },
+        onEstimateTrip = { role ->
+            val point = state.draft.navigationPoint(role)
+            if (point != null && !sending && !reading && !estimating && connection == NavigationConnection.Ready) {
+                estimating = true
+                tripResult = null
+                scope.launch {
+                    try { tripResult = gateway.estimateTrip(point) }
+                    finally { estimating = false }
+                }
+            }
+        },
     )
     BackHandler(enabled = state.progress.stage != JourneyStage.INPUT) {
-        if (sending || reading) {
+        if (sending || reading || estimating) {
             navigationMessage = "차량 내비 응답을 확인하고 있어요"
         } else when (state.progress.stage) {
             JourneyStage.ACTIVE -> cancelRequested = true
@@ -196,8 +301,68 @@ internal fun ModuHomeApp() {
         }
     }
     HomeScreen(state = state, actions = actions, vehicle = VehicleNavigationUiState(
-        connection, sending, reading, navigationMessage, navigationError, navigationSnapshot,
+        connection, sending, reading || estimating, navigationMessage, navigationError, navigationSnapshot,
+        tripResult = tripResult, tripNow = tripNow,
     ))
+    if (proposalPanelOpen) {
+        ProposalContent(
+            state = ProposalUiState(inbox, proposalInput, proposalMessage,
+                canApply = state.progress.stage == JourneyStage.INPUT && !sending && !reading && !estimating,
+                exportLink = exportLink, exportName = exportName, qr = proposalQr, qrBusy = generatingQr || readingQr,
+                pickupAvailable = state.draft.navigationPoint(NavigationPlaceRole.PICKUP) != null,
+                groceriesAvailable = state.draft.navigationPoint(NavigationPlaceRole.GROCERIES) != null),
+            actions = ProposalActions(
+                onInput = { proposalInput = it.take(ProposalLinkCodec.MAX_LINK_LENGTH + 1) },
+                onReceive = { receiveProposal(proposalInput) },
+                onPaste = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    proposalInput = clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty().take(ProposalLinkCodec.MAX_LINK_LENGTH + 1)
+                },
+                onReadQr = { qrPicker.launch("image/*") },
+                onApprove = { id, revision ->
+                    if (state.progress.stage == JourneyStage.INPUT && !sending && !reading && !estimating) {
+                        when (val approval = inbox.approve(id, revision, System.currentTimeMillis())) {
+                            is ProposalApprovalResult.Rejected -> proposalMessage = approval.reason
+                            is ProposalApprovalResult.Approved -> when (val applied = state.draft.withProposal(approval.proposal)) {
+                                is ProposalDraftResult.Invalid -> proposalMessage = applied.reason
+                                is ProposalDraftResult.Applied -> {
+                                    clearNavigationRead()
+                                    update(state.copy(draft = applied.draft, progress = JourneyProgress(), showErrors = false))
+                                    saveInbox(approval.inbox)
+                                    proposalMessage = "이번 계획에 반영했어요. 계획 비교에서 순서를 확인하세요"
+                                }
+                            }
+                        }
+                    }
+                },
+                onDecline = { id, revision -> saveInbox(inbox.decline(id, revision)) },
+                onExport = { kind ->
+                    val proposal = state.draft.proposal(kind, UUID.randomUUID().toString(), System.currentTimeMillis())
+                    if (proposal == null) proposalMessage = "연결된 장소와 체류·도보·마감 시간을 확인해주세요"
+                    else {
+                        exportName = proposal.place.name
+                        exportLink = ProposalLinkCodec.encode(proposal)
+                        proposalMessage = "제안을 만들었어요. QR이나 링크로 전달해주세요"
+                    }
+                },
+                onCopy = {
+                    exportLink?.let { link ->
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("볼일 제안", link))
+                        proposalMessage = "제안 링크를 복사했어요"
+                    }
+                },
+                onShare = {
+                    exportLink?.let { link ->
+                        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, link)
+                        try { context.startActivity(Intent.createChooser(send, "볼일 제안 전달").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                        catch (_: android.content.ActivityNotFoundException) { proposalMessage = "공유할 앱이 없어요. 링크 복사를 이용해주세요" }
+                    }
+                },
+                onDismiss = { proposalPanelOpen = false },
+            ),
+        )
+    }
     picker?.let { current ->
         NavigationPlacePicker(
             state = current,

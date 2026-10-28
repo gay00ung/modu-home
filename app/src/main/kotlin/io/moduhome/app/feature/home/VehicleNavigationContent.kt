@@ -22,7 +22,12 @@ import io.moduhome.app.core.navigation.NavigationConnection
 import io.moduhome.app.core.navigation.NavigationPoint
 import io.moduhome.app.core.navigation.NavigationSnapshot
 import io.moduhome.app.core.navigation.PlaceCatalogResult
+import io.moduhome.app.core.navigation.TripEstimateResult
 import io.moduhome.app.core.planning.JourneyStage
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 internal data class VehicleNavigationUiState(
     val connection: NavigationConnection = NavigationConnection.Unsupported,
@@ -31,6 +36,8 @@ internal data class VehicleNavigationUiState(
     val message: String? = null,
     val error: Boolean = false,
     val snapshot: NavigationSnapshot? = null,
+    val tripResult: TripEstimateResult? = null,
+    val tripNow: Long = 0L,
 )
 
 internal data class PlacePickerUiState(
@@ -73,9 +80,31 @@ internal fun VehicleNavigationContent(state: HomeUiState, vehicle: VehicleNaviga
                         if (point != null) Text(point.address, style = MaterialTheme.typography.bodySmall)
                     }
                 }
+                if (point != null) TextButton(onClick = { actions.onEstimateTrip(role) },
+                    enabled = vehicle.connection == NavigationConnection.Ready && !vehicle.reading && !vehicle.sending) {
+                    Text("현재 위치 → ${role.label} 시간 확인")
+                }
             }
             Text("내비에 저장한 장소나 최근 목적지를 선택해주세요", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        when (val result = vehicle.tripResult) {
+            null, TripEstimateResult.Unsupported -> Unit
+            is TripEstimateResult.Failed -> {
+                Text(result.reason, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                TextButton(onClick = actions.onReconnectNavigation, enabled = !vehicle.reading && !vehicle.sending) { Text("내비 다시 연결") }
+            }
+            is TripEstimateResult.Success -> {
+                val trip = result.estimate
+                HorizontalDivider()
+                Text("현재 차량 → ${trip.destination.name}", fontWeight = FontWeight.SemiBold)
+                Text("${(trip.durationSeconds.toLong() + 59) / 60}분 · ${String.format(Locale.KOREA, "%.1f", trip.distanceMeters / 1000.0)}km",
+                    style = MaterialTheme.typography.titleLarge)
+                Text("차량 내비 응답 · " + DateTimeFormatter.ofPattern("HH:mm").format(Instant.ofEpochMilli(trip.queriedAtEpochMillis).atZone(ZoneId.systemDefault())) + " 조회",
+                    style = MaterialTheme.typography.bodySmall)
+                if (!trip.isFresh(vehicle.tripNow)) Text("조회 후 5분이 지났어요. 출발 전에 다시 확인해주세요", color = MaterialTheme.colorScheme.error)
+                Text("한 곳까지의 주행시간이에요. 계획 비교의 구간별 예상시간과는 별도로 표시해요", style = MaterialTheme.typography.bodySmall)
+            }
         }
         vehicle.message?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium,

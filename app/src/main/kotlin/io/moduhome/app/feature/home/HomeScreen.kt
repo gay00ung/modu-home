@@ -18,6 +18,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.moduhome.app.core.planning.*
+import io.moduhome.app.core.navigation.NavigationConnection
 import io.moduhome.app.ui.theme.ModuHomeTheme
 import java.time.LocalDate
 
@@ -33,10 +34,18 @@ internal data class JourneyActions(
     val onEdit: () -> Unit = {},
     val onCancel: () -> Unit = {},
     val onNewJourney: () -> Unit = {},
+    val onChooseNavigationPlace: (NavigationPlaceRole) -> Unit = {},
+    val onReadNavigation: () -> Unit = {},
+    val onReconnectNavigation: () -> Unit = {},
 )
 
 @Composable
-internal fun HomeScreen(state: HomeUiState, actions: JourneyActions, modifier: Modifier = Modifier) {
+internal fun HomeScreen(
+    state: HomeUiState,
+    actions: JourneyActions,
+    modifier: Modifier = Modifier,
+    vehicle: VehicleNavigationUiState = VehicleNavigationUiState(),
+) {
     val stage = state.progress.stage
     val keyboard = LocalSoftwareKeyboardController.current
     BoxWithConstraints(modifier.fillMaxSize()) {
@@ -45,7 +54,7 @@ internal fun HomeScreen(state: HomeUiState, actions: JourneyActions, modifier: M
             modifier = Modifier.fillMaxSize().imePadding(),
             containerColor = MaterialTheme.colorScheme.background,
             topBar = { JourneyHeader(stage, compact) },
-            bottomBar = { JourneyFooter(state, actions, compact, beforeAction = { keyboard?.hide() }) },
+            bottomBar = { JourneyFooter(state, actions, vehicle, compact, beforeAction = { keyboard?.hide() }) },
         ) { padding ->
             key(stage) {
                 JourneyWorkspace(
@@ -83,7 +92,13 @@ internal fun HomeScreen(state: HomeUiState, actions: JourneyActions, modifier: M
                             JourneyStage.COMPLETE -> CompleteContent(state)
                         }
                     },
-                    detailContent = { JourneySummary(state) },
+                    detailContent = {
+                        if (stage != JourneyStage.COMPLETE) {
+                            VehicleNavigationContent(state, vehicle, actions)
+                            HorizontalDivider()
+                        }
+                        JourneySummary(state)
+                    },
                 )
             }
         }
@@ -247,15 +262,28 @@ private fun SummaryLine(label: String, value: String) {
 }
 
 @Composable
-private fun JourneyFooter(state: HomeUiState, actions: JourneyActions, compact: Boolean, beforeAction: () -> Unit) {
+private fun JourneyFooter(
+    state: HomeUiState,
+    actions: JourneyActions,
+    vehicle: VehicleNavigationUiState,
+    compact: Boolean,
+    beforeAction: () -> Unit,
+) {
     val stage = state.progress.stage
     val plan = state.selectedPlan
     val next = plan?.visits?.getOrNull(state.progress.completedVisits)
     val anyValid = state.plans.any { it.isValid }
+    val needsPlaces = vehicle.connection != NavigationConnection.Unsupported &&
+        plan?.let { state.draft.navigationPlan(it) } == null
     val primaryText = when (stage) {
         JourneyStage.INPUT -> "계획 비교 →"
         JourneyStage.COMPARE -> if (anyValid) "이 순서 확인 →" else "조건 수정"
-        JourneyStage.REVIEW -> "이 계획으로 시작"
+        JourneyStage.REVIEW -> when {
+            vehicle.sending -> "차량 내비 확인 중"
+            vehicle.connection == NavigationConnection.Unsupported -> "계획 기록 시작"
+            needsPlaces -> "내비 장소 선택"
+            else -> "차량 내비로 시작"
+        }
         JourneyStage.ACTIVE -> next?.let { "${visitLabel(it.visit.kind)} 완료" } ?: "집 도착 · 마무리"
         JourneyStage.COMPLETE -> "새 계획 만들기"
     }
@@ -270,7 +298,7 @@ private fun JourneyFooter(state: HomeUiState, actions: JourneyActions, compact: 
             HorizontalDivider()
             Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = if (compact) 8.dp else 14.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (secondaryText != null) TextButton(onClick = {
+                if (secondaryText != null) TextButton(enabled = !vehicle.sending && !vehicle.reading, onClick = {
                     beforeAction()
                     when (stage) {
                         JourneyStage.COMPARE -> actions.onEdit()
@@ -282,13 +310,16 @@ private fun JourneyFooter(state: HomeUiState, actions: JourneyActions, compact: 
                 if (compact) Spacer(Modifier.weight(1f))
                 val buttonModifier = if (compact) Modifier.widthIn(min = 220.dp, max = 360.dp) else Modifier.weight(1f)
                 Button(
-                    enabled = stage != JourneyStage.COMPARE || !anyValid || plan?.isValid == true,
+                    enabled = !vehicle.sending && !vehicle.reading &&
+                        (stage != JourneyStage.COMPARE || !anyValid || plan?.isValid == true) &&
+                        (stage != JourneyStage.REVIEW || vehicle.connection == NavigationConnection.Ready ||
+                            vehicle.connection == NavigationConnection.Unsupported),
                     onClick = {
                         beforeAction()
                         when (stage) {
                             JourneyStage.INPUT -> actions.onCompare()
                             JourneyStage.COMPARE -> if (anyValid) actions.onReview() else actions.onEdit()
-                            JourneyStage.REVIEW -> actions.onStart()
+                            JourneyStage.REVIEW -> if (needsPlaces) actions.onEdit() else actions.onStart()
                             JourneyStage.ACTIVE -> if (next != null) actions.onCompleteVisit(next.visit.kind) else actions.onFinish()
                             JourneyStage.COMPLETE -> actions.onNewJourney()
                         }

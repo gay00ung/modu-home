@@ -1,11 +1,24 @@
 package io.moduhome.app.feature.home
 
 import io.moduhome.app.core.planning.ErrandJourneyPlanner
+import io.moduhome.app.core.planning.ErrandJourneyPlan
 import io.moduhome.app.core.planning.ErrandJourneyRequest
 import io.moduhome.app.core.planning.ErrandVisit
 import io.moduhome.app.core.planning.JourneyProgress
 import io.moduhome.app.core.planning.TravelEstimates
 import io.moduhome.app.core.planning.VisitKind
+import io.moduhome.app.core.navigation.NavigationPlan
+import io.moduhome.app.core.navigation.NavigationPoint
+
+internal enum class NavigationPlaceRole(val label: String) {
+    HOME("집"), PICKUP("픽업"), GROCERIES("장보기"),
+}
+
+internal data class NavigationPlaces(
+    val home: NavigationPoint? = null,
+    val pickup: NavigationPoint? = null,
+    val groceries: NavigationPoint? = null,
+)
 
 internal data class VisitDraft(
     val enabled: Boolean = true,
@@ -39,7 +52,43 @@ internal data class JourneyDraft(
     val pickup: VisitDraft = VisitDraft(place = "베이커리", stay = "5"),
     val groceries: VisitDraft = VisitDraft(place = "동네마트", stay = "15"),
     val travel: Map<TravelLeg, String> = TravelLeg.entries.associateWith { it.initial },
+    val navigationPlaces: NavigationPlaces = NavigationPlaces(),
 ) {
+    fun navigationPoint(role: NavigationPlaceRole): NavigationPoint? = when (role) {
+        NavigationPlaceRole.HOME -> navigationPlaces.home?.takeIf { it.name.trim() == home.trim() }
+        NavigationPlaceRole.PICKUP -> navigationPlaces.pickup?.takeIf { it.name.trim() == pickup.place.trim() }
+        NavigationPlaceRole.GROCERIES -> navigationPlaces.groceries?.takeIf { it.name.trim() == groceries.place.trim() }
+    }
+
+    fun clearUnmatchedPlaces(): JourneyDraft = copy(navigationPlaces = NavigationPlaces(
+        navigationPoint(NavigationPlaceRole.HOME),
+        navigationPoint(NavigationPlaceRole.PICKUP),
+        navigationPoint(NavigationPlaceRole.GROCERIES),
+    ))
+
+    fun chooseNavigationPlace(role: NavigationPlaceRole, point: NavigationPoint): JourneyDraft = when (role) {
+        NavigationPlaceRole.HOME -> copy(home = point.name, navigationPlaces = navigationPlaces.copy(home = point))
+        NavigationPlaceRole.PICKUP -> copy(
+            pickup = pickup.changePlace(point.name).copy(ready = false),
+            navigationPlaces = navigationPlaces.copy(pickup = point),
+        )
+        NavigationPlaceRole.GROCERIES -> copy(
+            groceries = groceries.changePlace(point.name),
+            navigationPlaces = navigationPlaces.copy(groceries = point),
+        )
+    }
+
+    fun navigationPlan(plan: ErrandJourneyPlan): NavigationPlan? {
+        val destination = navigationPoint(NavigationPlaceRole.HOME) ?: return null
+        val waypoints = plan.visits.map { scheduled ->
+            navigationPoint(when (scheduled.visit.kind) {
+                VisitKind.PICKUP -> NavigationPlaceRole.PICKUP
+                VisitKind.GROCERIES -> NavigationPlaceRole.GROCERIES
+            }) ?: return null
+        }
+        return NavigationPlan(destination, waypoints)
+    }
+
     fun newJourney(dateEpochDay: Long, departure: String): JourneyDraft =
         copy(dateEpochDay = dateEpochDay, departure = departure, pickup = pickup.copy(ready = false))
 

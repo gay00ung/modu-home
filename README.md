@@ -23,6 +23,8 @@
 - 추가시간 한도·마감·픽업 준비 여부를 확인하고 계획 확정
 - 볼일 완료와 집 도착을 따로 확인하고 진행 중인 계획은 앱 재실행 시 복원
 - 넓은 차량 화면은 두 열, 작은 화면은 세로 배치
+- 차량 내비의 저장 장소·최근 목적지에서 집과 들를 곳 선택
+- 확정한 방문 순서를 NaviHelper로 전달하고 내비의 목적지·경유 순서·안내 상태 확인
 
 ## 개발 환경
 
@@ -36,12 +38,15 @@
 | Android Gradle Plugin | 8.13.2 |
 | Kotlin / Compose Compiler | 2.3.10 |
 | Compose BOM | 2026.02.01 |
+| NaviHelper SDK | 3.0.5 |
+| 차량 실행 환경 | Pleos Connect Emulator 2.1.0 / API 34 |
 
 ## 실행
 
 - Android Studio에서 저장소 루트 열기
 - Gradle JDK와 Android SDK Platform 36 설정
 - 로컬 SDK 경로는 `local.properties`에서 관리
+- 차량 연동은 Pleos AVD에서 실행하고 RAM 4GB·Cold boot로 설정
 
 ```sh
 ./gradlew :app:assembleDebug
@@ -71,10 +76,12 @@ app/src/main/kotlin/io/moduhome/app/
 - `ModuHomeApp`에서 선택 상태를 관리하고 화면에 값과 콜백 전달
 - 시간 계산은 Android와 분리해 `core/planning`에서 처리
 - 내비 요청은 `NavigationGateway`를 통해 화면과 SDK 사이를 분리
+- `data/navigation`에서 SDK 초기화·해제와 목적지·경유지 변환 처리
 
 ## 문서
 
 - [제품 설계](docs/product.md)
+- [차량 내비 설정과 실행](docs/vehicle-navigation.md)
 - [작업 규칙](AGENTS.md)
 - [공모전 개발 가이드](https://appdevchallenge.auto-hmg.io/guide/development)
 - [NaviHelper SDK](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/intro)

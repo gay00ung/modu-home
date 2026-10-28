@@ -131,7 +131,7 @@ private fun VehicleProposalCard(proposal: ErrandProposal, canApply: Boolean, onA
                 fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
             Text(proposal.place.name, fontSize = 32.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (proposal.place.address.isNotBlank()) {
+            if (proposal.place.address.isNotBlank() && proposal.place.address != proposal.place.name) {
                 Text(proposal.place.address, fontSize = 22.sp, lineHeight = 30.sp,
                     maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

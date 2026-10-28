@@ -40,6 +40,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.core.net.toUri
+import io.moduhome.app.core.address.AddressSearchResult
+import io.moduhome.app.data.address.AndroidAddressSearchGateway
+import io.moduhome.app.core.transfer.CompanionErrandSource
 import io.moduhome.app.core.navigation.GuidanceEstimateResult
 import io.moduhome.app.core.navigation.RouteChangeApproval
 import io.moduhome.app.core.navigation.remainingAfter
@@ -219,6 +223,10 @@ internal fun ModuHomeApp(
     var sharedProposalMessage by remember { mutableStateOf<String?>(null) }
     var sharedProposalNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var relayState by remember { mutableStateOf(ProposalRelayState()) }
+    val addressGateway = remember(context) { AndroidAddressSearchGateway(context) }
+    var addressPicker by remember { mutableStateOf<CompanionAddressState?>(null) }
+    var addressRequest by remember { mutableLongStateOf(0L) }
+    var addressJob by remember { mutableStateOf<Job?>(null) }
     var companionDraft by remember { mutableStateOf<CompanionErrandDraft?>(null) }
     var preparedCompanion by remember { mutableStateOf<CompanionErrandDraft?>(null) }
     var companionErrors by remember { mutableStateOf<Map<CompanionErrandField, String>>(emptyMap()) }
@@ -226,6 +234,56 @@ internal fun ModuHomeApp(
     fun canEditCompanion(): Boolean = !isVehicle && proposalPanelOpen && restrictions.state.value.editingAllowed &&
         lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
         !relayState.busy && relayState.candidate == null
+    fun clearAddressSearch(message: String? = null) {
+        addressRequest += 1
+        addressJob?.cancel()
+        addressJob = null
+        addressPicker = addressPicker?.clearResults(message)
+    }
+    fun dismissAddressPicker() {
+        clearAddressSearch()
+        addressPicker = null
+    }
+    fun searchAddress() {
+        val current = addressPicker ?: return
+        if (!canEditCompanion() || current.loading) return
+        clearAddressSearch()
+        val query = current.query.trim()
+        if (query.length !in 3..200) {
+            addressPicker = current.clearResults("시·구와 도로명·건물번호를 3~200자로 입력해주세요")
+            return
+        }
+        val request = addressRequest
+        addressPicker = current.clearResults().copy(loading = true)
+        addressJob = scope.launch {
+            val result = addressGateway.search(query)
+            val latest = addressPicker
+            if (request != addressRequest || !canEditCompanion() || latest == null || latest.query.trim() != query) return@launch
+            addressPicker = when (result) {
+                is AddressSearchResult.Candidates -> latest.copy(loading = false, candidates = result.items, resultQuery = query)
+                AddressSearchResult.NoResults -> latest.clearResults("찾은 주소가 없어요. 시·구와 도로명·건물번호를 확인해주세요")
+                AddressSearchResult.TimedOut -> latest.clearResults("주소 검색 응답이 늦어요. 잠시 후 다시 검색해주세요")
+                AddressSearchResult.Busy -> latest.clearResults("이전 주소 검색을 정리하고 있어요. 잠시 후 다시 시도해주세요")
+                is AddressSearchResult.Unavailable -> latest.clearResults(result.reason)
+                is AddressSearchResult.Failed -> latest.clearResults(result.reason)
+            }
+            addressJob = null
+        }
+    }
+    DisposableEffect(lifecycleOwner, addressGateway) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                if (addressPicker?.loading == true) {
+                    clearAddressSearch("검색을 중단했어요. 주소를 다시 검색해주세요")
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            addressJob?.cancel()
+        }
+    }
     fun dismissCompanion() {
         companionDraft = null
         companionErrors = emptyMap()
@@ -619,6 +677,7 @@ internal fun ModuHomeApp(
             detailsOpen = false
             proposalPanelOpen = false
             dismissCompanion()
+            dismissAddressPicker()
             cancelRequested = false
             dismissPicker()
             dismissVoice()
@@ -924,7 +983,73 @@ internal fun ModuHomeApp(
     }
 
     LaunchedEffect(proposalPanelOpen, relayState.candidate) {
-        if (!proposalPanelOpen || relayState.candidate != null) dismissCompanion()
+        if (!proposalPanelOpen || relayState.candidate != null) {
+            dismissCompanion()
+            dismissAddressPicker()
+        }
+    }
+    val currentAddressPicker = addressPicker
+    if (!isVehicle && currentAddressPicker != null && proposalPanelOpen && editingAllowed && relayState.candidate == null) {
+        val maximumHeight = LocalWindowInfo.current.containerDpSize.height * 0.90f
+        Dialog(onDismissRequest = ::dismissAddressPicker, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            CompanionAddressPicker(
+                query = currentAddressPicker.query,
+                candidates = currentAddressPicker.candidates,
+                loading = currentAddressPicker.loading,
+                message = currentAddressPicker.message,
+                selected = currentAddressPicker.selected,
+                kind = currentAddressPicker.kind,
+                editingAllowed = !relayState.busy,
+                onQuery = { query ->
+                    if (canEditCompanion() && addressPicker?.session == currentAddressPicker.session) {
+                        clearAddressSearch()
+                        addressPicker = addressPicker?.copy(query = query.take(201))
+                    }
+                },
+                onSearch = ::searchAddress,
+                onSelect = { candidate ->
+                    val current = addressPicker
+                    if (canEditCompanion() && current != null && current.session == currentAddressPicker.session && !current.loading &&
+                        current.resultQuery == current.query.trim() && candidate in current.candidates) {
+                        addressPicker = current.copy(selected = candidate)
+                    }
+                },
+                onViewLocation = { candidate ->
+                    val current = addressPicker
+                    if (canEditCompanion() && current != null && current.session == currentAddressPicker.session &&
+                        !current.loading && current.resultQuery == current.query.trim() && candidate in current.candidates) {
+                        val lat = java.math.BigDecimal.valueOf(candidate.point.latitude).toPlainString()
+                        val lon = java.math.BigDecimal.valueOf(candidate.point.longitude).toPlainString()
+                        val intent = Intent(Intent.ACTION_VIEW, "geo:$lat,$lon?q=$lat,$lon".toUri())
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        try { context.startActivity(intent) }
+                        catch (_: android.content.ActivityNotFoundException) {
+                            addressPicker = current.copy(message = "지도를 열 앱이 없어요. 표시된 주소가 맞는지 확인해주세요")
+                        } catch (_: SecurityException) {
+                            addressPicker = current.copy(message = "지도 앱을 열 수 없어요. 표시된 주소가 맞는지 확인해주세요")
+                        }
+                    }
+                },
+                onKind = { kind ->
+                    if (canEditCompanion() && addressPicker?.session == currentAddressPicker.session) {
+                        addressPicker = addressPicker?.copy(kind = kind)
+                    }
+                },
+                onConfirm = {
+                    val current = addressPicker
+                    val candidate = current?.confirmedCandidate
+                    if (canEditCompanion() && current != null && current.session == currentAddressPicker.session && candidate != null) {
+                        companionDraft = CompanionErrandDraft.forAddress(candidate.point, current.kind,
+                            System.currentTimeMillis(), ZoneId.systemDefault())
+                        companionErrors = emptyMap()
+                        companionMessage = null
+                        dismissAddressPicker()
+                    }
+                },
+                onDismiss = ::dismissAddressPicker,
+                modifier = Modifier.widthIn(max = 620.dp).fillMaxWidth(0.92f).heightIn(max = maximumHeight),
+            )
+        }
     }
     val editedCompanion = companionDraft
     if (!isVehicle && editedCompanion != null && proposalPanelOpen && editingAllowed && relayState.candidate == null) {
@@ -936,7 +1061,7 @@ internal fun ModuHomeApp(
                 editingAllowed = !relayState.busy,
                 message = companionMessage,
                 onDraftChange = { next ->
-                    if (canEditCompanion() && companionDraft == editedCompanion && next.original == editedCompanion.original) {
+                    if (canEditCompanion() && companionDraft == editedCompanion && next.source == editedCompanion.source) {
                         companionDraft = next
                         companionErrors = emptyMap()
                         companionMessage = null
@@ -944,8 +1069,9 @@ internal fun ModuHomeApp(
                 },
                 onPrepare = {
                     if (canEditCompanion() && companionDraft == editedCompanion) {
-                        val current = inbox.entries.firstOrNull { it.proposal.id == editedCompanion.original.id }
-                        if (current?.proposal != editedCompanion.original || current.status != ProposalReviewStatus.PENDING) {
+                        val received = (editedCompanion.source as? CompanionErrandSource.Received)?.proposal
+                        val current = received?.let { source -> inbox.entries.firstOrNull { it.proposal.id == source.id } }
+                        if (received != null && (current?.proposal != received || current.status != ProposalReviewStatus.PENDING)) {
                             companionMessage = "받은 볼일이 바뀌었어요. 닫고 최신 내용을 다시 선택해주세요"
                         } else when (val result = editedCompanion.createProposal(System.currentTimeMillis(), ZoneId.systemDefault())) {
                             is CompanionErrandResult.Invalid -> companionErrors = result.errors
@@ -964,7 +1090,7 @@ internal fun ModuHomeApp(
             )
         }
     }
-    if (!sharedMode && proposalPanelOpen && editingAllowed && companionDraft == null) {
+    if (!sharedMode && proposalPanelOpen && editingAllowed && companionDraft == null && addressPicker == null) {
         val exportedProposal = exportLink?.let { link ->
             (ProposalLinkCodec.decode(link, System.currentTimeMillis()) as? ProposalDecodeResult.Valid)?.proposal
         }
@@ -1067,6 +1193,17 @@ internal fun ModuHomeApp(
                         exportName = null
                         preparedCompanion = null
                         proposalMessage = null
+                    }
+                },
+                onCreateFromAddress = {
+                    if (canEditCompanion()) {
+                        exportLink = null
+                        exportName = null
+                        preparedCompanion = null
+                        proposalMessage = null
+                        dismissCompanion()
+                        dismissAddressPicker()
+                        addressPicker = CompanionAddressState(session = addressRequest)
                     }
                 },
                 onEdit = { id, revision ->

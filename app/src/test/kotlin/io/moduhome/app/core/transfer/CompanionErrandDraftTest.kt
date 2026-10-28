@@ -25,7 +25,10 @@ class CompanionErrandDraftTest {
         val original = proposal(deadline = now + 123_456)
         val draft = CompanionErrandDraft.from(original, now, seoul)
 
-        assertSame(original, draft.original)
+        assertSame(original, (draft.source as CompanionErrandSource.Received).proposal)
+        assertSame(original.place, draft.place)
+        assertEquals(original.kind, draft.kind)
+        assertEquals(original.deadlineAtMillis, draft.originalDeadlineAtMillis)
         assertEquals("5", draft.stayMinutes)
         assertEquals("3", draft.walkingMinutesOneWay)
         assertFalse(draft.ready)
@@ -242,6 +245,155 @@ class CompanionErrandDraftTest {
         assertEquals(openedAt + 24 * HOUR, sent.expiresAtMillis)
     }
 
+    @Test fun localAddressHasItsOwnSourceAndExplicitUnconfirmedDefaultsForEachKind() {
+        for (kind in VisitKind.entries) {
+            val draft = localDraft(kind = kind)
+            val source = draft.source as CompanionErrandSource.Address
+            assertSame(point, source.place)
+            assertSame(point, draft.place)
+            assertEquals(kind, source.kind)
+            assertEquals(kind, draft.kind)
+            assertEquals(if (kind == VisitKind.PICKUP) "10" else "20", draft.stayMinutes)
+            assertEquals("2", draft.walkingMinutesOneWay)
+            assertFalse(draft.ready)
+            assertEquals(CompanionDeadlineChoice.NONE, draft.deadline)
+            assertNull(draft.originalDeadlineAtMillis)
+            assertEquals(LocalDate.of(2026, 10, 28), draft.baseDate)
+        }
+    }
+
+    @Test fun aLocalDraftCreatesAPreviewWithoutAnInboxProposalAndPreservesTheSelectedPoint() {
+        val emptyInbox = ErrandProposalInbox.empty()
+        val draft = localDraft().copy(stayMinutes = "17", walkingMinutesOneWay = "4", ready = true,
+            deadline = CompanionDeadlineChoice.TODAY, deadlineTime = "18:10")
+        val issuedAt = now + 12_345
+        val preview = created(draft, issuedAt)
+        val secondPreview = created(draft, issuedAt)
+
+        assertTrue(emptyInbox.entries.isEmpty())
+        assertTrue(draft.source is CompanionErrandSource.Address)
+        assertSame(point, preview.place)
+        assertEquals(VisitKind.PICKUP, preview.kind)
+        assertEquals(17, preview.stayMinutes)
+        assertEquals(4, preview.walkingMinutesOneWay)
+        assertTrue(preview.ready)
+        assertEquals(millis("2026-10-28T09:10:00Z"), preview.deadlineAtMillis)
+        assertEquals(preview.id, UUID.fromString(preview.id).toString())
+        assertFalse(preview.id == secondPreview.id)
+        assertEquals(1, preview.revision)
+        assertEquals(issuedAt, preview.createdAtMillis)
+        assertEquals(issuedAt + 24 * HOUR, preview.expiresAtMillis)
+    }
+
+    @Test fun localDraftCannotBorrowTheValidityOfAnExpiredReceivedSource() {
+        val received = draft(proposal(expiresAt = now + 1_000))
+        val address = localDraft(place = received.place, kind = received.kind)
+        assertTrue(invalid(received, now + 1_000).errors.containsKey(CompanionErrandField.SOURCE))
+        assertSame(received.place, created(address, now + 1_000).place)
+        assertEquals(CompanionDeadlineChoice.NONE, address.deadline)
+    }
+
+    @Test fun localDraftExpiresExactlyTwentyFourHoursAfterOpeningRegardlessOfFurtherEdits() {
+        val draft = localDraft()
+        val beforeExpiry = now + 24 * HOUR - 1
+        assertEquals(beforeExpiry, created(draft, beforeExpiry).createdAtMillis)
+        assertTrue(invalid(draft, now + 24 * HOUR).errors.containsKey(CompanionErrandField.SOURCE))
+        assertTrue(invalid(draft.copy(stayMinutes = "30", ready = true), now + 24 * HOUR + 1)
+            .errors.containsKey(CompanionErrandField.SOURCE))
+        val reopened = CompanionErrandDraft.forAddress(point, VisitKind.PICKUP, now + 24 * HOUR, seoul)
+        assertEquals(now + 24 * HOUR, created(reopened, now + 24 * HOUR).createdAtMillis)
+    }
+
+    @Test fun zeroPlaceholderCoordinatesReturnAPlaceErrorWithoutThrowing() {
+        val invalidPlace = point.copy(latitude = 0.0, longitude = 0.0)
+        val draft = localDraft(place = invalidPlace)
+        assertSame(invalidPlace, draft.place)
+        assertEquals(setOf(CompanionErrandField.PLACE), invalid(draft).errors.keys)
+        assertEquals(setOf(CompanionErrandField.PLACE), invalid(localDraft(place =
+            point.copy(latitude = -0.0, longitude = 0.0))).errors.keys)
+    }
+
+    @Test fun anEquatorOrPrimeMeridianCoordinateAloneIsNotAPlaceholder() {
+        for (place in listOf(point.copy(latitude = 0.0), point.copy(longitude = 0.0))) {
+            assertSame(place, created(localDraft(place = place)).place)
+        }
+    }
+
+    @Test fun localPlaceTextMustMeetTheSameLimitsAsAReceivedProposal() {
+        val invalidPlaces = listOf(
+            point.copy(name = "가".repeat(121)),
+            point.copy(address = "가".repeat(301)),
+            point.copy(placeId = "p".repeat(121)),
+            point.copy(subId = "s".repeat(121)),
+            point.copy(provider = "v".repeat(121)),
+            point.copy(name = "매장\n이름"),
+            point.copy(address = "주소\u0000"),
+            point.copy(placeId = "id\t"),
+            point.copy(subId = "id\u007f"),
+            point.copy(provider = "provider\r"),
+        )
+        for (place in invalidPlaces) {
+            assertEquals(setOf(CompanionErrandField.PLACE), invalid(localDraft(place = place)).errors.keys)
+        }
+        val atLimit = point.copy(name = "가".repeat(120), address = "나".repeat(300),
+            placeId = "p".repeat(120), subId = "s".repeat(120), provider = "v".repeat(120))
+        assertSame(atLimit, created(localDraft(place = atLimit)).place)
+    }
+
+    @Test fun malformedUnicodeInAnyLocalPlaceFieldReturnsAPlaceError() {
+        val malformed = "문자\uD800"
+        for (place in listOf(point.copy(name = malformed), point.copy(address = malformed),
+            point.copy(placeId = malformed), point.copy(subId = malformed), point.copy(provider = malformed))) {
+            assertTrue(invalid(localDraft(place = place)).errors.containsKey(CompanionErrandField.PLACE))
+        }
+        val paired = point.copy(name = "매장 \uD83D\uDED2")
+        assertSame(paired, created(localDraft(place = paired)).place)
+    }
+
+    @Test fun localInputsStillValidateEveryEditableCondition() {
+        val invalid = invalid(localDraft().copy(stayMinutes = "181", walkingMinutesOneWay = "31",
+            deadline = CompanionDeadlineChoice.TODAY, deadlineTime = "24:00"))
+        assertEquals(setOf(CompanionErrandField.STAY, CompanionErrandField.WALKING,
+            CompanionErrandField.DEADLINE), invalid.errors.keys)
+        val zero = created(localDraft(kind = VisitKind.GROCERIES).copy(stayMinutes = "0", walkingMinutesOneWay = "0"))
+        assertEquals(0, zero.stayMinutes)
+        assertEquals(0, zero.walkingMinutesOneWay)
+        assertFalse(zero.ready)
+    }
+
+    @Test fun localClockAndCalendarBasisCannotBeSilentlyChanged() {
+        assertTrue(invalid(localDraft(), now - 1).errors.containsKey(CompanionErrandField.CLOCK))
+        assertTrue(invalid(localDraft(), zone = newYork).errors.containsKey(CompanionErrandField.CLOCK))
+        assertTrue(invalid(localDraft().copy(baseDate = LocalDate.of(2026, 10, 29)))
+            .errors.containsKey(CompanionErrandField.CLOCK))
+        val negative = CompanionErrandDraft.forAddress(point, VisitKind.PICKUP, -1, seoul)
+        assertTrue(invalid(negative).errors.containsKey(CompanionErrandField.CLOCK))
+        val nearLimit = Long.MAX_VALUE - 1_000
+        val overflow = CompanionErrandDraft.forAddress(point, VisitKind.PICKUP, nearLimit, seoul)
+        assertTrue(invalid(overflow, nearLimit).errors.containsKey(CompanionErrandField.CLOCK))
+    }
+
+    @Test fun localDeadlineUsesTheFixedOpeningDateAfterMidnightAndRejectsPastTime() {
+        val openedAt = millis("2026-10-28T14:58:00Z")
+        val afterMidnight = millis("2026-10-28T15:01:00Z")
+        val draft = CompanionErrandDraft.forAddress(point, VisitKind.GROCERIES, openedAt, seoul)
+        assertTrue(invalid(draft.copy(deadline = CompanionDeadlineChoice.TODAY, deadlineTime = "23:59"),
+            afterMidnight).errors.containsKey(CompanionErrandField.DEADLINE))
+        assertEquals(millis("2026-10-28T15:05:00Z"), created(draft.copy(
+            deadline = CompanionDeadlineChoice.TOMORROW, deadlineTime = "00:05"), afterMidnight).deadlineAtMillis)
+        assertNull(created(draft.copy(deadline = CompanionDeadlineChoice.KEEP_ORIGINAL,
+            deadlineTime = "unfinished"), afterMidnight).deadlineAtMillis)
+    }
+
+    @Test fun localDeadlineAlsoUsesTheActualFortyEightHourBoundAcrossDst() {
+        val openedAt = millis("2026-10-31T04:00:00Z")
+        val draft = CompanionErrandDraft.forAddress(point, VisitKind.PICKUP, openedAt, newYork)
+            .copy(deadline = CompanionDeadlineChoice.TOMORROW, deadlineTime = "23:00")
+        assertEquals(openedAt + 48 * HOUR, created(draft, openedAt, newYork).deadlineAtMillis)
+        assertTrue(invalid(draft.copy(deadlineTime = "23:01"), openedAt, newYork)
+            .errors.containsKey(CompanionErrandField.DEADLINE))
+    }
+
     private fun proposal(
         createdAt: Long = now,
         expiresAt: Long = createdAt + ErrandProposal.MAX_LIFETIME_MILLIS,
@@ -255,6 +407,9 @@ class CompanionErrandDraftTest {
     )
 
     private fun draft(original: ErrandProposal = proposal()) = CompanionErrandDraft.from(original, now, seoul)
+
+    private fun localDraft(place: NavigationPoint = point, kind: VisitKind = VisitKind.PICKUP) =
+        CompanionErrandDraft.forAddress(place, kind, now, seoul)
 
     private fun created(draft: CompanionErrandDraft, at: Long = now, zone: ZoneId = seoul): ErrandProposal {
         val result = draft.createProposal(at, zone)

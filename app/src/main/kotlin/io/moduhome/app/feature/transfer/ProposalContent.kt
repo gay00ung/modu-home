@@ -60,6 +60,7 @@ internal data class ProposalActions(
     val onEdit: (String, Int) -> Unit = { _, _ -> },
     val onEditPrepared: () -> Unit = {},
     val onBackToProposals: () -> Unit = {},
+    val onCreateFromAddress: () -> Unit = {},
 )
 
 @Composable
@@ -83,8 +84,12 @@ private fun ProposalListContent(state: ProposalUiState, actions: ProposalActions
             Text("함께 정하는 볼일", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             TextButton(onClick = actions.onDismiss) { Text("닫기") }
         }
-        Text("받은 장소의 조건을 정해 차량으로 보내세요")
+        Text("볼일의 조건을 정해 차량으로 보내세요")
         state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+        Button(onClick = actions.onCreateFromAddress, enabled = state.canEdit,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+            Text("주소로 새 볼일", fontSize = 16.sp)
+        }
         Text("연결된 차량", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         if (state.connectedVehicle != null) {
             Text(state.connectedVehicle, fontWeight = FontWeight.Bold)
@@ -106,7 +111,7 @@ private fun ProposalListContent(state: ProposalUiState, actions: ProposalActions
             OutlinedCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("${if (proposal.kind == VisitKind.PICKUP) "픽업" else "장보기"} · ${proposal.place.name}", fontWeight = FontWeight.Bold)
-                    if (proposal.place.address.isNotBlank()) Text(proposal.place.address)
+                    if (proposal.place.address.isNotBlank() && proposal.place.address != proposal.place.name) Text(proposal.place.address)
                     Text("체류 ${proposal.stayMinutes}분 · 편도 도보 ${proposal.walkingMinutesOneWay}분")
                     if (proposal.kind == VisitKind.PICKUP) Text(if (proposal.ready) "제안에 수령 준비됨으로 표시" else "수령 준비 확인 필요")
                     proposal.deadlineAtMillis?.let { deadline ->
@@ -140,8 +145,8 @@ private fun ProposalListContent(state: ProposalUiState, actions: ProposalActions
             OutlinedButton(onClick = { actions.onExport(VisitKind.PICKUP) }, enabled = state.pickupAvailable && !state.relayBusy) { Text("픽업 제안 만들기") }
             OutlinedButton(onClick = { actions.onExport(VisitKind.GROCERIES) }, enabled = state.groceriesAvailable && !state.relayBusy) { Text("장보기 제안 만들기") }
         }
-        if (!state.pickupAvailable && !state.groceriesAvailable) Text("차량에서 선택한 장소를 먼저 받아보세요. 휴대폰에서 준비 여부와 시간을 바꿔 다시 보낼 수 있어요",
-            style = MaterialTheme.typography.bodySmall)
+        if (!state.pickupAvailable && !state.groceriesAvailable) Text("주소로 새 볼일을 만들거나 받은 볼일의 조건을 정해 보내세요",
+            fontSize = 16.sp, lineHeight = 24.sp)
         if (state.exportLink != null) {
             Text(state.exportName.orEmpty(), fontWeight = FontWeight.SemiBold)
             ProposalQrAndShare(state, actions)
@@ -166,7 +171,7 @@ private fun PreparedProposalContent(state: ProposalUiState, proposal: ErrandProp
                 Text(if (proposal.kind == VisitKind.PICKUP) "픽업" else "장보기",
                     fontSize = 16.sp, lineHeight = 24.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(proposal.place.name, fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold)
-                if (proposal.place.address.isNotBlank()) Text(proposal.place.address, fontSize = 16.sp, lineHeight = 24.sp,
+                if (proposal.place.address.isNotBlank() && proposal.place.address != proposal.place.name) Text(proposal.place.address, fontSize = 16.sp, lineHeight = 24.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("체류 ${proposal.stayMinutes}분 · 편도 도보 ${proposal.walkingMinutesOneWay}분", fontSize = 16.sp, lineHeight = 24.sp)
                 if (proposal.kind == VisitKind.PICKUP) Text(if (proposal.ready) "제안에 수령 준비됨으로 표시" else "수령 준비 확인 필요",

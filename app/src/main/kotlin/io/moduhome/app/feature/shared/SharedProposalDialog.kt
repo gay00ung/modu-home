@@ -248,8 +248,11 @@ private fun SharedProposalCompactConditions(title: String, condition: SharedErra
 
 private fun sharedProposalKind(condition: SharedErrandDraft): String = if (condition.kind == VisitKind.PICKUP) "픽업" else "장보기"
 
-private fun sharedProposalPlace(condition: SharedErrandDraft): String =
-    "${condition.place?.name ?: "장소 선택 전"}\n${condition.place?.address?.takeIf(String::isNotBlank) ?: "등록된 주소 없음"}"
+private fun sharedProposalPlace(condition: SharedErrandDraft): String {
+    val place = condition.place
+    if (place != null && place.name == place.address) return place.name
+    return "${place?.name ?: "장소 선택 전"}\n${place?.address?.takeIf(String::isNotBlank) ?: "등록된 주소 없음"}"
+}
 
 private fun sharedProposalReady(condition: SharedErrandDraft): String = when {
     condition.kind != VisitKind.PICKUP -> "적용 없음"

@@ -1,5 +1,7 @@
 package io.moduhome.app.core.transfer
 
+import io.moduhome.app.core.navigation.NavigationPoint
+import io.moduhome.app.core.planning.VisitKind
 import java.time.DateTimeException
 import java.time.Instant
 import java.time.LocalDate
@@ -7,9 +9,19 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.util.UUID
 
-/** Editable phone input. Place and kind always come from [original]. */
+internal sealed interface CompanionErrandSource {
+    data class Received(val proposal: ErrandProposal) : CompanionErrandSource {
+        override fun toString(): String = "Received(kind=${proposal.kind}, proposal=redacted)"
+    }
+
+    data class Address(val place: NavigationPoint, val kind: VisitKind) : CompanionErrandSource {
+        override fun toString(): String = "Address(kind=$kind, place=redacted)"
+    }
+}
+
+/** Editable phone input. Creating a local draft does not insert a received proposal. */
 internal data class CompanionErrandDraft(
-    val original: ErrandProposal,
+    val source: CompanionErrandSource,
     val baseDate: LocalDate,
     val zoneId: ZoneId,
     private val openedAtMillis: Long,
@@ -19,6 +31,21 @@ internal data class CompanionErrandDraft(
     val deadline: CompanionDeadlineChoice = CompanionDeadlineChoice.KEEP_ORIGINAL,
     val deadlineTime: String = "",
 ) {
+    val place: NavigationPoint get() = when (val origin = source) {
+        is CompanionErrandSource.Received -> origin.proposal.place
+        is CompanionErrandSource.Address -> origin.place
+    }
+
+    val kind: VisitKind get() = when (val origin = source) {
+        is CompanionErrandSource.Received -> origin.proposal.kind
+        is CompanionErrandSource.Address -> origin.kind
+    }
+
+    val originalDeadlineAtMillis: Long? get() = when (val origin = source) {
+        is CompanionErrandSource.Received -> origin.proposal.deadlineAtMillis
+        is CompanionErrandSource.Address -> null
+    }
+
     /**
      * TODAY/TOMORROW refer to the fixed [baseDate], including after midnight.
      * Keeping the original deadline preserves its exact instant, not a rounded clock time.
@@ -34,7 +61,13 @@ internal data class CompanionErrandDraft(
                 CompanionErrandField.CLOCK to "기기 시각이나 시간대가 바뀌었어요. 볼일을 다시 열어주세요",
             ))
         }
-        original.unavailableReason(nowMillis)?.let { reason ->
+        val sourceReason = when (val origin = source) {
+            is CompanionErrandSource.Received -> origin.proposal.unavailableReason(nowMillis)
+            is CompanionErrandSource.Address -> if (nowMillis - openedAtMillis >= ErrandProposal.MAX_LIFETIME_MILLIS) {
+                "작성한 볼일의 유효시간이 지났어요. 장소와 조건을 다시 확인해 새로 작성해주세요"
+            } else null
+        }
+        sourceReason?.let { reason ->
             return CompanionErrandResult.Invalid(mapOf(CompanionErrandField.SOURCE to reason))
         }
 
@@ -51,23 +84,32 @@ internal data class CompanionErrandDraft(
         if (stay == null || walk == null || resolvedDeadline !is DeadlineResolution.Value) {
             return CompanionErrandResult.Invalid(errors)
         }
-        return CompanionErrandResult.Created(ErrandProposal(
-            id = UUID.randomUUID().toString(),
-            revision = 1,
-            createdAtMillis = nowMillis,
-            expiresAtMillis = nowMillis + ErrandProposal.MAX_LIFETIME_MILLIS,
-            kind = original.kind,
-            place = original.place,
-            stayMinutes = stay,
-            walkingMinutesOneWay = walk,
-            ready = ready,
-            deadlineAtMillis = resolvedDeadline.atMillis,
-        ))
+        // The canonical proposal validates place text and coordinates too, including
+        // local addresses that have not previously passed through a received proposal.
+        val proposal = try {
+            ErrandProposal(
+                id = UUID.randomUUID().toString(),
+                revision = 1,
+                createdAtMillis = nowMillis,
+                expiresAtMillis = nowMillis + ErrandProposal.MAX_LIFETIME_MILLIS,
+                kind = kind,
+                place = place,
+                stayMinutes = stay,
+                walkingMinutesOneWay = walk,
+                ready = ready,
+                deadlineAtMillis = resolvedDeadline.atMillis,
+            )
+        } catch (_: IllegalArgumentException) {
+            return CompanionErrandResult.Invalid(mapOf(
+                CompanionErrandField.PLACE to "장소의 이름·주소·좌표를 확인한 뒤 다시 선택해주세요",
+            ))
+        }
+        return CompanionErrandResult.Created(proposal)
     }
 
     private fun resolveDeadline(nowMillis: Long): DeadlineResolution {
         val atMillis = when (deadline) {
-            CompanionDeadlineChoice.KEEP_ORIGINAL -> original.deadlineAtMillis
+            CompanionDeadlineChoice.KEEP_ORIGINAL -> originalDeadlineAtMillis
             CompanionDeadlineChoice.NONE -> null
             CompanionDeadlineChoice.TODAY, CompanionDeadlineChoice.TOMORROW -> {
                 val time = parseTime(deadlineTime) ?: return DeadlineResolution.Invalid(
@@ -104,7 +146,7 @@ internal data class CompanionErrandDraft(
         return DeadlineResolution.Value(atMillis)
     }
 
-    override fun toString(): String = "CompanionErrandDraft(kind=${original.kind}, conditions=redacted)"
+    override fun toString(): String = "CompanionErrandDraft(kind=$kind, conditions=redacted)"
 
     companion object {
         private const val MAX_DEADLINE_MILLIS = 48 * 60 * 60 * 1000L
@@ -112,13 +154,29 @@ internal data class CompanionErrandDraft(
         /** [nowMillis] and [zoneId] are captured once when opening the phone editor. */
         fun from(proposal: ErrandProposal, nowMillis: Long, zoneId: ZoneId): CompanionErrandDraft =
             CompanionErrandDraft(
-                original = proposal,
+                source = CompanionErrandSource.Received(proposal),
                 baseDate = Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalDate(),
                 zoneId = zoneId,
                 openedAtMillis = nowMillis,
                 stayMinutes = proposal.stayMinutes.toString(),
                 walkingMinutesOneWay = proposal.walkingMinutesOneWay.toString(),
                 ready = proposal.ready,
+            )
+
+        /** A local address has no inbox identity; only successful creation issues one. */
+        fun forAddress(place: NavigationPoint, kind: VisitKind, nowMillis: Long, zoneId: ZoneId): CompanionErrandDraft =
+            CompanionErrandDraft(
+                source = CompanionErrandSource.Address(place, kind),
+                baseDate = Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalDate(),
+                zoneId = zoneId,
+                openedAtMillis = nowMillis,
+                stayMinutes = when (kind) {
+                    VisitKind.PICKUP -> "10"
+                    VisitKind.GROCERIES -> "20"
+                },
+                walkingMinutesOneWay = "2",
+                ready = false,
+                deadline = CompanionDeadlineChoice.NONE,
             )
 
         private fun parseMinutes(text: String, maximum: Int): Int? =
@@ -137,7 +195,7 @@ internal data class CompanionErrandDraft(
 
 internal enum class CompanionDeadlineChoice { KEEP_ORIGINAL, NONE, TODAY, TOMORROW }
 
-internal enum class CompanionErrandField { SOURCE, STAY, WALKING, DEADLINE, CLOCK }
+internal enum class CompanionErrandField { SOURCE, PLACE, STAY, WALKING, DEADLINE, CLOCK }
 
 internal sealed interface CompanionErrandResult {
     data class Created(val proposal: ErrandProposal) : CompanionErrandResult

@@ -37,6 +37,7 @@ import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.transfer.CompanionDeadlineChoice
 import io.moduhome.app.core.transfer.CompanionErrandDraft
 import io.moduhome.app.core.transfer.CompanionErrandField
+import io.moduhome.app.core.transfer.CompanionErrandSource
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 
@@ -52,7 +53,7 @@ internal fun CompanionErrandEditor(
     message: String? = null,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
-    val original = draft.original
+    val canKeepOriginalDeadline = draft.source is CompanionErrandSource.Received
     Surface(modifier = modifier, shape = MaterialTheme.shapes.extraLarge) {
         Column(Modifier.fillMaxSize().imePadding()) {
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp),
@@ -66,16 +67,16 @@ internal fun CompanionErrandEditor(
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(if (original.kind == VisitKind.PICKUP) "픽업" else "장보기",
+                    Text(if (draft.kind == VisitKind.PICKUP) "픽업" else "장보기",
                         fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(original.place.name.ifBlank { "받은 장소" }, fontSize = 20.sp, lineHeight = 28.sp,
+                    Text(draft.place.name.ifBlank { "선택한 장소" }, fontSize = 20.sp, lineHeight = 28.sp,
                         fontWeight = FontWeight.SemiBold)
-                    if (original.place.address.isNotBlank()) Text(original.place.address,
+                    if (draft.place.address.isNotBlank() && draft.place.address != draft.place.name) Text(draft.place.address,
                         fontSize = 16.sp, lineHeight = 24.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("받은 장소는 그대로 두고 조건만 정해요", fontSize = 16.sp, lineHeight = 24.sp)
+                    Text("선택한 장소는 그대로 두고 조건만 정해요", fontSize = 16.sp, lineHeight = 24.sp)
                 }
                 message?.let { Text(it, fontSize = 16.sp, lineHeight = 24.sp, color = MaterialTheme.colorScheme.primary) }
-                listOf(CompanionErrandField.SOURCE, CompanionErrandField.CLOCK).forEach { field ->
+                listOf(CompanionErrandField.SOURCE, CompanionErrandField.PLACE, CompanionErrandField.CLOCK).forEach { field ->
                     errors[field]?.let { Text(it, fontSize = 16.sp, lineHeight = 24.sp, color = MaterialTheme.colorScheme.error) }
                 }
                 CompanionMinutesField("머무는 시간", draft.stayMinutes, editingAllowed,
@@ -84,7 +85,7 @@ internal fun CompanionErrandEditor(
                     errors[CompanionErrandField.WALKING], { onDraftChange(draft.copy(walkingMinutesOneWay = it)) })
                 Text("왕복 도보와 머무는 시간을 함께 비교해요", fontSize = 16.sp, lineHeight = 24.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (original.kind == VisitKind.PICKUP) {
+                if (draft.kind == VisitKind.PICKUP) {
                     Row(Modifier.fillMaxWidth().heightIn(min = 64.dp)
                         .toggleable(value = draft.ready, enabled = editingAllowed, role = Role.Switch,
                             onValueChange = { onDraftChange(draft.copy(ready = it)) }),
@@ -100,14 +101,17 @@ internal fun CompanionErrandEditor(
                 HorizontalDivider()
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("완료 마감", fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold)
-                    val originalDeadline = original.deadlineAtMillis?.let {
-                        DateTimeFormatter.ofPattern("M월 d일 HH:mm").format(Instant.ofEpochMilli(it).atZone(draft.zoneId))
-                    } ?: "마감 없음"
-                    Text("받은 마감 · $originalDeadline", fontSize = 16.sp, lineHeight = 24.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (canKeepOriginalDeadline) {
+                        val originalDeadline = draft.originalDeadlineAtMillis?.let {
+                            DateTimeFormatter.ofPattern("M월 d일 HH:mm").format(Instant.ofEpochMilli(it).atZone(draft.zoneId))
+                        } ?: "마감 없음"
+                        Text("기존 마감 · $originalDeadline", fontSize = 16.sp, lineHeight = 24.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     val dateFormat = DateTimeFormatter.ofPattern("M월 d일")
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        CompanionDeadlineOption("받은 마감 유지", CompanionDeadlineChoice.KEEP_ORIGINAL, draft, editingAllowed, onDraftChange)
+                        if (canKeepOriginalDeadline) CompanionDeadlineOption("기존 마감 유지",
+                            CompanionDeadlineChoice.KEEP_ORIGINAL, draft, editingAllowed, onDraftChange)
                         CompanionDeadlineOption("마감 없음", CompanionDeadlineChoice.NONE, draft, editingAllowed, onDraftChange)
                         CompanionDeadlineOption(dateFormat.format(draft.baseDate), CompanionDeadlineChoice.TODAY, draft, editingAllowed, onDraftChange)
                         CompanionDeadlineOption(dateFormat.format(draft.baseDate.plusDays(1)), CompanionDeadlineChoice.TOMORROW, draft, editingAllowed, onDraftChange)

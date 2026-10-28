@@ -4,7 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -53,28 +52,33 @@ import kotlinx.coroutines.launch
 internal fun SharedJourneyFlow(
     state: SharedJourneyFlowState,
     onStateChange: (SharedJourneyFlowState) -> Boolean,
+    readState: () -> SharedJourneyFlowState,
     gateway: NavigationGateway,
     routeGateway: RouteEstimateGateway?,
     interaction: DrivingInteraction,
     onLeave: () -> Unit,
     onReconnect: () -> Unit,
+    pendingProposalCount: Int,
+    proposalPanelOpen: Boolean,
+    onOpenProposals: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
-    val runtime = remember(gateway, lifecycleOwner) { SharedFlowRuntime(state) }
+    val currentStateReader by rememberUpdatedState(readState)
+    val runtime = remember(gateway, lifecycleOwner) { SharedFlowRuntime { currentStateReader() } }
     val currentCallback by rememberUpdatedState(onStateChange)
     val currentInteraction by rememberUpdatedState(interaction)
     val currentOnLeave by rememberUpdatedState(onLeave)
     val currentOnReconnect by rememberUpdatedState(onReconnect)
+    val currentOnOpenProposals by rememberUpdatedState(onOpenProposals)
+    val currentProposalPanelOpen by rememberUpdatedState(proposalPanelOpen)
     val connection by gateway.connection.collectAsStateWithLifecycle()
     val routeRevision by gateway.routeRevision.collectAsStateWithLifecycle()
-    SideEffect { runtime.latest = state }
 
     fun publish(next: SharedJourneyFlowState): Boolean {
         if (!runtime.mounted) return false
         if (currentCallback(next)) {
-            runtime.latest = next
             return true
         }
         // A failed durable update must leave the previous session authoritative.
@@ -85,7 +89,7 @@ internal fun SharedJourneyFlow(
             operationRevision = runtime.latest.operationRevision + 1,
             message = "변경사항을 저장하지 못했어요. 차량 내비 전송을 멈췄어요", error = true,
         )
-        if (currentCallback(fallback)) runtime.latest = fallback
+        currentCallback(fallback)
         return false
     }
 
@@ -94,7 +98,7 @@ internal fun SharedJourneyFlow(
 
     fun idle(allowRouteDialog: Boolean = false, allowPassedStopDialog: Boolean = false): Boolean {
         val current = runtime.latest
-        return canInteract() && !current.busy && runtime.operation?.isActive != true && current.picker == null &&
+        return canInteract() && !currentProposalPanelOpen && !current.busy && runtime.operation?.isActive != true && current.picker == null &&
             !current.cancelRequested && current.finishConfirmation == null && (allowRouteDialog || current.confirmation == null) &&
             (allowPassedStopDialog || current.passedStopConfirmation == null)
     }
@@ -194,7 +198,7 @@ internal fun SharedJourneyFlow(
         val current = runtime.latest
         if (!idle() || current.session.progress.stage != JourneyStage.INPUT) return
         if (draft == current.session.draft) return
-        publish(current.copy(session = SharedJourneySession(draft), errors = emptyList(), message = null, error = false,
+        publish(current.copy(session = current.session.resetToInput(draft), errors = emptyList(), message = null, error = false,
             planPage = 0, snapshot = null))
     }
 
@@ -242,7 +246,7 @@ internal fun SharedJourneyFlow(
                 draft.copy(errand = if (point == errand.place) errand else errand.copy(place = point, ready = false))
             }
         }
-        publish(current.copy(session = SharedJourneySession(next), picker = null, errors = emptyList(), message = null,
+        publish(current.copy(session = current.session.resetToInput(next), picker = null, errors = emptyList(), message = null,
             error = false, snapshot = null, operationRevision = current.operationRevision + 1))
     }
 
@@ -267,7 +271,7 @@ internal fun SharedJourneyFlow(
             when (result) {
                 is SharedRoutedJourneyLoadResult.Success -> {
                     val routing = result.estimates
-                    val session = SharedJourneySession(input, SharedJourneyProgress().compare(routing.plans), routing)
+                    val session = current.session.copy(draft = input, progress = SharedJourneyProgress().compare(routing.plans), routing = routing)
                     publish(runtime.latest.copy(session = session, planPage = 0, errors = emptyList(), message = "모든 방문 순서를 같은 도로 데이터로 비교했어요", error = false))
                 }
                 is SharedRoutedJourneyLoadResult.Failed -> publish(runtime.latest.copy(errors = result.errors.values.toList(), message = result.reason, error = true))
@@ -280,7 +284,7 @@ internal fun SharedJourneyFlow(
         if (!idle() || current.session.progress.stage != JourneyStage.COMPARE) return
         val routing = current.session.routing ?: return
         if (!routing.isFresh(System.currentTimeMillis())) {
-            publish(current.copy(session = SharedJourneySession(current.session.draft), message = "경로 조회 후 5분이 지났어요. 다시 비교해주세요", error = true))
+            publish(current.copy(session = current.session.resetToInput(), message = "경로 조회 후 5분이 지났어요. 다시 비교해주세요", error = true))
             return
         }
         publish(current.copy(session = current.session.copy(progress = current.session.progress.review(routing.plans)), message = null, error = false))
@@ -292,12 +296,12 @@ internal fun SharedJourneyFlow(
         val oldRouting = current.session.routing ?: return
         val now = System.currentTimeMillis()
         if (!oldRouting.isFresh(now)) {
-            publish(current.copy(session = SharedJourneySession(current.session.draft), message = "경로 조회 후 5분이 지났어요. 현재 위치에서 다시 비교해주세요", error = true))
+            publish(current.copy(session = current.session.resetToInput(), message = "경로 조회 후 5분이 지났어요. 현재 위치에서 다시 비교해주세요", error = true))
             return
         }
         val routing = oldRouting.rebaseDeparture(now)
         if (routing == null) {
-            publish(current.copy(session = SharedJourneySession(current.session.draft), message = "출발 시각을 기준으로 마감과 하차 조건을 다시 확인해주세요", error = true))
+            publish(current.copy(session = current.session.resetToInput(), message = "출발 시각을 기준으로 마감과 하차 조건을 다시 확인해주세요", error = true))
             return
         }
         val plan = routing.plans.firstOrNull { it.id == current.session.progress.selectedPlanId } ?: return
@@ -443,7 +447,7 @@ internal fun SharedJourneyFlow(
                 JourneyStage.COMPARE -> publish(current.copy(session = current.session.copy(progress = SharedJourneyProgress()), planPage = 0, message = null, error = false))
                 JourneyStage.REVIEW -> publish(current.copy(session = current.session.copy(progress = current.session.progress.copy(stage = JourneyStage.COMPARE)), message = null, error = false))
                 JourneyStage.ACTIVE -> publish(current.copy(cancelRequested = true))
-                JourneyStage.COMPLETE -> publish(current.copy(session = SharedJourneySession(current.session.draft), planPage = 0, message = null, error = false))
+                JourneyStage.COMPLETE -> publish(current.copy(session = current.session.resetToInput(), planPage = 0, message = null, error = false))
             }
         }
     }
@@ -517,7 +521,7 @@ internal fun SharedJourneyFlow(
             val current = runtime.latest
             if (idle() && current.session.progress.stage == JourneyStage.COMPLETE) {
                 val draft = current.session.draft
-                publish(SharedJourneyFlowState(session = SharedJourneySession(draft.copy(errand = draft.errand?.copy(ready = false))),
+                publish(SharedJourneyFlowState(session = current.session.resetToInput(draft.copy(errand = draft.errand?.copy(ready = false))),
                     operationRevision = current.operationRevision + 1))
             }
         },
@@ -527,6 +531,9 @@ internal fun SharedJourneyFlow(
         },
         onLeave = { if (idle() && runtime.latest.session.progress.stage == JourneyStage.INPUT) currentOnLeave() },
         onReconnect = ::reconnect,
+        onOpenProposals = {
+            if (idle() && runtime.latest.session.progress.stage == JourneyStage.INPUT) currentOnOpenProposals()
+        },
     )
 
     DisposableEffect(runtime, lifecycleOwner) {
@@ -544,7 +551,7 @@ internal fun SharedJourneyFlow(
                 picker = null, confirmation = null, passedStopConfirmation = null,
                 cancelRequested = false, finishConfirmation = null,
                 operationRevision = current.operationRevision + 1)
-            if (currentCallback(next)) runtime.latest = next
+            currentCallback(next)
         }
     }
 
@@ -631,6 +638,7 @@ internal fun SharedJourneyFlow(
             (state.session.progress.stage == JourneyStage.ACTIVE && state.observedRouteRevision != routeRevision),
         passedStopCount = if (connection == NavigationConnection.Ready) state.passedStopsObservation(routeRevision)?.count ?: 0 else 0,
         estimateLabel = state.session.routing?.source, directHomeMinutes = state.session.routing?.directHomeMinutes,
+        pendingProposalCount = pendingProposalCount,
     )
     SharedVehicleScreen(ui, actions, VehicleNavigationUiState(
         connection = connection, sending = state.sending, reading = state.reading || state.polling,
@@ -684,7 +692,7 @@ internal fun SharedJourneyFlow(
             onConfirm = {
                 val current = runtime.latest
                 if (canInteract() && current.cancelRequested && !current.busy && current.session.progress.stage == JourneyStage.ACTIVE) {
-                    publish(current.copy(session = SharedJourneySession(current.session.draft), cancelRequested = false,
+                    publish(current.copy(session = current.session.resetToInput(), cancelRequested = false,
                         confirmation = null, snapshot = null, message = "계획 기록을 중단했어요. 차량 내비의 안내 상태는 바꾸지 않았어요", error = false))
                 }
             },
@@ -718,7 +726,8 @@ internal fun SharedJourneyFlow(
     }
 }
 
-private class SharedFlowRuntime(var latest: SharedJourneyFlowState) {
+private class SharedFlowRuntime(private val readState: () -> SharedJourneyFlowState) {
+    val latest: SharedJourneyFlowState get() = readState()
     var operation: Job? = null
     var mounted = true
 }

@@ -52,6 +52,9 @@ import io.moduhome.app.core.shared.SharedScheduledStop
 import io.moduhome.app.core.vehicle.DrivingInteraction
 import io.moduhome.app.core.vehicle.restrictContent
 import io.moduhome.app.feature.home.VehicleNavigationUiState
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /** Pure vehicle presentation. Place lookup, user confirmations, routing and persistence belong to the app. */
 @Composable
@@ -79,7 +82,10 @@ internal fun SharedVehicleScreen(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     Text(sharedTitle(state.stage), Modifier.weight(1f), fontSize = 40.sp, lineHeight = 52.sp, fontWeight = FontWeight.Bold)
-                    if (state.stage == JourneyStage.INPUT) SharedAction("가는 김에", canEdit, actions.onLeave)
+                    if (state.stage == JourneyStage.INPUT) {
+                        SharedAction("받은 볼일 ${state.pendingProposalCount}", canEdit, actions.onOpenProposals)
+                        SharedAction("가는 김에", canEdit, actions.onLeave)
+                    }
                 }
                 SharedCaption(when (state.stage) {
                     JourneyStage.INPUT -> "동승자를 집 앞에 내려주고, 가는 김에 볼일까지"
@@ -175,9 +181,16 @@ private fun SharedInput(
             draft.errand?.let { errand ->
                 SharedAction(errand.place?.name ?: "볼일 장소 선택", canChoose, actions.onChooseErrandPlace,
                     Modifier.fillMaxWidth())
+                Text("체류 ${errand.stayMinutes}분 · 편도 도보 ${errand.walkingMinutesOneWay}분",
+                    fontSize = 28.sp, lineHeight = 38.sp)
+                errand.deadlineAtMillis?.let { deadline ->
+                    val time = DateTimeFormatter.ofPattern("M월 d일 HH:mm")
+                        .format(Instant.ofEpochMilli(deadline).atZone(ZoneId.systemDefault()))
+                    Text("완료 마감 · $time", fontSize = 28.sp, lineHeight = 38.sp)
+                }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("머무는 시간", Modifier.weight(1f), fontSize = 28.sp)
+                    Text("체류시간 변경", Modifier.weight(1f), fontSize = 28.sp)
                     listOf(5, 10, 15).forEach { minutes ->
                         SharedChoice("${minutes}분", errand.stayMinutes == minutes, canEdit,
                             onClick = { if (canEdit) actions.onDraftChange(draft.copy(errand = errand.copy(stayMinutes = minutes))) },

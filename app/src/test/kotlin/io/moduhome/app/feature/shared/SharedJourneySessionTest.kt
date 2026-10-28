@@ -17,6 +17,9 @@ import io.moduhome.app.core.shared.DropoffVerification
 import io.moduhome.app.core.shared.SharedJourneyProgress
 import io.moduhome.app.core.shared.SharedScheduledStop
 import io.moduhome.app.core.shared.currentWindow
+import io.moduhome.app.core.transfer.ErrandProposal
+import io.moduhome.app.core.transfer.ErrandProposalInbox
+import io.moduhome.app.core.transfer.ProposalInboxEntry
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -347,5 +350,49 @@ class SharedJourneySessionTest {
         assertEquals(JourneyStage.INPUT, restored.progress.stage)
         assertEquals(changed, restored.draft)
         assertNull(restored.routing)
+    }
+
+    @Test fun staleRoutingAndInputResetKeepAcceptedProposalsAcrossChangedDrafts() {
+        val proposal = ErrandProposal("proposal-001", 1, now - 1000, now + 3_600_000,
+            VisitKind.GROCERIES, NavigationPoint("받은 장보기", 37.55, 127.05), 12, 2)
+        val history = listOf(SharedProposalAcceptance(proposal, now - 500))
+        val restored = SharedJourneySession.restore(draft, compared, routing,
+            now + RouteEstimate.FRESHNESS_MILLIS + 1, history)
+        assertEquals(JourneyStage.INPUT, restored.progress.stage)
+        assertEquals(history, restored.acceptedProposals)
+        val changed = draft.copy(allowedAdditionalMinutes = 60, errand = null)
+        val reset = SharedJourneySession(draft, active, routing, history).resetToInput(changed)
+        assertEquals(changed, reset.draft)
+        assertEquals(SharedJourneyProgress(), reset.progress)
+        assertNull(reset.routing)
+        assertEquals(history, reset.acceptedProposals)
+    }
+
+    @Test fun acceptingAProposalInvalidatesCachedRoutingAndRetainsPassengerConfirmations() {
+        val proposal = ErrandProposal("proposal-001", 1, now, now + 3_600_000,
+            VisitKind.GROCERIES, NavigationPoint("받은 장보기", 37.55, 127.05), 12, 2, false, now + 1_800_123)
+        val inbox = ErrandProposalInbox.restore(listOf(ProposalInboxEntry(proposal)))
+        val input = SharedJourneySession(draft, routing = routing)
+        val review = (input.reviewProposal(inbox, proposal.id, proposal.revision, now, zone) as SharedProposalReviewResult.Ready).review
+        val applied = input.approveProposal(review, inbox, now + 1, zone) as SharedProposalApplyResult.Applied
+        assertNull(applied.session.routing)
+        assertEquals(draft.passengers, applied.session.draft.passengers)
+        assertEquals(draft.driverHome, applied.session.draft.driverHome)
+        assertEquals(SharedJourneyProgress(), applied.session.progress)
+    }
+
+    @Test fun clockRollbackPreservesHistoryWhileDuplicateReceiptIdsAreRejected() {
+        val proposal = ErrandProposal("proposal-001", 1, now, now + 3_600_000,
+            VisitKind.GROCERIES, NavigationPoint("받은 장보기", 37.55, 127.05), 12)
+        val future = SharedProposalAcceptance(proposal, now + 100)
+        val receipt = SharedProposalAcceptance(proposal, now)
+        val rollback = SharedJourneySession.restore(draft, compared, routing, now + 10, listOf(future))
+        assertEquals(JourneyStage.INPUT, rollback.progress.stage)
+        assertNull(rollback.routing)
+        assertEquals(listOf(future), rollback.acceptedProposals)
+        val duplicate = SharedJourneySession.restore(draft, compared, routing, now + 10, listOf(receipt, receipt))
+        assertEquals(JourneyStage.INPUT, duplicate.progress.stage)
+        assertNull(duplicate.routing)
+        assertTrue(duplicate.acceptedProposals.isEmpty())
     }
 }

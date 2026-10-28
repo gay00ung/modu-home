@@ -48,6 +48,8 @@ import io.moduhome.app.core.vehicle.DrivingInteraction
 import io.moduhome.app.core.voice.*
 import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.transfer.ErrandProposalInbox
+import io.moduhome.app.core.transfer.ErrandProposal
+import io.moduhome.app.core.transfer.ProposalReviewStatus
 import io.moduhome.app.core.transfer.ProposalApprovalResult
 import io.moduhome.app.core.transfer.ProposalReceiveResult
 import io.moduhome.app.core.planning.JourneyProgress
@@ -56,6 +58,10 @@ import io.moduhome.app.data.JourneyPreferences
 import io.moduhome.app.data.shared.SharedJourneyPreferences
 import io.moduhome.app.feature.shared.SharedJourneyFlow
 import io.moduhome.app.feature.shared.SharedJourneyFlowState
+import io.moduhome.app.feature.shared.SharedProposalDialog
+import io.moduhome.app.feature.shared.SharedProposalReview
+import io.moduhome.app.feature.shared.SharedProposalReviewResult
+import io.moduhome.app.feature.shared.SharedProposalApplyResult
 import io.moduhome.app.data.navigation.PleosNavigationGateway
 import io.moduhome.app.data.routing.OsrmRouteEstimateGateway
 import io.moduhome.app.data.vehicle.PleosDrivingRestrictions
@@ -190,6 +196,51 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
     var proposalQr by remember { mutableStateOf<ImageBitmap?>(null) }
     var generatingQr by remember { mutableStateOf(false) }
     var readingQr by remember { mutableStateOf(false) }
+    var sharedProposalPanelOpen by remember { mutableStateOf(false) }
+    var selectedSharedProposal by remember { mutableStateOf<ErrandProposal?>(null) }
+    var sharedProposalReview by remember { mutableStateOf<SharedProposalReview?>(null) }
+    var sharedProposalInteraction by remember { mutableStateOf<DrivingInteraction?>(null) }
+    var sharedProposalMessage by remember { mutableStateOf<String?>(null) }
+    var sharedProposalNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    fun canReviewSharedProposal(): Boolean = sharedMode && restrictions.state.value.editingAllowed &&
+        lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+        sharedState.session.progress.stage == JourneyStage.INPUT && !sharedState.busy && !sharedState.dialogOpen
+    fun dismissSharedProposals() {
+        sharedProposalPanelOpen = false
+        selectedSharedProposal = null
+        sharedProposalReview = null
+        sharedProposalInteraction = null
+    }
+    fun selectSharedProposal(id: String, revision: Int) {
+        if (!canReviewSharedProposal()) return
+        selectedSharedProposal = inbox.entries.firstOrNull { it.proposal.id == id }?.proposal
+        sharedProposalNow = System.currentTimeMillis()
+        sharedProposalInteraction = restrictions.state.value
+        when (val result = sharedState.session.reviewProposal(inbox, id, revision, sharedProposalNow)) {
+            is SharedProposalReviewResult.Ready -> {
+                sharedProposalReview = result.review
+                sharedProposalMessage = null
+            }
+            is SharedProposalReviewResult.Rejected -> {
+                sharedProposalReview = null
+                sharedProposalMessage = result.reason
+            }
+        }
+    }
+    fun openSharedProposals() {
+        if (!canReviewSharedProposal()) return
+        sharedProposalPanelOpen = true
+        sharedProposalMessage = null
+        val first = inbox.entries.firstOrNull { it.status == ProposalReviewStatus.PENDING }
+        if (first != null) selectSharedProposal(first.proposal.id, first.proposal.revision)
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) dismissSharedProposals()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     fun update(next: HomeUiState) {
         state = next
         preferences.save(next)
@@ -207,18 +258,53 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
     fun receiveProposal(link: String) {
         proposalPanelOpen = editingAllowed && !sharedMode
         when (val decoded = ProposalLinkCodec.decode(link.trim(), System.currentTimeMillis())) {
-            is ProposalDecodeResult.Invalid -> proposalMessage = decoded.reason
+            is ProposalDecodeResult.Invalid -> {
+                proposalMessage = decoded.reason
+                if (sharedMode) sharedState = sharedState.copy(message = decoded.reason, error = true)
+            }
             is ProposalDecodeResult.Valid -> when (val received = inbox.receive(decoded.proposal, System.currentTimeMillis())) {
                 is ProposalReceiveResult.Pending -> {
                     saveInbox(received.inbox)
                     proposalInput = ""
                     proposalMessage = "제안을 받았어요. 장소와 시간을 확인해주세요"
                     if (sharedMode) sharedState = sharedState.copy(
-                        message = "볼일 제안을 받았어요. 가는김에의 동승자 볼일에서 확인할 수 있어요", error = false,
+                        message = if (sharedState.session.progress.stage == JourneyStage.INPUT)
+                            "볼일 제안을 받았어요. 받은 볼일에서 확인해주세요"
+                        else "볼일 제안을 보관했어요. 다음 계획에서 확인할 수 있어요", error = false,
                     )
                 }
                 ProposalReceiveResult.Duplicate -> proposalMessage = "이미 받은 제안이에요"
                 is ProposalReceiveResult.Rejected -> proposalMessage = received.reason
+            }
+        }
+    }
+    LaunchedEffect(sharedState.session.acceptedProposals, inbox) {
+        val restored = sharedState.session.reconcileProposalInbox(inbox)
+        if (restored != inbox) saveInbox(restored)
+    }
+    LaunchedEffect(sharedProposalPanelOpen, sharedMode, interaction, sharedState.session, inbox) {
+        if (!sharedProposalPanelOpen) return@LaunchedEffect
+        if (!canReviewSharedProposal() || (sharedProposalInteraction != null && sharedProposalInteraction != interaction)) {
+            dismissSharedProposals()
+            return@LaunchedEffect
+        }
+        val selected = selectedSharedProposal
+        val entry = inbox.entries.firstOrNull { it.proposal.id == selected?.id && it.status == ProposalReviewStatus.PENDING }
+        if (selected != null && (entry?.proposal != selected || sharedProposalReview?.session?.let { it != sharedState.session } == true)) {
+            // A new version receives a fresh preview; the button below remains bound to its rendered review.
+            if (entry != null) selectSharedProposal(entry.proposal.id, entry.proposal.revision)
+            else {
+                selectedSharedProposal = null
+                sharedProposalReview = null
+                sharedProposalMessage = "이 제안은 이미 검토했어요"
+            }
+        }
+    }
+    LaunchedEffect(sharedProposalPanelOpen) {
+        if (sharedProposalPanelOpen) {
+            while (true) {
+                sharedProposalNow = System.currentTimeMillis()
+                delay(1_000L)
             }
         }
     }
@@ -536,9 +622,13 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
         SharedJourneyFlow(
             state = sharedState,
             onStateChange = ::updateShared,
+            readState = { sharedState },
             gateway = gateway,
             routeGateway = routeGateway,
             interaction = interaction,
+            pendingProposalCount = inbox.entries.count { it.status == ProposalReviewStatus.PENDING },
+            proposalPanelOpen = sharedProposalPanelOpen,
+            onOpenProposals = ::openSharedProposals,
             onReconnect = {
                 if (restrictions.state.value.editingAllowed && !sharedState.busy) {
                     sharedState = sharedState.copy(snapshot = null, observedRouteRevision = null,
@@ -616,6 +706,56 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
             HomeScreen(state = state, actions = actions, vehicle = vehicleState, modifier = Modifier.weight(1f))
         }
         BackHandler(enabled = isVehicle && detailsOpen) { detailsOpen = false }
+    }
+    if (sharedMode && sharedProposalPanelOpen && editingAllowed) {
+        val visibleReview = sharedProposalReview
+        val visibleInteraction = sharedProposalInteraction
+        val selected = selectedSharedProposal
+        val unavailable = selected?.unavailableReason(sharedProposalNow)
+        val currentEntry = inbox.entries.firstOrNull { it.proposal.id == selected?.id }
+        val canApply = sharedState.session.progress.stage == JourneyStage.INPUT && !sharedState.busy &&
+            !sharedState.dialogOpen && visibleReview != null && unavailable == null &&
+            visibleReview.session == sharedState.session && visibleReview.proposal == selected &&
+            currentEntry?.proposal == selected && currentEntry?.status == ProposalReviewStatus.PENDING &&
+            visibleInteraction == interaction
+        SharedProposalDialog(
+            inbox = inbox,
+            selectedProposal = selected,
+            review = visibleReview,
+            message = unavailable ?: sharedProposalMessage,
+            canApply = canApply,
+            onSelect = ::selectSharedProposal,
+            onApprove = {
+                if (canReviewSharedProposal() && visibleReview != null && sharedProposalReview == visibleReview &&
+                    visibleInteraction == restrictions.state.value) {
+                    when (val applied = sharedState.session.approveProposal(visibleReview, inbox, System.currentTimeMillis())) {
+                        is SharedProposalApplyResult.Rejected -> sharedProposalMessage = applied.reason
+                        is SharedProposalApplyResult.Applied -> {
+                            val saved = updateShared(SharedJourneyFlowState(
+                                session = applied.session,
+                                operationRevision = sharedState.operationRevision + 1,
+                                message = "받은 볼일을 반영했어요. 계획을 비교해 순서를 골라주세요",
+                            ))
+                            if (saved) {
+                                saveInbox(applied.inbox)
+                                dismissSharedProposals()
+                            } else sharedProposalMessage = "볼일을 저장하지 못했어요. 다시 시도해주세요"
+                        }
+                    }
+                }
+            },
+            onDecline = { id, revision ->
+                if (canReviewSharedProposal()) {
+                    saveInbox(inbox.decline(id, revision))
+                    selectedSharedProposal = null
+                    sharedProposalReview = null
+                    sharedProposalMessage = null
+                    val next = inbox.entries.firstOrNull { it.status == ProposalReviewStatus.PENDING }
+                    if (next != null) selectSharedProposal(next.proposal.id, next.proposal.revision)
+                }
+            },
+            onDismiss = ::dismissSharedProposals,
+        )
     }
     if (!sharedMode && voiceDialogOpen && editingAllowed && interaction.voiceTranscriptionAllowed) {
         VehicleVoiceDialog(

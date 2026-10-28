@@ -11,12 +11,16 @@ import io.moduhome.app.core.routing.SnappedRoutePoint
 import io.moduhome.app.core.shared.AccessCheck
 import io.moduhome.app.core.shared.DropoffVerification
 import io.moduhome.app.core.shared.SharedJourneyProgress
+import io.moduhome.app.core.transfer.ErrandProposal
+import io.moduhome.app.core.transfer.ErrandProposalInbox
 import io.moduhome.app.feature.shared.SharedErrandDraft
 import io.moduhome.app.feature.shared.SharedGuidanceWindowEstimate
 import io.moduhome.app.feature.shared.SharedJourneyDraft
 import io.moduhome.app.feature.shared.SharedJourneySession
 import io.moduhome.app.feature.shared.SharedPassengerDraft
+import io.moduhome.app.feature.shared.SharedProposalAcceptance
 import io.moduhome.app.feature.shared.SharedRoutedJourneyEstimates
+import io.moduhome.app.feature.shared.validSharedProposalHistory
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.ZoneId
@@ -27,7 +31,7 @@ internal object SharedJourneyJson {
 
     fun encode(session: SharedJourneySession): String? = try {
         val json = JSONObject().put("schema", 1).put("draft", writeDraft(session.draft))
-            .put("progress", writeProgress(session.progress))
+            .put("progress", writeProgress(session.progress)).put("acceptedProposals", writeAccepted(session.acceptedProposals))
         session.routing?.let { json.put("routing", writeRouting(it)) }
         json.toString().takeIf { boundedJson(it) }
     } catch (_: Exception) { null }
@@ -40,10 +44,42 @@ internal object SharedJourneyJson {
             require(integer(json, "schema") == 1)
             val draft = readDraft(json.getJSONObject("draft"))
             fallback = SharedJourneySession(draft)
+            val accepted = readAccepted(json)
+            fallback = SharedJourneySession(draft, acceptedProposals = accepted)
             val progress = readProgress(json.getJSONObject("progress"))
             val routing = optionalObject(json, "routing")?.let { readRouting(it, draft) ?: return fallback }
-            SharedJourneySession.restore(draft, progress, routing, nowMillis)
+            SharedJourneySession.restore(draft, progress, routing, nowMillis, accepted)
         } catch (_: Exception) { fallback }
+    }
+
+    private fun writeAccepted(history: List<SharedProposalAcceptance>): JSONArray {
+        require(validSharedProposalHistory(history))
+        val accepted = JSONArray()
+        history.forEach { record ->
+            val proposal = record.proposal
+            accepted.put(JSONObject().put("appliedAt", record.appliedAtMillis).put("proposal", JSONObject()
+                .put("id", proposal.id).put("revision", proposal.revision).put("createdAt", proposal.createdAtMillis)
+                .put("expiresAt", proposal.expiresAtMillis).put("kind", proposal.kind.name).put("place", writePoint(proposal.place))
+                .put("stay", proposal.stayMinutes).put("walking", proposal.walkingMinutesOneWay).put("ready", proposal.ready)
+                .put("deadline", proposal.deadlineAtMillis)))
+        }
+        return accepted
+    }
+
+    private fun readAccepted(json: JSONObject): List<SharedProposalAcceptance> {
+        if (!json.has("acceptedProposals")) return emptyList()
+        val accepted = array(json, "acceptedProposals", 0..ErrandProposalInbox.MAX_ENTRIES)
+        return (0 until accepted.length()).map { index ->
+            val record = accepted.getJSONObject(index)
+            val proposal = record.getJSONObject("proposal")
+            SharedProposalAcceptance(ErrandProposal(
+                id = text(proposal, "id", 64), revision = integer(proposal, "revision"),
+                createdAtMillis = long(proposal, "createdAt"), expiresAtMillis = long(proposal, "expiresAt"),
+                kind = VisitKind.valueOf(text(proposal, "kind", 32)), place = readPoint(proposal.getJSONObject("place")),
+                stayMinutes = integer(proposal, "stay"), walkingMinutesOneWay = integer(proposal, "walking"),
+                ready = boolean(proposal, "ready"), deadlineAtMillis = optionalLong(proposal, "deadline"),
+            ), long(record, "appliedAt"))
+        }.also { require(validSharedProposalHistory(it)) }
     }
 
     private fun writeDraft(draft: SharedJourneyDraft): JSONObject {

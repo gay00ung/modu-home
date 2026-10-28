@@ -18,6 +18,7 @@ internal data class SharedVehicleUiState(
     val passedStopCount: Int = 0,
     val estimateLabel: String? = null,
     val directHomeMinutes: Int? = null,
+    val pendingProposalCount: Int = 0,
 ) {
     val selectedPlan: SharedJourneyPlan? get() = plans.firstOrNull { it.id == selectedPlanId }
     val canConfirmPassedStop: Boolean get() = passedStopCount in 1..2
@@ -47,4 +48,5 @@ internal data class SharedVehicleActions(
     val onCancel: () -> Unit,
     val onLeave: () -> Unit,
     val onReconnect: () -> Unit,
+    val onOpenProposals: () -> Unit,
 )

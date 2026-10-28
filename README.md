@@ -16,6 +16,14 @@
 
 자세한 사용 흐름과 계산 기준은 [제품 설계](docs/product.md) 참고
 
+## 가는김에
+
+- 출발지·집과 픽업·장보기 장소 입력
+- 구간별 예상 주행시간, 왕복 도보와 매장 체류를 합산해 방문 순서 비교
+- 추가시간 한도·마감·픽업 준비 여부를 확인하고 계획 확정
+- 볼일 완료와 집 도착을 따로 확인하고 진행 중인 계획은 앱 재실행 시 복원
+- 넓은 차량 화면은 두 열, 작은 화면은 세로 배치
+
 ## 개발 환경
 
 | 항목 | 설정 |
@@ -51,11 +59,12 @@ APK 경로: `app/build/outputs/apk/debug/app-debug.apk`
 app/src/main/kotlin/io/moduhome/app/
 ├── MainActivity.kt
 ├── ModuHomeApp.kt
+├── data/              # 이동 계획의 로컬 저장
 ├── core/
 │   ├── model/          # 귀가 상황과 볼일 종류
 │   ├── planning/       # 주행·보행·체류 시간 계산
 │   └── navigation/     # 목적지·경유지와 내비 요청 인터페이스
-├── feature/home/       # 귀가 조건과 볼일 선택 화면
+├── feature/home/       # 입력·비교·확정·진행·완료 화면
 └── ui/theme/           # 색상과 명암 테마
 ```
 

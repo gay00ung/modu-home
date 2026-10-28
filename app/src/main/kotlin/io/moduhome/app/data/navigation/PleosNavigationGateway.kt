@@ -7,6 +7,7 @@ import ai.pleos.playground.navi.constants.NaviMode
 import ai.pleos.playground.navi.constants.RoutePointType
 import ai.pleos.playground.navi.constants.WaypointIndex
 import ai.pleos.playground.navi.data.BookmarkInfo
+import ai.pleos.playground.navi.data.CurrentLocationInfo
 import ai.pleos.playground.navi.data.DestinationInfo
 import ai.pleos.playground.navi.data.RecentDestinationInfo
 import ai.pleos.playground.navi.data.RequestWaypointInfo
@@ -30,6 +31,8 @@ import io.moduhome.app.core.navigation.PlaceCatalogResult
 import io.moduhome.app.core.navigation.RouteRequestResult
 import io.moduhome.app.core.navigation.TripEstimate
 import io.moduhome.app.core.navigation.TripEstimateResult
+import io.moduhome.app.core.navigation.VehicleLocation
+import io.moduhome.app.core.navigation.VehicleLocationResult
 import io.moduhome.app.core.navigation.matchesTripDestination
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -144,6 +147,52 @@ internal class PleosNavigationGateway(context: Context) : NavigationGateway {
             } catch (_: Exception) {
                 null
             }
+        }
+    }
+
+    override suspend fun currentLocation(): VehicleLocationResult = withContext(Dispatchers.Main.immediate) {
+        if (!supported) return@withContext VehicleLocationResult.Unsupported
+        val sdk = readyHelper()
+            ?: return@withContext VehicleLocationResult.Failed("차량 내비 연결을 먼저 확인해주세요")
+        if (!operation.tryLock()) {
+            return@withContext VehicleLocationResult.Failed("내비 응답을 확인하고 있어요. 잠시 뒤 다시 조회해주세요")
+        }
+        try {
+            val response = CompletableDeferred<VehicleLocationResult>()
+            val armed = AtomicBoolean(false)
+            val listener = object : NaviHelperEventListener {
+                override fun onCurrentLocationInfo(currentLocationInfo: CurrentLocationInfo) {
+                    if (!armed.get()) return
+                    // The SDK supplies no measurement timestamp or accuracy. Record receipt only,
+                    // and never replace an unavailable coordinate with a route destination.
+                    response.complete(VehicleLocation.fromObservation(
+                        latitude = currentLocationInfo.latitude,
+                        longitude = currentLocationInfo.longitude,
+                        address = currentLocationInfo.address,
+                        receivedAtEpochMillis = System.currentTimeMillis(),
+                    ))
+                }
+            }
+            register(sdk, listener)
+            try {
+                armed.set(true)
+                val result = withTimeoutOrNull(6_000) {
+                    sdk.getCurrentLocationInfo()
+                    response.await()
+                } ?: VehicleLocationResult.Failed("차량 내비에서 현재 위치 응답을 받지 못했어요")
+                if (readyHelper() !== sdk) VehicleLocationResult.Failed("차량 내비 연결이 끊겼어요") else result
+            } finally {
+                armed.set(false)
+                unregister(sdk, listener)
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: SecurityException) {
+            VehicleLocationResult.Failed("차량 내비 접근 권한을 확인해주세요")
+        } catch (_: Exception) {
+            VehicleLocationResult.Failed("차량 내비의 현재 위치를 조회하지 못했어요")
+        } finally {
+            operation.unlock()
         }
     }
 

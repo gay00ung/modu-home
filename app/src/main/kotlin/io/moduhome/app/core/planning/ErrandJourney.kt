@@ -93,22 +93,42 @@ internal data class ErrandJourneyPlan(
 
 internal class ErrandJourneyPlanner {
     fun compare(request: ErrandJourneyRequest): List<ErrandJourneyPlan> {
-        val orders = if (request.visits.size == 2) {
-            listOf(request.visits, request.visits.reversed())
-        } else {
-            listOf(request.visits)
+        return compareOrders(request) { order ->
+            order.mapIndexed { index, visit ->
+                if (index == 0) request.travel.fromOrigin(visit.kind)
+                else request.travel.between(order[index - 1].kind, visit.kind)
+            } + request.travel.toHome(order.last().kind)
         }
-        return orders.map { schedule(request, it) }
+    }
+
+    fun compare(request: ErrandJourneyRequest, routedTimes: RoutedJourneyTimes): List<ErrandJourneyPlan> =
+        compareOrders(request, directHomeMinutes = routedTimes.directHomeMinutes) { order ->
+            routedTimes.legsFor(order.map { it.kind })
+        }
+
+    private fun compareOrders(
+        request: ErrandJourneyRequest,
+        directHomeMinutes: Int = request.travel.directHome,
+        legsFor: (List<ErrandVisit>) -> List<Int>,
+    ): List<ErrandJourneyPlan> {
+        val orders = if (request.visits.size == 2) listOf(request.visits, request.visits.reversed())
+            else listOf(request.visits)
+        return orders.map { schedule(request, it, legsFor(it), directHomeMinutes) }
             .sortedWith(compareBy<ErrandJourneyPlan> { !it.isValid }.thenBy { it.totalMinutes }.thenBy { it.id })
     }
 
-    private fun schedule(request: ErrandJourneyRequest, order: List<ErrandVisit>): ErrandJourneyPlan {
+    private fun schedule(
+        request: ErrandJourneyRequest,
+        order: List<ErrandVisit>,
+        legs: List<Int>,
+        directHomeMinutes: Int,
+    ): ErrandJourneyPlan {
+        require(legs.size == order.size + 1)
         var minute = request.departureMinute
         var driving = 0
         val issues = mutableListOf<PlanIssue>()
         val scheduled = order.mapIndexed { index, visit ->
-            val leg = if (index == 0) request.travel.fromOrigin(visit.kind)
-                else request.travel.between(order[index - 1].kind, visit.kind)
+            val leg = legs[index]
             driving += leg
             val arrival = minute + leg
             val serviceFinished = arrival + visit.walkingMinutesOneWay + visit.stayMinutes
@@ -120,13 +140,12 @@ internal class ErrandJourneyPlanner {
             }
             ScheduledVisit(visit, arrival, serviceFinished, minute)
         }
-        val last = order.last()
-        val homeLeg = request.travel.toHome(last.kind)
+        val homeLeg = legs.last()
         driving += homeLeg
         minute += homeLeg
         val walking = order.sumOf { it.walkingMinutesOneWay * 2 }
         val stay = order.sumOf { it.stayMinutes }
-        val budget = TimeBudget(request.travel.directHome, request.allowedAdditionalMinutes)
+        val budget = TimeBudget(directHomeMinutes, request.allowedAdditionalMinutes)
             .evaluate(driving, stay, walking)
         if (!budget.isWithinBudget) {
             issues += PlanIssue(PlanIssueKind.OVER_BUDGET, minutes = budget.additionalMinutes - request.allowedAdditionalMinutes)

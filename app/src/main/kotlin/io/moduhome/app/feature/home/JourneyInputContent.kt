@@ -47,7 +47,7 @@ internal fun JourneyInputContent(state: HomeUiState, onChange: (JourneyDraft) ->
         TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(0.dp)) {
             Text(if (expanded) "예상 주행시간 접기 −" else "예상 주행시간 조정 +")
         }
-        Text("이동시간은 직접 설정한 예상값을 사용해요", style = MaterialTheme.typography.bodySmall,
+        Text("차량에서 도로 경로로 비교하면 이동시간을 조회해요. 아래 값은 수동 비교에 사용해요", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (expanded || errors.keys.any { it.startsWith("travel.") }) {
             TravelLeg.entries.forEach { leg ->

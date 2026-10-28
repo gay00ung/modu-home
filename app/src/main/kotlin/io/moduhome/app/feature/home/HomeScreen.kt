@@ -12,6 +12,7 @@ import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -239,7 +240,7 @@ private fun JourneySummary(state: HomeUiState) {
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         HorizontalDivider()
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            TimeMetric("곧바로 귀가", request?.let { formatJourneyMinute(it.departureMinute + it.travel.directHome) } ?: "—", Modifier.weight(1f))
+            TimeMetric("곧바로 귀가", request?.let { formatJourneyMinute(it.departureMinute + (state.directHomeMinutes ?: it.travel.directHome)) } ?: "—", Modifier.weight(1f))
             TimeMetric("총 추가시간", plan?.let { "+${it.additionalMinutes}분" } ?: "—", Modifier.weight(1f), emphasized = true)
         }
         if (plan != null) {
@@ -253,7 +254,13 @@ private fun JourneySummary(state: HomeUiState) {
             if (plan.isValid) Text(if (complete) "계획한 볼일과 귀가를 모두 마쳤어요" else "✓ 선택한 시간 한도 안에 들어와요",
                 color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
         }
-        Text("직접 설정한 이동·도보·체류시간 기준", style = MaterialTheme.typography.bodySmall,
+        if (state.routingMatchesDraft) {
+            val routing = checkNotNull(state.routing)
+            Text("OSM 도로망 기반 예상 · 실시간 교통 미반영", style = MaterialTheme.typography.bodySmall)
+            Text(routing.roundingPolicy, style = MaterialTheme.typography.bodySmall)
+            val uriHandler = LocalUriHandler.current
+            TextButton(onClick = { uriHandler.openUri("https://www.openstreetmap.org/copyright") }) { Text("© OpenStreetMap contributors · ODbL") }
+        } else Text("직접 설정한 이동·도보·체류시간 기준", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -281,7 +288,7 @@ private fun JourneyFooter(
     val needsPlaces = vehicle.connection != NavigationConnection.Unsupported &&
         plan?.let { state.draft.navigationPlan(it) } == null
     val primaryText = when (stage) {
-        JourneyStage.INPUT -> "계획 비교 →"
+        JourneyStage.INPUT -> if (vehicle.planning) "도로 경로 확인 중" else if (vehicle.roadComparisonAvailable) "지금 출발 · 경로 비교 →" else "입력한 시간으로 비교 →"
         JourneyStage.COMPARE -> if (anyValid) "이 순서 확인 →" else "조건 수정"
         JourneyStage.REVIEW -> when {
             vehicle.sending -> "차량 내비 확인 중"

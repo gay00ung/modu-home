@@ -92,7 +92,7 @@ internal data class JourneyDraft(
     fun newJourney(dateEpochDay: Long, departure: String): JourneyDraft =
         copy(dateEpochDay = dateEpochDay, departure = departure, pickup = pickup.copy(ready = false))
 
-    fun validate(): DraftValidation {
+    fun validate(requireTravelTimes: Boolean = true): DraftValidation {
         val errors = mutableMapOf<String, String>()
         fun place(key: String, text: String) {
             if (text.isBlank()) errors[key] = "장소명 또는 주소를 입력해주세요"
@@ -129,7 +129,10 @@ internal data class JourneyDraft(
             if (groceries.enabled) { add(TravelLeg.ORIGIN_GROCERIES); add(TravelLeg.GROCERIES_HOME) }
             if (pickup.enabled && groceries.enabled) { add(TravelLeg.PICKUP_GROCERIES); add(TravelLeg.GROCERIES_PICKUP) }
         }
-        val times = neededLegs.associateWith { number("travel.${it.name}", travel[it].orEmpty(), 240) }
+        // The routed planner supplies every driving leg separately; these legacy fields are unused there.
+        val times = neededLegs.associateWith {
+            if (requireTravelTimes) number("travel.${it.name}", travel[it].orEmpty(), 240) else 0
+        }
         if (budget !in 0..240) errors["budget"] = "추가시간을 0~240분으로 설정해주세요"
         val request = if (errors.isEmpty() && departureMinute != null) {
             ErrandJourneyRequest(origin.trim(), home.trim(), departureMinute, budget, visits,
@@ -153,9 +156,22 @@ internal data class HomeUiState(
     val draft: JourneyDraft,
     val progress: JourneyProgress = JourneyProgress(),
     val showErrors: Boolean = false,
+    val routing: RoutedJourneyEstimates? = null,
 ) {
-    val validation: DraftValidation get() = draft.validate()
-    val plans get() = validation.request?.let { ErrandJourneyPlanner().compare(it) }.orEmpty()
+    val routingMatchesDraft: Boolean get() = routing?.matches(draft) == true
+    val validation: DraftValidation get() {
+        val result = draft.validate(requireTravelTimes = routing == null)
+        return if (routing != null && !routingMatchesDraft) {
+            DraftValidation(null, result.errors + ("routing" to "장소나 방문 조건이 바뀌었어요. 경로를 다시 조회해주세요"))
+        } else result
+    }
+    val directHomeMinutes: Int? get() = if (routingMatchesDraft) routing?.directHomeMinutes
+        else if (routing == null) validation.request?.travel?.directHome else null
+    val plans get() = validation.request?.let { request ->
+        val routed = routing
+        if (routed == null) ErrandJourneyPlanner().compare(request)
+        else ErrandJourneyPlanner().compare(request, routed.routedTimes)
+    }.orEmpty()
     val selectedPlan get() = progress.selected(plans)
 }
 

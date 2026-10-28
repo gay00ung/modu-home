@@ -38,6 +38,8 @@ internal data class VehicleNavigationUiState(
     val snapshot: NavigationSnapshot? = null,
     val tripResult: TripEstimateResult? = null,
     val tripNow: Long = 0L,
+    val roadComparisonAvailable: Boolean = false,
+    val planning: Boolean = false,
 )
 
 internal data class PlacePickerUiState(

@@ -28,6 +28,7 @@ import io.moduhome.app.core.navigation.NavigationConnection
 import io.moduhome.app.core.navigation.NavigationSnapshot
 import io.moduhome.app.core.navigation.RouteRequestResult
 import io.moduhome.app.core.navigation.TripEstimateResult
+import io.moduhome.app.core.navigation.VehicleLocationResult
 import io.moduhome.app.core.transfer.ErrandProposalInbox
 import io.moduhome.app.core.transfer.ProposalApprovalResult
 import io.moduhome.app.core.transfer.ProposalReceiveResult
@@ -35,6 +36,7 @@ import io.moduhome.app.core.planning.JourneyProgress
 import io.moduhome.app.core.planning.JourneyStage
 import io.moduhome.app.data.JourneyPreferences
 import io.moduhome.app.data.navigation.PleosNavigationGateway
+import io.moduhome.app.data.routing.OsrmRouteEstimateGateway
 import io.moduhome.app.data.transfer.*
 import io.moduhome.app.feature.transfer.ProposalActions
 import io.moduhome.app.feature.transfer.ProposalContent
@@ -42,6 +44,8 @@ import io.moduhome.app.feature.transfer.ProposalUiState
 import io.moduhome.app.feature.home.ProposalDraftResult
 import io.moduhome.app.feature.home.withProposal
 import io.moduhome.app.feature.home.proposal
+import io.moduhome.app.feature.home.loadRoutedJourney
+import io.moduhome.app.feature.home.RoutedJourneyLoadResult
 import io.moduhome.app.feature.home.HomeScreen
 import io.moduhome.app.feature.home.HomeUiState
 import io.moduhome.app.feature.home.JourneyActions
@@ -66,6 +70,11 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
     val scope = rememberCoroutineScope()
     var gatewayRevision by remember { mutableIntStateOf(0) }
     val gateway = remember(context, gatewayRevision) { PleosNavigationGateway(context) }
+    val routeGateway = remember {
+        BuildConfig.ROUTING_BASE_URL.takeIf(String::isNotBlank)?.let {
+            runCatching { OsrmRouteEstimateGateway(it, allowLocalHttp = BuildConfig.DEBUG) }.getOrNull()
+        }
+    }
     val connection by gateway.connection.collectAsStateWithLifecycle()
     DisposableEffect(gateway) {
         gateway.connect()
@@ -74,6 +83,7 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
     var sending by remember(gateway) { mutableStateOf(false) }
     var reading by remember(gateway) { mutableStateOf(false) }
     var estimating by remember(gateway) { mutableStateOf(false) }
+    var planning by remember { mutableStateOf(false) }
     var tripResult by remember(gateway) { mutableStateOf<TripEstimateResult?>(null) }
     var tripNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var navigationMessage by remember(gateway) { mutableStateOf<String?>(null) }
@@ -170,7 +180,7 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
         picker = null
     }
     fun loadPlaces(role: NavigationPlaceRole) {
-        if (state.progress.stage != JourneyStage.INPUT || sending || estimating) return
+        if (state.progress.stage != JourneyStage.INPUT || sending || estimating || planning) return
         pickerJob?.cancel()
         pickerRequest += 1
         val request = pickerRequest
@@ -181,7 +191,7 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
         }
     }
     fun readNavigation() {
-        if (reading || sending || estimating || connection != NavigationConnection.Ready) return
+        if (reading || sending || estimating || planning || connection != NavigationConnection.Ready) return
         reading = true
         scope.launch {
             try {
@@ -199,23 +209,75 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
             readNavigation()
         }
     }
+    val roadComparisonAvailable = routeGateway != null && connection == NavigationConnection.Ready &&
+        state.draft.navigationPoint(NavigationPlaceRole.HOME) != null &&
+        (!state.draft.pickup.enabled || state.draft.navigationPoint(NavigationPlaceRole.PICKUP) != null) &&
+        (!state.draft.groceries.enabled || state.draft.navigationPoint(NavigationPlaceRole.GROCERIES) != null)
+
+    fun compareRoadRoutes() {
+        val routes = routeGateway ?: return
+        if (planning || sending || reading || estimating || state.progress.stage != JourneyStage.INPUT) return
+        val previous = state.draft
+        val now = LocalDateTime.now()
+        val draft = previous.copy(origin = "현재 차량 위치", departure = now.format(DateTimeFormatter.ofPattern("HH:mm")),
+            dateEpochDay = now.toLocalDate().toEpochDay())
+        val validation = draft.validate(requireTravelTimes = false)
+        if (validation.request == null) {
+            update(state.copy(showErrors = true))
+            navigationMessage = validation.errors.values.firstOrNull()
+            navigationError = true
+            return
+        }
+        planning = true
+        clearNavigationRead()
+        navigationMessage = "현재 위치에서 두 방문 순서의 도로 경로를 확인하고 있어요"
+        scope.launch {
+            try {
+                val location = gateway.currentLocation()
+                val result = when (location) {
+                    is VehicleLocationResult.Available -> loadRoutedJourney(draft, location.location.point, routes)
+                    is VehicleLocationResult.Failed -> RoutedJourneyLoadResult.Failed(location.reason)
+                    VehicleLocationResult.Unsupported -> RoutedJourneyLoadResult.Failed("차량에서 현재 위치를 확인해주세요")
+                }
+                if (state.draft == previous && state.progress.stage == JourneyStage.INPUT) {
+                    when (result) {
+                        is RoutedJourneyLoadResult.Success -> {
+                            val next = HomeUiState(draft = draft, routing = result.estimates)
+                            update(next.copy(progress = next.progress.compare(next.plans)))
+                            navigationMessage = "방문 순서별 도로 경로를 확인했어요"
+                        }
+                        is RoutedJourneyLoadResult.Failed -> {
+                            navigationMessage = result.reason
+                            navigationError = true
+                        }
+                    }
+                }
+            } finally { planning = false }
+        }
+    }
     val actions = JourneyActions(
         onDraftChange = { draft ->
-            if (state.progress.stage == JourneyStage.INPUT && !sending && !estimating) {
+            if (state.progress.stage == JourneyStage.INPUT && !sending && !estimating && !planning) {
                 clearNavigationRead()
-                update(state.copy(draft = draft.clearUnmatchedPlaces(), progress = JourneyProgress()))
+                val next = draft.clearUnmatchedPlaces()
+                update(state.copy(draft = next, progress = JourneyProgress(), routing = state.routing?.takeIf { it.matches(next) }))
             }
         },
         onCompare = {
-            if (state.validation.request == null) update(state.copy(showErrors = true))
+            if (roadComparisonAvailable) compareRoadRoutes()
+            else if (state.validation.request == null) update(state.copy(showErrors = true))
             else update(state.copy(progress = state.progress.compare(state.plans), showErrors = false))
         },
         onSelect = { id -> update(state.copy(progress = state.progress.select(id, state.plans))) },
         onReview = { update(state.copy(progress = state.progress.review(state.plans))) },
         onStart = {
             val selected = state.selectedPlan
-            if (!sending && !reading && !estimating && state.progress.stage == JourneyStage.REVIEW && selected?.isValid == true) {
-                if (connection == NavigationConnection.Unsupported) {
+            if (!sending && !reading && !estimating && !planning && state.progress.stage == JourneyStage.REVIEW && selected?.isValid == true) {
+                if (state.routing?.isFresh(System.currentTimeMillis()) == false) {
+                    update(state.copy(progress = JourneyProgress()))
+                    navigationMessage = "조회 후 5분이 지났어요. 출발 전에 경로를 다시 비교해주세요"
+                    navigationError = true
+                } else if (connection == NavigationConnection.Unsupported) {
                     update(state.copy(progress = state.progress.start(state.plans, System.currentTimeMillis())))
                 } else {
                     val plan = state.draft.navigationPlan(selected)
@@ -272,7 +334,7 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
         onChooseNavigationPlace = ::loadPlaces,
         onReadNavigation = ::readNavigation,
         onReconnectNavigation = {
-            if (!sending && !reading && !estimating) {
+            if (!sending && !reading && !estimating && !planning) {
                 dismissPicker()
                 gatewayRevision += 1
             }
@@ -280,7 +342,7 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
         onOpenProposals = { proposalPanelOpen = true },
         onEstimateTrip = { role ->
             val point = state.draft.navigationPoint(role)
-            if (point != null && !sending && !reading && !estimating && connection == NavigationConnection.Ready) {
+            if (point != null && !sending && !reading && !estimating && !planning && connection == NavigationConnection.Ready) {
                 estimating = true
                 tripResult = null
                 scope.launch {
@@ -291,7 +353,7 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
         },
     )
     BackHandler(enabled = state.progress.stage != JourneyStage.INPUT) {
-        if (sending || reading || estimating) {
+        if (sending || reading || estimating || planning) {
             navigationMessage = "차량 내비 응답을 확인하고 있어요"
         } else when (state.progress.stage) {
             JourneyStage.ACTIVE -> cancelRequested = true
@@ -301,13 +363,13 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
         }
     }
     HomeScreen(state = state, actions = actions, vehicle = VehicleNavigationUiState(
-        connection, sending, reading || estimating, navigationMessage, navigationError, navigationSnapshot,
-        tripResult = tripResult, tripNow = tripNow,
+        connection, sending, reading || estimating || planning, navigationMessage, navigationError, navigationSnapshot,
+        tripResult = tripResult, tripNow = tripNow, roadComparisonAvailable = roadComparisonAvailable, planning = planning,
     ))
     if (proposalPanelOpen) {
         ProposalContent(
             state = ProposalUiState(inbox, proposalInput, proposalMessage,
-                canApply = state.progress.stage == JourneyStage.INPUT && !sending && !reading && !estimating,
+                canApply = state.progress.stage == JourneyStage.INPUT && !sending && !reading && !estimating && !planning,
                 exportLink = exportLink, exportName = exportName, qr = proposalQr, qrBusy = generatingQr || readingQr,
                 pickupAvailable = state.draft.navigationPoint(NavigationPlaceRole.PICKUP) != null,
                 groceriesAvailable = state.draft.navigationPoint(NavigationPlaceRole.GROCERIES) != null),
@@ -320,14 +382,15 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
                 },
                 onReadQr = { qrPicker.launch("image/*") },
                 onApprove = { id, revision ->
-                    if (state.progress.stage == JourneyStage.INPUT && !sending && !reading && !estimating) {
+                    if (state.progress.stage == JourneyStage.INPUT && !sending && !reading && !estimating && !planning) {
                         when (val approval = inbox.approve(id, revision, System.currentTimeMillis())) {
                             is ProposalApprovalResult.Rejected -> proposalMessage = approval.reason
                             is ProposalApprovalResult.Approved -> when (val applied = state.draft.withProposal(approval.proposal)) {
                                 is ProposalDraftResult.Invalid -> proposalMessage = applied.reason
                                 is ProposalDraftResult.Applied -> {
                                     clearNavigationRead()
-                                    update(state.copy(draft = applied.draft, progress = JourneyProgress(), showErrors = false))
+                                    update(state.copy(draft = applied.draft, progress = JourneyProgress(), showErrors = false,
+                                        routing = state.routing?.takeIf { it.matches(applied.draft) }))
                                     saveInbox(approval.inbox)
                                     proposalMessage = "이번 계획에 반영했어요. 계획 비교에서 순서를 확인하세요"
                                 }
@@ -371,7 +434,7 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
                 dismissPicker()
                 clearNavigationRead()
                 update(state.copy(draft = state.draft.chooseNavigationPlace(role, point),
-                    progress = JourneyProgress(), showErrors = false))
+                    progress = JourneyProgress(), showErrors = false, routing = null))
             },
             onRefresh = { loadPlaces(current.role) },
             onDismiss = ::dismissPicker,

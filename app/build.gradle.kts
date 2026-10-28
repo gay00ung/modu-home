@@ -6,6 +6,9 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val routingBaseUrl = providers.gradleProperty("routingBaseUrl").orNull
+fun stringConstant(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
 android {
     namespace = "io.moduhome.app"
     compileSdk = 37
@@ -14,11 +17,15 @@ android {
         applicationId = "io.moduhome.app"
         minSdk = 28
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
+        buildConfigField("String", "ROUTING_BASE_URL", stringConstant(routingBaseUrl.orEmpty()))
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "ROUTING_BASE_URL", stringConstant(routingBaseUrl ?: "http://10.0.2.2:5001"))
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -36,7 +43,7 @@ android {
 
     buildFeatures {
         compose = true
-        buildConfig = false
+        buildConfig = true
     }
 
     lint {

@@ -39,6 +39,7 @@ internal fun VehiclePlacePicker(
     onRefresh: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    title: String = "${state.role.label} 장소 선택",
 ) {
     val maximumHeight = LocalWindowInfo.current.containerDpSize.height * 0.88f
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -48,7 +49,7 @@ internal fun VehiclePlacePicker(
             shape = RoundedCornerShape(28.dp),
         ) {
             Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                Text("${state.role.label} 장소 선택", fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.Bold)
+                Text(title, fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.Bold)
                 Text("차량 내비에 저장한 장소와 최근 목적지예요", fontSize = 28.sp, lineHeight = 38.sp)
                 if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
                 Column(

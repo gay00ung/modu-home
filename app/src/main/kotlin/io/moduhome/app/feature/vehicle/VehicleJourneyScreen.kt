@@ -39,6 +39,7 @@ internal fun VehicleJourneyScreen(
     editingAllowed: Boolean,
     restrictionMessage: String?,
     onOpenDetails: () -> Unit,
+    onOpenShared: () -> Unit,
     onVoice: () -> Unit,
     voiceAvailable: Boolean,
     modifier: Modifier = Modifier,
@@ -56,6 +57,12 @@ internal fun VehicleJourneyScreen(
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(vehicleTitle(stage), fontSize = 40.sp, lineHeight = 50.sp, fontWeight = FontWeight.Bold)
                         VehicleCaption(vehicleStage(stage))
+                    }
+                    if (stage == JourneyStage.INPUT || stage == JourneyStage.COMPLETE) {
+                        OutlinedButton(onClick = { if (canEdit) onOpenShared() }, enabled = canEdit,
+                            modifier = Modifier.heightIn(min = 80.dp), shape = RoundedCornerShape(18.dp)) {
+                            Text("함께 귀가", fontSize = 28.sp)
+                        }
                     }
                     if (stage == JourneyStage.INPUT) {
                         OutlinedButton(onClick = { if (canEdit) actions.onOpenProposals() }, enabled = canEdit,

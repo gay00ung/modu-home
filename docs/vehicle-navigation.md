@@ -32,14 +32,16 @@ adb -s emulator-5554 shell am start --user 10 -n io.moduhome.app/.MainActivity
 ## 장소 선택
 
 - 차량 내비에서 필요한 장소를 검색하거나 즐겨찾기에 저장
-- 모두 집으로의 차량 내비 영역에서 집·픽업·장보기 장소 선택
+- 모두 집으로의 차량 화면에서 집·픽업·장보기 장소 선택
 - 저장 장소와 최근 목적지는 NaviHelper 응답으로 불러오기
 - 선택한 장소의 이름·주소·좌표·장소 ID를 계획과 함께 기기 안에 저장
 - 장소명을 직접 바꾸면 기존 좌표 연결 해제
 - 픽업 장소를 다시 선택하면 수령 준비 여부도 다시 확인
 
 차량 내비의 출발지는 현재 차량 위치를 사용한다
-계획 비교에 표시하는 이동·보행·체류시간은 입력 화면에서 설정한 예상값을 사용한다
+도로 경로 서버가 반환한 구간 주행시간을 올림해 보행·체류시간과 합산한다
+보행·체류시간은 선택한 조건이며 실시간 교통은 포함하지 않는다
+경로 데이터가 5분 이상 지나면 내비 전송 전에 현재 위치에서 다시 비교한다
 
 ## 경로 전달과 확인
 
@@ -68,3 +70,17 @@ AVD에서 경유지 좌표를 0,0으로 반환하는 경우는 좌표 없음으�
 
 - [SDK 의존성 설정](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/importing-sdk)
 - [경유지를 포함한 경로 요청](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/route-with-waypoints)
+
+## 차량 입력과 음성
+
+- 현재 디스플레이의 CarUxRestrictions를 구독하고 제한 상태를 모르면 편집 잠금
+- 입력 제한이 생기면 장소 선택·제안 검토·음성 창을 닫고 계획은 보존
+- SpeechToText 3.3.1의 ON_DEVICE 모드와 한국어 사용
+- `-PenableVehicleVoice=true`로 빌드한 검증 환경에서 음성 버튼 표시
+- `pleos.car.permission.STT_SERVICE` 권한 선언
+- 말로 선택 버튼에서만 인식을 시작하고 알아들은 명령은 적용 버튼으로 확인
+- Activity가 일시 중지되면 음성 인식을 중단하고 늦은 결과는 버림
+- 중단 콜백이 오지 않으면 해제 후 실패 상태를 유지하며 같은 세션에서 재요청 금지
+- 일반 Activity를 주행 허용으로 선언하지 않으며 플랫폼 차단 정책 유지
+
+[차량 화면 기준](vehicle-ux.md)에 글자·버튼 크기와 제한 중 표시 원칙을 정리했다

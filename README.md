@@ -18,13 +18,16 @@
 
 ## 가는김에
 
-- 출발지·집과 픽업·장보기 장소 입력
-- 구간별 예상 주행시간, 왕복 도보와 매장 체류를 합산해 방문 순서 비교
-- 추가시간 한도·마감·픽업 준비 여부를 확인하고 계획 확정
-- 볼일 완료와 집 도착을 따로 확인하고 진행 중인 계획은 앱 재실행 시 복원
-- 넓은 차량 화면은 두 열, 작은 화면은 세로 배치
 - 차량 내비의 저장 장소·최근 목적지에서 집과 들를 곳 선택
-- 확정한 방문 순서를 NaviHelper로 전달하고 내비의 목적지·경유 순서·안내 상태 확인
+- 현재 차량 위치와 도로 경로로 픽업·장보기 순서를 비교하고 집 도착 계획 표시
+- 추가시간 한도·마감·수령 준비 여부와 보행·체류시간을 함께 계산
+- 큰 글자와 프리셋 버튼으로 체류시간·추가시간 선택
+- 선택한 순서를 NaviHelper로 전달하고 내비의 목적지·경유 순서·안내 상태 확인
+- 볼일 완료와 집 도착을 따로 기록하고 재실행 시 진행 상태 복원
+- QR·링크로 받은 볼일은 내용을 검토한 뒤 같은 종류의 기존 볼일에 반영
+
+경로 비교는 OpenStreetMap 도로망을 사용하며 실시간 교통은 포함하지 않는다
+개발 실행에는 [로컬 경로 서버](docs/routing.md)가 필요하다
 
 ## 개발 환경
 
@@ -39,6 +42,7 @@
 | Kotlin / Compose Compiler | 2.4.21 |
 | Compose BOM | 2026.09.00 |
 | NaviHelper SDK | 3.0.5 |
+| SpeechToText SDK | 3.3.1 |
 | 차량 실행 환경 | Pleos Connect Emulator 2.1.0 / API 34 |
 
 ## 실행
@@ -64,13 +68,20 @@ APK 경로: `app/build/outputs/apk/debug/app-debug.apk`
 app/src/main/kotlin/io/moduhome/app/
 ├── MainActivity.kt
 ├── ModuHomeApp.kt
-├── data/              # 이동 계획의 로컬 저장
 ├── core/
-│   ├── model/          # 귀가 상황과 볼일 종류
 │   ├── planning/       # 주행·보행·체류 시간 계산
-│   └── navigation/     # 목적지·경유지와 내비 요청 인터페이스
-├── feature/home/       # 입력·비교·확정·진행·완료 화면
-└── ui/theme/           # 색상과 명암 테마
+│   ├── shared/         # 동승자 하차와 볼일 순서 계산
+│   ├── navigation/     # 목적지와 내비 요청 계약
+│   ├── routing/        # 도로 경로 응답 검증
+│   ├── transfer/       # 볼일 제안과 승인 규칙
+│   ├── vehicle/        # 차량 화면 제한
+│   └── voice/          # 음성 입력 계약과 명령 해석
+├── data/               # SDK·도로 서버·QR·로컬 저장 어댑터
+├── feature/
+│   ├── home/           # 계획 상태와 상세 입력
+│   ├── vehicle/        # 차량 전용 화면과 큰 선택창
+│   └── transfer/       # 휴대폰 제안 화면
+└── ui/theme/            # 차량·휴대폰 글자 크기와 색상
 ```
 
 - `ModuHomeApp`에서 선택 상태를 관리하고 화면에 값과 콜백 전달
@@ -82,6 +93,8 @@ app/src/main/kotlin/io/moduhome/app/
 
 - [제품 설계](docs/product.md)
 - [차량 내비 설정과 실행](docs/vehicle-navigation.md)
+- [차량 화면 기준](docs/vehicle-ux.md)
+- [도로 경로 서버](docs/routing.md)
 - [작업 규칙](AGENTS.md)
 - [공모전 개발 가이드](https://appdevchallenge.auto-hmg.io/guide/development)
 - [NaviHelper SDK](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/intro)

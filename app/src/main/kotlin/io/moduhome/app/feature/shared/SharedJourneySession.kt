@@ -44,13 +44,14 @@ internal data class SharedJourneySession(
                     val home = draft.driverHome ?: return input()
                     val current = plan.currentWindow(home, progress.completedStopCount)
                     val previous = plan.currentWindow(home, (progress.completedStopCount - 1).coerceAtLeast(0))
-                    val observedPreviousSuffix = if (progress.completedStopCount > 0 && previous.waypoints.isNotEmpty()) {
-                        previous.remainingAfter(1)
-                    } else null
+                    val observedPreviousSuffixes = (1..minOf(2, progress.completedStopCount)).mapNotNull { count ->
+                        val priorWindow = plan.currentWindow(home, progress.completedStopCount - count)
+                        priorWindow.takeIf { count <= it.waypoints.size }?.remainingAfter(count)
+                    }
                     val pending = progress.pendingWindow
                     val confirmed = progress.confirmedWindow
                     if ((pending != null && pending != current) ||
-                        (confirmed != null && confirmed != current && confirmed != previous && confirmed != observedPreviousSuffix) ||
+                        (confirmed != null && confirmed != current && confirmed != previous && confirmed !in observedPreviousSuffixes) ||
                         (pending == null && confirmed != current)) return input()
                     if (progress.stage == JourneyStage.COMPLETE) {
                         if (progress.completedStopCount != plan.stops.size || (pending ?: confirmed) != current) input()

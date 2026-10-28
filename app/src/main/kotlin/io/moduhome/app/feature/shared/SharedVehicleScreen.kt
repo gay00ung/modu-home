@@ -384,9 +384,20 @@ private fun SharedActive(
         if (state.canConfirmPassedStop) {
             Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(24.dp)) {
                 Column(Modifier.fillMaxWidth().padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    SharedCaption("차량 내비는 다음 목적지를 안내하고 있어요. 이 정차를 실제로 마쳤다면 직접 확인해주세요")
-                    Text(next.place.point.name, fontSize = 32.sp, lineHeight = 44.sp, fontWeight = FontWeight.SemiBold)
-                    SharedAction(if (next is SharedScheduledStop.Dropoff) "이미 하차했나요?" else "이미 볼일을 마쳤나요?",
+                    SharedCaption(if (state.passedStopCount == 2) "차량 내비는 다음 목적지를 안내하고 있어요. 지난 두 정차를 모두 마쳤다면 직접 확인해주세요"
+                        else "차량 내비는 다음 목적지를 안내하고 있어요. 이 정차를 실제로 마쳤다면 직접 확인해주세요")
+                    if (state.passedStopCount == 2) {
+                        plan.stops.drop(state.completedStops).take(2).forEachIndexed { index, stop ->
+                            SharedStopLine("${index + 1}", stop.place.point.name, stopLabel(stop), null)
+                        }
+                    } else {
+                        Text(next.place.point.name, fontSize = 32.sp, lineHeight = 44.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    SharedAction(when {
+                        state.passedStopCount == 2 -> "지난 두 정차 확인"
+                        next is SharedScheduledStop.Dropoff -> "이미 하차했나요?"
+                        else -> "이미 볼일을 마쳤나요?"
+                    },
                         canEdit && vehicle.connection == NavigationConnection.Ready, actions.onConfirmPassedStop,
                         Modifier.fillMaxWidth())
                 }

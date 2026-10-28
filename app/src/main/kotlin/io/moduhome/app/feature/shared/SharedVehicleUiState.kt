@@ -15,11 +15,12 @@ internal data class SharedVehicleUiState(
     val showErrors: Boolean = false,
     val errors: List<String> = emptyList(),
     val navigationPending: Boolean = false,
-    val canConfirmPassedStop: Boolean = false,
+    val passedStopCount: Int = 0,
     val estimateLabel: String? = null,
     val directHomeMinutes: Int? = null,
 ) {
     val selectedPlan: SharedJourneyPlan? get() = plans.firstOrNull { it.id == selectedPlanId }
+    val canConfirmPassedStop: Boolean get() = passedStopCount in 1..2
 }
 
 internal data class SharedVehicleActions(

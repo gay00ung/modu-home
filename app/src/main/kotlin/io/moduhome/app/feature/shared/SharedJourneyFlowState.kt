@@ -3,6 +3,7 @@ package io.moduhome.app.feature.shared
 import io.moduhome.app.core.navigation.NavigationPlan
 import io.moduhome.app.core.navigation.NavigationSnapshot
 import io.moduhome.app.core.navigation.RouteChangeApproval
+import io.moduhome.app.core.shared.SharedJourneyPlan
 import io.moduhome.app.core.shared.SharedJourneyProgress
 import io.moduhome.app.core.vehicle.DrivingInteraction
 import io.moduhome.app.feature.home.PlacePickerUiState
@@ -53,6 +54,8 @@ internal data class SharedRouteConfirmation(
 /** A native route suffix is evidence of the current guidance, never proof of a physical stop. */
 internal data class SharedPassedStopConfirmation(
     val session: SharedJourneySession,
+    val plan: SharedJourneyPlan,
+    val count: Int,
     val snapshot: NavigationSnapshot,
     val routeRevision: Long,
     val interaction: DrivingInteraction,

@@ -15,6 +15,7 @@ import io.moduhome.app.core.routing.SnappedRoutePoint
 import io.moduhome.app.core.shared.AccessCheck
 import io.moduhome.app.core.shared.DropoffVerification
 import io.moduhome.app.core.shared.SharedJourneyProgress
+import io.moduhome.app.core.shared.SharedScheduledStop
 import io.moduhome.app.core.shared.currentWindow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -185,6 +186,66 @@ class SharedJourneySessionTest {
         val progressed = starting.confirmPassedStop(plan, snapshot(actualSuffix), now + 10)
         assertEquals(JourneyStage.INPUT,
             SharedJourneySession.restore(draft, progressed.copy(pendingWindow = null), routing, now + 1000).progress.stage)
+    }
+
+    @Test fun twoExplicitlyConfirmedPassedStopsSurviveRestartWithOnlyTheErrandPending() {
+        assertTrue(plan.stops.last() is SharedScheduledStop.Errand)
+        val progressed = starting.confirmPassedStops(plan, snapshot(NavigationPlan(home)), 2, now + 10)
+        assertEquals(NavigationPlan(home), progressed.confirmedWindow)
+        assertEquals(plan.currentWindow(home, 2), progressed.pendingWindow)
+        val restored = SharedJourneySession.restore(draft, progressed, routing, now + 2 * 24 * 60 * 60 * 1000L)
+        assertEquals(JourneyStage.ACTIVE, restored.progress.stage)
+        assertEquals(2, restored.progress.completedStopCount)
+        assertEquals(listOf(now + 10, now + 10), restored.progress.completedAtMillis)
+        assertEquals(plan.currentWindow(home, 2), restored.progress.pendingWindow)
+        assertNull(restored.progress.confirmedWindow)
+        assertEquals(routing, restored.routing)
+    }
+
+    @Test fun aRestoredTwoStopCompletionCanConnectAndCompleteTheRemainingErrand() {
+        val passed = starting.confirmPassedStops(plan, snapshot(NavigationPlan(home)), 2, now + 10)
+        val restored = SharedJourneySession.restore(draft, passed, routing, now + 1000)
+        val errandGuiding = restored.progress.observeNavigation(snapshot(requireNotNull(restored.progress.pendingWindow)))
+        assertEquals(2, errandGuiding.completedStopCount)
+        val allDone = errandGuiding.confirmStop(plan, now + 1100)
+        assertEquals(plan.stops.size, allDone.completedStopCount)
+        val finished = allDone.finish(plan, now + 1200)
+        val completed = SharedJourneySession.restore(draft, finished, routing, now + 1300)
+        assertEquals(JourneyStage.COMPLETE, completed.progress.stage)
+        assertEquals(listOf(now + 10, now + 10, now + 1100), completed.progress.completedAtMillis)
+        assertEquals(NavigationPlan(home), completed.progress.pendingWindow)
+        assertFalse(completed.progress.navigationPending)
+    }
+
+    @Test fun aHomeOnlyObservationCannotJustifyFewerThanTwoCompletedStopsOfTheInitialWindow() {
+        val homeOnly = NavigationPlan(home)
+        val oneCompleted = active.confirmStop(plan, now + 10)
+        for (wrong in listOf(starting.copy(confirmedWindow = homeOnly), oneCompleted.copy(confirmedWindow = homeOnly))) {
+            assertEquals(JourneyStage.INPUT, SharedJourneySession.restore(draft, wrong, routing, now + 1000).progress.stage)
+        }
+    }
+
+    @Test fun twoCompletedStopsCannotRetainAnUnconsumedOrWronglyConsumedInitialWindow() {
+        val passed = starting.confirmPassedStops(plan, snapshot(NavigationPlan(home)), 2, now + 10)
+        val initialWindow = plan.currentWindow(home, 0)
+        for (wrongWindow in listOf(initialWindow, initialWindow.remainingAfter(1))) {
+            val wrong = passed.copy(confirmedWindow = wrongWindow)
+            assertEquals(JourneyStage.INPUT, SharedJourneySession.restore(draft, wrong, routing, now + 1000).progress.stage)
+        }
+    }
+
+    @Test fun aTwoStopCompletionCannotRestoreAForeignHomeAsItsObservedSuffix() {
+        val passed = starting.confirmPassedStops(plan, snapshot(NavigationPlan(home)), 2, now + 10)
+        val foreign = passed.copy(confirmedWindow = NavigationPlan(home.copy(placeId = "foreign-home")))
+        assertEquals(JourneyStage.INPUT, SharedJourneySession.restore(draft, foreign, routing, now + 1000).progress.stage)
+    }
+
+    @Test fun twoPassedStopsStillNeedTheRemainingErrandAsThePendingWindow() {
+        val passed = starting.confirmPassedStops(plan, snapshot(NavigationPlan(home)), 2, now + 10)
+        for (pending in listOf(null, NavigationPlan(home))) {
+            val wrong = passed.copy(pendingWindow = pending)
+            assertEquals(JourneyStage.INPUT, SharedJourneySession.restore(draft, wrong, routing, now + 1000).progress.stage)
+        }
     }
 
     @Test fun completedHistorySurvivesExpiredRouteTimesWithoutCreatingPendingNavigation() {

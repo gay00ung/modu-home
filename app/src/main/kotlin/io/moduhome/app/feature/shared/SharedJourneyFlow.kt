@@ -355,10 +355,13 @@ internal fun SharedJourneyFlow(
         val current = runtime.latest
         if (!idle() || gateway.connection.value != NavigationConnection.Ready) return
         val revision = gateway.routeRevision.value
-        val observed = current.passedStopObservation(revision) ?: return
+        val observed = current.passedStopsObservation(revision) ?: return
+        val plan = current.session.selectedPlan() ?: return
         publish(current.copy(passedStopConfirmation = SharedPassedStopConfirmation(
             session = current.session,
-            snapshot = observed.copy(waypoints = observed.waypoints.toList()),
+            plan = plan,
+            count = observed.count,
+            snapshot = observed.snapshot.copy(waypoints = observed.snapshot.waypoints.toList()),
             routeRevision = revision,
             interaction = currentInteraction,
         )))
@@ -367,8 +370,11 @@ internal fun SharedJourneyFlow(
     fun confirmPassedStop(confirmation: SharedPassedStopConfirmation) {
         val current = runtime.latest
         if (!idle(allowPassedStopDialog = true) || current.passedStopConfirmation != confirmation ||
-            current.session != confirmation.session || currentInteraction != confirmation.interaction ||
+            current.session != confirmation.session || current.session.selectedPlan() != confirmation.plan ||
+            currentInteraction != confirmation.interaction ||
             gateway.routeRevision.value != confirmation.routeRevision || gateway.connection.value != NavigationConnection.Ready) return
+        val observed = current.passedStopsObservation(confirmation.routeRevision) ?: return
+        if (observed.count != confirmation.count || observed.snapshot != confirmation.snapshot) return
         launchOperation(current.copy(passedStopConfirmation = null, reading = true,
             message = "현재 내비 경유 순서를 다시 확인하고 있어요", error = false)) { token ->
             val revisionBefore = gateway.routeRevision.value
@@ -381,7 +387,7 @@ internal fun SharedJourneyFlow(
                     message = "확인 중 차량 내비 상태가 바뀌었어요. 현재 안내를 다시 확인해주세요", error = true))
                 return@launchOperation
             }
-            val plan = confirmation.session.selectedPlan() ?: return@launchOperation
+            val plan = confirmation.session.selectedPlan()?.takeIf { it == confirmation.plan } ?: return@launchOperation
             val prior = confirmation.session.progress
             val now = System.currentTimeMillis()
             val lastRecordedAt = prior.completedAtMillis.lastOrNull() ?: prior.startedAtMillis ?: 0L
@@ -389,7 +395,7 @@ internal fun SharedJourneyFlow(
                 showError("기기 시각이 진행 기록보다 이전이에요. 시간을 확인한 뒤 다시 눌러주세요")
                 return@launchOperation
             }
-            val progress = prior.confirmPassedStop(plan, snapshot, now)
+            val progress = prior.confirmPassedStops(plan, snapshot, confirmation.count, now)
             if (progress == prior) {
                 showError("완료할 정차와 현재 내비 안내를 다시 확인해주세요")
                 return@launchOperation
@@ -398,7 +404,8 @@ internal fun SharedJourneyFlow(
             // Keep the explicit physical completion even if reflecting the next window fails.
             if (!publish(runtime.latest.copy(session = session, snapshot = snapshot,
                     observedRouteRevision = revisionAfter,
-                    message = "확인한 정차 완료를 기록했어요. 남은 순서를 확인해요", error = false))) return@launchOperation
+                    message = if (confirmation.count == 2) "확인한 두 정차의 완료를 기록했어요. 남은 순서를 확인해요"
+                        else "확인한 정차 완료를 기록했어요. 남은 순서를 확인해요", error = false))) return@launchOperation
             prepareRemainingWindow(token, session)
         }
     }
@@ -558,7 +565,8 @@ internal fun SharedJourneyFlow(
         val picker = runtime.latest.picker
         if (picker != null && (runtime.latest.session.progress.stage != JourneyStage.INPUT || picker.input != runtime.latest.session.draft)) dismissPicker()
         val passed = runtime.latest.passedStopConfirmation
-        if (passed != null && (passed.session != runtime.latest.session || passed.interaction != currentInteraction ||
+        if (passed != null && (passed.session != runtime.latest.session || passed.plan != runtime.latest.session.selectedPlan() ||
+                passed.interaction != currentInteraction ||
                 passed.routeRevision != gateway.routeRevision.value || !currentInteraction.editingAllowed)) {
             publish(runtime.latest.copy(passedStopConfirmation = null,
                 message = "안내나 입력 제한 상태가 바뀌었어요. 정차 완료를 다시 확인해주세요", error = true))
@@ -621,7 +629,7 @@ internal fun SharedJourneyFlow(
         planPage = state.planPage, showErrors = state.errors.isNotEmpty(), errors = state.errors,
         navigationPending = state.session.progress.navigationPending ||
             (state.session.progress.stage == JourneyStage.ACTIVE && state.observedRouteRevision != routeRevision),
-        canConfirmPassedStop = connection == NavigationConnection.Ready && state.passedStopObservation(routeRevision) != null,
+        passedStopCount = if (connection == NavigationConnection.Ready) state.passedStopsObservation(routeRevision)?.count ?: 0 else 0,
         estimateLabel = state.session.routing?.source, directHomeMinutes = state.session.routing?.directHomeMinutes,
     )
     SharedVehicleScreen(ui, actions, VehicleNavigationUiState(
@@ -648,13 +656,21 @@ internal fun SharedJourneyFlow(
         )
     }
     state.passedStopConfirmation?.takeIf { interaction.editingAllowed && it.interaction == interaction }?.let { confirmation ->
-        val stop = confirmation.session.selectedPlan()?.stops?.getOrNull(confirmation.session.progress.completedStopCount)
-        if (stop != null) {
-            val isDropoff = stop is SharedScheduledStop.Dropoff
+        val stops = confirmation.plan.stops.drop(confirmation.session.progress.completedStopCount).take(confirmation.count)
+        if (confirmation.count in 1..2 && stops.size == confirmation.count) {
+            val isDropoff = stops.singleOrNull() is SharedScheduledStop.Dropoff
             VehicleConfirmationDialog(
-                title = if (isDropoff) "이미 하차했나요?" else "이미 볼일을 마쳤나요?",
-                description = passedStopDescription(confirmation, stop),
-                confirmLabel = if (isDropoff) "하차 완료 확인" else "볼일 완료 확인",
+                title = when {
+                    confirmation.count == 2 -> "지난 두 정차를 마쳤나요?"
+                    isDropoff -> "이미 하차했나요?"
+                    else -> "이미 볼일을 마쳤나요?"
+                },
+                description = passedStopsDescription(confirmation, stops),
+                confirmLabel = when {
+                    confirmation.count == 2 -> "두 정차 완료 확인"
+                    isDropoff -> "하차 완료 확인"
+                    else -> "볼일 완료 확인"
+                },
                 onConfirm = { confirmPassedStop(confirmation) },
                 onDismiss = { publish(runtime.latest.copy(passedStopConfirmation = null)) },
             )
@@ -711,14 +727,20 @@ private fun SharedJourneySession.plans(): List<SharedJourneyPlan> = routing?.tak
 
 private fun SharedJourneySession.selectedPlan(): SharedJourneyPlan? = plans().firstOrNull { it.id == progress.selectedPlanId }
 
-private fun SharedJourneyFlowState.passedStopObservation(currentRevision: Long): NavigationSnapshot? {
+private data class SharedPassedStopsObservation(val count: Int, val snapshot: NavigationSnapshot)
+
+private fun SharedJourneyFlowState.passedStopsObservation(currentRevision: Long): SharedPassedStopsObservation? {
     if (session.progress.stage != JourneyStage.ACTIVE || observedRouteRevision != currentRevision) return null
     val plan = session.selectedPlan()?.takeIf { it.isValid } ?: return null
     if (plan.stops.getOrNull(session.progress.completedStopCount) == null) return null
     val home = session.draft.driverHome ?: return null
     val pending = session.progress.pendingWindow?.takeIf { it.waypoints.isNotEmpty() } ?: return null
     if (pending != plan.currentWindow(home, session.progress.completedStopCount)) return null
-    return snapshot?.takeIf { it.confirms(pending.remainingAfter(1)) }
+    val observed = snapshot ?: return null
+    val count = (1..minOf(2, pending.waypoints.size)).singleOrNull { consumed ->
+        observed.confirms(pending.remainingAfter(consumed))
+    } ?: return null
+    return SharedPassedStopsObservation(count, observed)
 }
 
 private fun NavigationSnapshot?.continues(plan: NavigationPlan): Boolean = this?.confirms(plan) == true ||
@@ -747,14 +769,17 @@ private fun routeChangeDescription(confirmation: SharedRouteConfirmation): Strin
     append("이 순서로 안내를 바꿀까요? 이미 완료한 정차 기록은 그대로 남겨요")
 }
 
-private fun passedStopDescription(confirmation: SharedPassedStopConfirmation, stop: SharedScheduledStop): String = buildString {
-    append("완료할 정차 · ${stop.place.point.name}\n\n")
-    when (stop) {
-        is SharedScheduledStop.Dropoff -> append("${stop.passenger.name}님이 이곳에서 실제로 내렸나요?\n")
-        is SharedScheduledStop.Errand -> append("이곳에서 ${if (stop.errand.visit.kind == VisitKind.PICKUP) "픽업" else "장보기"}를 실제로 마쳤나요?\n")
+private fun passedStopsDescription(confirmation: SharedPassedStopConfirmation, stops: List<SharedScheduledStop>): String = buildString {
+    stops.forEachIndexed { index, stop ->
+        append("${if (stops.size == 1) "완료할 정차" else "${index + 1}. 완료할 정차"} · ${stop.place.point.name}\n")
+        when (stop) {
+            is SharedScheduledStop.Dropoff -> append("집 앞 하차 · ${stop.passenger.name}님이 이곳에서 실제로 내렸나요?\n\n")
+            is SharedScheduledStop.Errand -> append("${if (stop.errand.visit.kind == VisitKind.PICKUP) "픽업" else "장보기"} · 이곳에서 실제로 볼일을 마쳤나요?\n\n")
+        }
     }
     val observed = confirmation.snapshot
-    if (observed.waypoints.isNotEmpty()) append("\n현재 내비 경유 · ${observed.waypoints.joinToString(" → ") { it.name }}\n")
+    append("현재 내비 경유 · ${observed.waypoints.joinToString(" → ") { it.name }.ifBlank { "중간 정차 없음" }}\n")
     append("마지막 목적지 · ${observed.destination?.name ?: confirmation.session.draft.driverHome?.name.orEmpty()}\n\n")
-    append("확인하면 이 정차의 완료 기록을 보관하고 나머지 순서의 안내를 확인해요")
+    append(if (stops.size == 2) "두 정차를 모두 마쳤을 때 확인해주세요. " else "이 정차를 실제로 마쳤을 때 확인해주세요. ")
+    append("확인한 완료 기록을 보관하고 나머지 순서의 안내를 확인해요")
 }

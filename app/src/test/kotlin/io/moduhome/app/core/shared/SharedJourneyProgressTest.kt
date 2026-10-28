@@ -297,6 +297,123 @@ class SharedJourneyProgressTest {
         assertEquals(2, secondDone.completedStopCount)
     }
 
+    @Test fun twoPassedStopsAreRecordedOnlyAfterExplicitConfirmationAndKeepTheThirdPending() {
+        val initial = start()
+        val observedHomeOnly = snapshot(NavigationPlan(home))
+        assertSame(initial, initial.observeNavigation(observedHomeOnly))
+        assertSame(initial, initial.confirmPassedStop(plan, observedHomeOnly, 2_000))
+        val recovered = initial.confirmPassedStops(plan, observedHomeOnly, 2, 2_000)
+        assertEquals(2, recovered.completedStopCount)
+        assertEquals(listOf(2_000L, 2_000L), recovered.completedAtMillis)
+        assertEquals(NavigationPlan(home), recovered.confirmedWindow)
+        assertEquals(NavigationPlan(home, listOf(stops[2])), recovered.pendingWindow)
+        assertTrue(recovered.navigationPending)
+        assertSame(recovered, recovered.finish(plan, 3_000))
+        assertSame(recovered, recovered.confirmPassedStops(plan, observedHomeOnly, 2, 2_001))
+        assertEquals(stops, plan.stops.map { it.place.point })
+    }
+
+    @Test fun passedStopCountMustMatchExactlyTheConsumedPrefixInTheReadback() {
+        val initial = start()
+        val oneConsumed = snapshot(NavigationPlan(home, listOf(stops[1])))
+        val twoConsumed = snapshot(NavigationPlan(home))
+        assertSame(initial, initial.confirmPassedStops(plan, oneConsumed, 2, 2_000))
+        assertSame(initial, initial.confirmPassedStops(plan, twoConsumed, 1, 2_000))
+        assertEquals(initial.confirmPassedStop(plan, oneConsumed, 2_000),
+            initial.confirmPassedStops(plan, oneConsumed, 1, 2_000))
+    }
+
+    @Test fun passedStopCountsOutsideTheTwoWaypointWindowAreRejectedWithoutChangingHistory() {
+        val initial = start()
+        val observedHomeOnly = snapshot(NavigationPlan(home))
+        for (count in listOf(-1, 0, 3, Int.MAX_VALUE)) {
+            assertSame(initial, initial.confirmPassedStops(plan, observedHomeOnly, count, 2_000))
+        }
+        val thirdPending = initial.confirmPassedStops(plan, observedHomeOnly, 2, 2_000)
+        assertSame(thirdPending, thirdPending.confirmPassedStops(plan, observedHomeOnly, 2, 2_001))
+        assertEquals(2, thirdPending.completedStopCount)
+    }
+
+    @Test fun twoPassedStopsRejectForeignEndedMissingAndUnconsumedVehicleRoutes() {
+        val initial = start()
+        val homeRoute = NavigationPlan(home)
+        for (readback in listOf(
+            snapshot(homeRoute.copy(destination = stops[2])),
+            snapshot(homeRoute).copy(destination = null),
+            snapshot(homeRoute).copy(guidanceActive = false),
+            snapshot(homeRoute.copy(waypoints = listOf(stops[2]))),
+            snapshot(initial.pendingWindow!!),
+        )) {
+            assertSame(initial, initial.confirmPassedStops(plan, readback, 2, 2_000))
+        }
+        assertTrue(initial.completedAtMillis.isEmpty())
+    }
+
+    @Test fun twoPassedStopsRequireTheSameValidSelectedPlanAndAPendingWindow() {
+        val initial = start()
+        val readback = snapshot(NavigationPlan(home))
+        for (other in listOf(plan.copy(id = "other"), plan.copy(stops = plan.stops.reversed()),
+            plan.copy(issues = listOf(SharedPlanIssue.ErrandNotReady)))) {
+            assertSame(initial, initial.confirmPassedStops(other, readback, 2, 2_000))
+        }
+        val confirmed = confirm(initial)
+        assertSame(confirmed, confirmed.confirmPassedStops(plan, readback, 2, 2_000))
+        val atHome = allStopsRecorded()
+        assertSame(atHome, atHome.confirmPassedStops(plan, readback, 1, 4_000))
+        val finished = atHome.finish(plan, 4_000)
+        assertSame(finished, finished.confirmPassedStops(plan, readback, 2, 5_000))
+    }
+
+    @Test fun twoPassedStopsKeepMonotonicTimesIncludingEqualTimesForOneApproval() {
+        val initial = start()
+        val homeReadback = snapshot(NavigationPlan(home))
+        assertThrows(IllegalArgumentException::class.java) {
+            initial.confirmPassedStops(plan, homeReadback, 2, 999)
+        }
+        val firstDone = initial.confirmPassedStop(plan, snapshot(NavigationPlan(home, listOf(stops[1]))), 2_000)
+        assertThrows(IllegalArgumentException::class.java) {
+            firstDone.confirmPassedStops(plan, homeReadback, 2, 1_999)
+        }
+        val allDone = firstDone.confirmPassedStops(plan, homeReadback, 2, 2_000)
+        assertEquals(3, allDone.completedStopCount)
+        assertEquals(listOf(2_000L, 2_000L, 2_000L), allDone.completedAtMillis)
+        assertEquals(NavigationPlan(home), allDone.confirmedWindow)
+        assertEquals(NavigationPlan(home), allDone.pendingWindow)
+    }
+
+    @Test fun twoConsumedNativeWaypointsCanBeConfirmedAfterRestartWithoutInventingTheOldWindow() {
+        val restarted = confirm(start()).afterRestart(plan, home)
+        assertEquals(null, restarted.confirmedWindow)
+        val recovered = restarted.confirmPassedStops(plan, snapshot(NavigationPlan(home)), 2, 2_000)
+        assertEquals(2, recovered.completedStopCount)
+        assertEquals(NavigationPlan(home), recovered.confirmedWindow)
+        assertEquals(plan.currentWindow(home, 2), recovered.pendingWindow)
+    }
+
+    @Test fun afterTwoPassedStopsTheRemainingErrandStillNeedsItsOwnReadbackAndCompletion() {
+        val recovered = start().confirmPassedStops(plan, snapshot(NavigationPlan(home)), 2, 2_000)
+        assertSame(recovered, recovered.confirmStop(plan, 3_000))
+        val errandGuiding = confirm(recovered)
+        assertEquals(2, errandGuiding.completedStopCount)
+        val errandDone = errandGuiding.confirmStop(plan, 3_000)
+        assertEquals(3, errandDone.completedStopCount)
+        assertEquals(listOf(2_000L, 2_000L, 3_000L), errandDone.completedAtMillis)
+        assertEquals(NavigationPlan(home), errandDone.pendingWindow)
+        assertEquals(JourneyStage.COMPLETE, errandDone.finish(plan, 4_000).stage)
+    }
+
+    @Test fun consumingBothStopsOfATwoStopPlanKeepsHomeForExplicitArrival() {
+        val twoStopPlan = plan.copy(id = "a>b", stops = plan.stops.take(2))
+        val initial = SharedJourneyProgress().compare(listOf(twoStopPlan)).review(listOf(twoStopPlan))
+            .start(twoStopPlan, home, 1_000)
+        val recovered = initial.confirmPassedStops(twoStopPlan, snapshot(NavigationPlan(home)), 2, 2_000)
+        assertEquals(2, recovered.completedStopCount)
+        assertEquals(NavigationPlan(home), recovered.confirmedWindow)
+        assertEquals(NavigationPlan(home), recovered.pendingWindow)
+        assertSame(recovered, recovered.confirmPassedStops(twoStopPlan, snapshot(NavigationPlan(home)), 1, 2_001))
+        assertEquals(JourneyStage.COMPLETE, recovered.finish(twoStopPlan, 3_000).stage)
+    }
+
     private fun start(): SharedJourneyProgress = SharedJourneyProgress().compare(listOf(plan))
         .select(plan.id, listOf(plan)).review(listOf(plan)).start(plan, home, 1_000)
 

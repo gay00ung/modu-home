@@ -78,16 +78,31 @@ internal data class SharedJourneyProgress(
         plan: SharedJourneyPlan,
         snapshot: NavigationSnapshot,
         now: Long,
+    ): SharedJourneyProgress = confirmPassedStops(plan, snapshot, count = 1, now = now)
+
+    /**
+     * Records only the pending prefix explicitly confirmed completed by the user.
+     * The caller must bind that approval to this progress, count and a stable vehicle readback.
+     * An active route missing exactly that prefix is evidence of the remaining guidance,
+     * never evidence that the physical stops were completed without the user's approval.
+     */
+    fun confirmPassedStops(
+        plan: SharedJourneyPlan,
+        snapshot: NavigationSnapshot,
+        count: Int,
+        now: Long,
     ): SharedJourneyProgress {
+        if (count !in 1..2) return this
         if (stage != JourneyStage.ACTIVE || !matches(plan) || completedStopCount >= plan.stops.size) return this
-        val pending = pendingWindow?.takeIf { it.waypoints.isNotEmpty() } ?: return this
-        val observedRemainder = pending.remainingAfter(1)
+        val pending = pendingWindow ?: return this
+        if (count > pending.waypoints.size || count > plan.stops.size - completedStopCount) return this
+        val observedRemainder = pending.remainingAfter(count)
         if (!snapshot.confirms(observedRemainder)) return this
         require(now >= (completedAtMillis.lastOrNull() ?: startedAtMillis ?: 0))
-        val completed = completedStopCount + 1
+        val completed = completedStopCount + count
         return copy(
             completedStopCount = completed,
-            completedAtMillis = completedAtMillis + now,
+            completedAtMillis = completedAtMillis + List(count) { now },
             confirmedWindow = observedRemainder,
             pendingWindow = plan.currentWindow(pending.destination, completed),
         )

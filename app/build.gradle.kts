@@ -7,6 +7,7 @@ plugins {
 }
 
 val routingBaseUrl = providers.gradleProperty("routingBaseUrl").orNull
+val vehicleVoiceEnabled = providers.gradleProperty("enableVehicleVoice").map(String::toBooleanStrict).getOrElse(false)
 fun stringConstant(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
@@ -20,6 +21,7 @@ android {
         targetSdk = 36
         versionCode = 3
         versionName = "0.3.0"
+        buildConfigField("boolean", "ENABLE_VEHICLE_VOICE", vehicleVoiceEnabled.toString())
         buildConfigField("String", "ROUTING_BASE_URL", stringConstant(routingBaseUrl.orEmpty()))
     }
 

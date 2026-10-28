@@ -36,6 +36,7 @@ import io.moduhome.app.core.navigation.NavigationSnapshot
 import io.moduhome.app.core.navigation.ObservedNavigationPlace
 import io.moduhome.app.core.navigation.PlaceCatalogResult
 import io.moduhome.app.core.navigation.RouteRequestResult
+import io.moduhome.app.core.navigation.RouteChangeApproval
 import io.moduhome.app.core.navigation.TripEstimate
 import io.moduhome.app.core.navigation.TripEstimateResult
 import io.moduhome.app.core.navigation.VehicleLocation
@@ -56,7 +57,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** SDK calls and listener registration are confined to the main dispatcher. */
-internal class PleosNavigationGateway(context: Context) : NavigationGateway {
+internal class PleosNavigationGateway(
+    context: Context,
+    private val canChangeRoute: () -> Boolean,
+) : NavigationGateway {
     private val context = context.applicationContext
     private val supported = context.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)
     private val mutableConnection = MutableStateFlow<NavigationConnection>(
@@ -110,14 +114,25 @@ internal class PleosNavigationGateway(context: Context) : NavigationGateway {
         sdk.release()
     }
 
-    override suspend fun requestRoute(plan: NavigationPlan): RouteRequestResult = withContext(Dispatchers.Main.immediate) {
+    override suspend fun requestRoute(plan: NavigationPlan, approval: RouteChangeApproval?): RouteRequestResult = withContext(Dispatchers.Main.immediate) {
+        if (!canChangeRoute()) return@withContext RouteRequestResult.Rejected("정차 후 안내를 변경해주세요")
         val sdk = readyHelper() ?: return@withContext RouteRequestResult.Unavailable
         if (!operation.tryLock()) return@withContext RouteRequestResult.Rejected("내비 응답을 확인하고 있어요. 잠시 뒤 다시 시도해주세요")
         var lastSnapshot: NavigationSnapshot? = null
         try {
+            val revisionBefore = routeRevision.value
             val existing = readSnapshot(sdk)
+            lastSnapshot = existing
+            if (approval != null && (revisionBefore != routeRevision.value ||
+                    !approval.matches(existing, routeRevision.value))) {
+                return@withContext RouteRequestResult.Rejected("확인한 뒤 차량 내비 안내가 바뀌었어요. 현재 안내를 다시 확인해주세요", existing)
+            }
             if (existing?.confirms(plan) == true) {
                 val confirmed = readSnapshot(sdk)
+                lastSnapshot = confirmed
+                if (approval != null && !approval.matches(confirmed, routeRevision.value)) {
+                    return@withContext RouteRequestResult.Rejected("확인한 뒤 차량 내비 안내가 바뀌었어요. 현재 안내를 다시 확인해주세요", confirmed)
+                }
                 if (confirmed?.confirms(plan) == true) return@withContext RouteRequestResult.Confirmed(confirmed)
             }
             val failure = CompletableDeferred<NaviErrorCode>()
@@ -126,6 +141,18 @@ internal class PleosNavigationGateway(context: Context) : NavigationGateway {
             }
             register(sdk, listener)
             try {
+                // Restrictions can change while the current route is being read asynchronously.
+                if (!canChangeRoute()) {
+                    return@withContext RouteRequestResult.Rejected("정차 후 안내를 변경해주세요", lastSnapshot)
+                }
+                if (approval != null && (readyHelper() !== sdk ||
+                        !approval.matches(lastSnapshot, routeRevision.value))) {
+                    return@withContext RouteRequestResult.Rejected(
+                        "확인한 뒤 차량 내비 안내가 바뀌었어요. 현재 안내를 다시 확인해주세요", lastSnapshot,
+                    )
+                }
+                // NaviHelper has no atomic compare-and-set route API. This checks all locally
+                // observed changes up to the call, but cannot prevent an unreported OEM-side race.
                 sdk.requestRouteWithWaypoints(plan.toSdkRequest())
                 withTimeoutOrNull(35_000) {
                     var matchingReads = 0

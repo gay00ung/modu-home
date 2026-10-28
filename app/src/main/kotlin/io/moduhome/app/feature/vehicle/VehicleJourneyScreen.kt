@@ -94,7 +94,7 @@ internal fun VehicleJourneyScreen(
                     JourneyStage.INPUT -> VehicleInput(state, actions, vehicle, canEdit)
                     JourneyStage.COMPARE -> VehicleComparison(state, actions, canEdit)
                     JourneyStage.REVIEW -> VehicleReview(state)
-                    JourneyStage.ACTIVE -> VehicleActive(state, vehicle)
+                    JourneyStage.ACTIVE -> VehicleActive(state, vehicle, actions, canEdit)
                     JourneyStage.COMPLETE -> VehicleComplete(state)
                 }
                 VehicleNavigationStatus(vehicle, actions, canEdit)
@@ -292,7 +292,7 @@ private fun VehicleReview(state: HomeUiState) {
 }
 
 @Composable
-private fun VehicleActive(state: HomeUiState, vehicle: VehicleNavigationUiState) {
+private fun VehicleActive(state: HomeUiState, vehicle: VehicleNavigationUiState, actions: JourneyActions, canEdit: Boolean) {
     val plan = state.selectedPlan
     if (plan == null) {
         VehicleError("저장된 계획을 확인하지 못했어요. 차량 내비의 안내 상태를 확인해주세요")
@@ -330,6 +330,13 @@ private fun VehicleActive(state: HomeUiState, vehicle: VehicleNavigationUiState)
             else -> if (vehicle.guidanceRefreshing) "차량 내비의 남은 시간을 확인하고 있어요"
                 else "차량 내비에서 현재 안내 시간을 확인해주세요"
         })
+        if (vehicle.guidanceResult is GuidanceEstimateResult.Failed) {
+            OutlinedButton(onClick = actions.onResumeNavigation,
+                enabled = canEdit && vehicle.connection == NavigationConnection.Ready,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp)) {
+                Text("남은 순서로 다시 안내", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
     Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.fillMaxWidth().padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {

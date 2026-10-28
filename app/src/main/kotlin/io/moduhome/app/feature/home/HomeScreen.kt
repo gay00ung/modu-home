@@ -38,6 +38,7 @@ internal data class JourneyActions(
     val onChooseNavigationPlace: (NavigationPlaceRole) -> Unit = {},
     val onReadNavigation: () -> Unit = {},
     val onReconnectNavigation: () -> Unit = {},
+    val onResumeNavigation: () -> Unit = {},
     val onOpenProposals: () -> Unit = {},
     val onEstimateTrip: (NavigationPlaceRole) -> Unit = {},
 )

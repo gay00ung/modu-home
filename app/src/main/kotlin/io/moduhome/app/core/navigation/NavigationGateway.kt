@@ -11,7 +11,7 @@ internal interface NavigationGateway {
     val routeRevision: StateFlow<Long>
     fun connect()
     fun close()
-    suspend fun requestRoute(plan: NavigationPlan): RouteRequestResult
+    suspend fun requestRoute(plan: NavigationPlan, approval: RouteChangeApproval? = null): RouteRequestResult
     suspend fun currentRoute(): NavigationSnapshot?
     suspend fun currentGuidance(plan: NavigationPlan): GuidanceEstimateResult
     suspend fun loadPlaces(): PlaceCatalogResult

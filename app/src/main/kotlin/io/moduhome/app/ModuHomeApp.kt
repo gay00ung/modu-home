@@ -27,6 +27,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -52,6 +53,8 @@ import io.moduhome.app.core.transfer.ErrandProposal
 import io.moduhome.app.core.transfer.ProposalReviewStatus
 import io.moduhome.app.core.transfer.ProposalApprovalResult
 import io.moduhome.app.core.transfer.ProposalReceiveResult
+import io.moduhome.app.core.transfer.RelayDeliveryStatus
+import io.moduhome.app.core.transfer.RelayMessage
 import io.moduhome.app.core.planning.JourneyProgress
 import io.moduhome.app.core.planning.JourneyStage
 import io.moduhome.app.data.JourneyPreferences
@@ -73,9 +76,7 @@ import io.moduhome.app.feature.vehicle.VehicleConfirmationDialog
 import io.moduhome.app.feature.vehicle.VehicleVoiceDialog
 import io.moduhome.app.feature.vehicle.RestrictedJourneyScreen
 import io.moduhome.app.data.transfer.*
-import io.moduhome.app.feature.transfer.ProposalActions
-import io.moduhome.app.feature.transfer.ProposalContent
-import io.moduhome.app.feature.transfer.ProposalUiState
+import io.moduhome.app.feature.transfer.*
 import io.moduhome.app.feature.home.ProposalDraftResult
 import io.moduhome.app.feature.home.withProposal
 import io.moduhome.app.feature.home.proposal
@@ -94,12 +95,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.combine
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 @Composable
-internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: () -> Unit = {}) {
+internal fun ModuHomeApp(
+    incomingProposal: String? = null,
+    onProposalConsumed: () -> Unit = {},
+    incomingJoin: String? = null,
+    onJoinConsumed: () -> Unit = {},
+) {
     val uiContext = LocalContext.current
     val context = uiContext.applicationContext
     val isVehicle = remember(context) { context.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE) }
@@ -202,9 +210,11 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
     var sharedProposalInteraction by remember { mutableStateOf<DrivingInteraction?>(null) }
     var sharedProposalMessage by remember { mutableStateOf<String?>(null) }
     var sharedProposalNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var relayState by remember { mutableStateOf(ProposalRelayState()) }
     fun canReviewSharedProposal(): Boolean = sharedMode && restrictions.state.value.editingAllowed &&
         lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
-        sharedState.session.progress.stage == JourneyStage.INPUT && !sharedState.busy && !sharedState.dialogOpen
+        sharedState.session.progress.stage == JourneyStage.INPUT && !sharedState.busy && !sharedState.dialogOpen &&
+        !relayState.vehicleDialogOpen
     fun dismissSharedProposals() {
         sharedProposalPanelOpen = false
         selectedSharedProposal = null
@@ -242,6 +252,11 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     fun update(next: HomeUiState) {
+        if (next.draft != state.draft) {
+            exportLink = null
+            exportName = null
+            proposalQr = null
+        }
         state = next
         preferences.save(next)
     }
@@ -251,20 +266,27 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
         navigationSnapshot = null
         tripResult = null
     }
-    fun saveInbox(next: ErrandProposalInbox) {
-        proposalPreferences.save(next)
+    fun saveInbox(next: ErrandProposalInbox): Boolean {
+        if (!proposalPreferences.save(next)) {
+            proposalMessage = "받은 볼일을 저장하지 못했어요. 다시 시도해주세요"
+            sharedProposalMessage = proposalMessage
+            if (sharedMode) sharedState = sharedState.copy(message = proposalMessage, error = true)
+            return false
+        }
         inbox = next
+        return true
     }
-    fun receiveProposal(link: String) {
-        proposalPanelOpen = editingAllowed && !sharedMode
-        when (val decoded = ProposalLinkCodec.decode(link.trim(), System.currentTimeMillis())) {
+    fun receiveProposal(link: String, showReview: Boolean = true): Boolean {
+        if (showReview) proposalPanelOpen = restrictions.state.value.editingAllowed && !sharedMode
+        return when (val decoded = ProposalLinkCodec.decode(link.trim(), System.currentTimeMillis())) {
             is ProposalDecodeResult.Invalid -> {
                 proposalMessage = decoded.reason
                 if (sharedMode) sharedState = sharedState.copy(message = decoded.reason, error = true)
+                false
             }
             is ProposalDecodeResult.Valid -> when (val received = inbox.receive(decoded.proposal, System.currentTimeMillis())) {
                 is ProposalReceiveResult.Pending -> {
-                    saveInbox(received.inbox)
+                    if (!saveInbox(received.inbox)) return false
                     proposalInput = ""
                     proposalMessage = "제안을 받았어요. 장소와 시간을 확인해주세요"
                     if (sharedMode) sharedState = sharedState.copy(
@@ -272,9 +294,100 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
                             "볼일 제안을 받았어요. 받은 볼일에서 확인해주세요"
                         else "볼일 제안을 보관했어요. 다음 계획에서 확인할 수 있어요", error = false,
                     )
+                    true
                 }
-                ProposalReceiveResult.Duplicate -> proposalMessage = "이미 받은 제안이에요"
-                is ProposalReceiveResult.Rejected -> proposalMessage = received.reason
+                ProposalReceiveResult.Duplicate -> {
+                    proposalMessage = "이미 받은 제안이에요"
+                    saveInbox(inbox)
+                }
+                is ProposalReceiveResult.Rejected -> {
+                    proposalMessage = received.reason
+                    false
+                }
+            }
+        }
+    }
+    fun relaySeedChoices(): List<RelaySeedChoice> {
+        if (!isVehicle) return emptyList()
+        if (sharedMode) {
+            val errand = sharedState.session.draft.errand ?: return emptyList()
+            val point = errand.place ?: return emptyList()
+            return listOf(RelaySeedChoice(errand.kind, point, errand.stayMinutes, errand.walkingMinutesOneWay,
+                errand.ready, errand.deadlineAtMillis))
+        }
+        return VisitKind.entries.mapNotNull { kind ->
+            val enabled = if (kind == VisitKind.PICKUP) state.draft.pickup.enabled else state.draft.groceries.enabled
+            if (!enabled) return@mapNotNull null
+            val proposal = state.draft.proposal(kind, UUID.randomUUID().toString(), System.currentTimeMillis()) ?: return@mapNotNull null
+            RelaySeedChoice(proposal.kind, proposal.place, proposal.stayMinutes, proposal.walkingMinutesOneWay,
+                proposal.ready, proposal.deadlineAtMillis)
+        }
+    }
+    val relayActions = rememberProposalRelayActions(
+        state = relayState,
+        readState = { relayState },
+        onStateChange = { relayState = it },
+        isVehicle = isVehicle,
+        interaction = interaction,
+        readInteraction = { restrictions.state.value },
+        configuredBaseUrl = BuildConfig.PROPOSAL_RELAY_BASE_URL,
+        allowLocalHttp = BuildConfig.DEBUG,
+        seedChoices = ::relaySeedChoices,
+        currentExportLink = { exportLink },
+        onSeedReceived = { receiveProposal(it) },
+        onMessageReceived = { message: RelayMessage ->
+            val receipt = receiveRelayProposal(inbox, message, System.currentTimeMillis(), ::saveInbox)
+            if (receipt.newProposal) {
+                val text = if (sharedState.session.progress.stage == JourneyStage.INPUT) "볼일 제안을 받았어요. 받은 볼일에서 확인해주세요"
+                    else "볼일 제안을 보관했어요. 다음 계획에서 확인할 수 있어요"
+                if (sharedMode) sharedState = sharedState.copy(message = text, error = false)
+                else navigationMessage = text
+            }
+            receipt
+        },
+    )
+    LaunchedEffect(relayState.sender) {
+        if (!isVehicle && relayState.sender != null &&
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) proposalPanelOpen = true
+    }
+    fun openVehicleRelay() {
+        if (!isVehicle || !restrictions.state.value.editingAllowed ||
+            !lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) ||
+            sending || reading || estimating || planning || sharedState.busy || sharedState.dialogOpen ||
+            sharedProposalPanelOpen || picker != null || relayState.busy) return
+        dismissVoice()
+        proposalPanelOpen = false
+        resumeConfirmation = null
+        relayActions.openVehicle()
+    }
+    fun receiveAppLink(link: String) {
+        if (RelayLinkCodec.accepts(link.trim())) {
+            proposalInput = ""
+            scope.launch {
+                while (true) {
+                    combine(lifecycleOwner.lifecycle.currentStateFlow, snapshotFlow { relayState.busy }, restrictions.state) { phase, busy, limits ->
+                        phase.isAtLeast(Lifecycle.State.RESUMED) && !busy && (isVehicle || limits.editingAllowed)
+                    }.first { it }
+                    if (relayActions.acceptJoinLink(link.trim())) {
+                        if (!isVehicle) proposalPanelOpen = relayState.candidate == null
+                        else sharedState = sharedState.copy(message = relayState.message, error = true)
+                        break
+                    }
+                }
+            }
+        } else receiveProposal(link)
+    }
+    LaunchedEffect(incomingJoin, lifecycleOwner) {
+        val link = incomingJoin ?: return@LaunchedEffect
+        while (true) {
+            combine(lifecycleOwner.lifecycle.currentStateFlow, snapshotFlow { relayState.busy }, restrictions.state) { phase, busy, limits ->
+                phase.isAtLeast(Lifecycle.State.RESUMED) && !busy && (isVehicle || limits.editingAllowed)
+            }.first { it }
+            if (relayActions.acceptJoinLink(link)) {
+                if (!isVehicle) proposalPanelOpen = relayState.candidate == null
+                else sharedState = sharedState.copy(message = relayState.message, error = true)
+                onJoinConsumed()
+                break
             }
         }
     }
@@ -330,7 +443,7 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
                 try {
                     val link = readProposalQr(context.contentResolver, uri)
                     if (link == null) proposalMessage = "이미지에서 QR을 읽지 못했어요. 제안 링크를 붙여넣어주세요"
-                    else receiveProposal(link)
+                    else receiveAppLink(link)
                 } finally { readingQr = false }
             }
         }
@@ -627,8 +740,9 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
             routeGateway = routeGateway,
             interaction = interaction,
             pendingProposalCount = inbox.entries.count { it.status == ProposalReviewStatus.PENDING },
-            proposalPanelOpen = sharedProposalPanelOpen,
+            proposalPanelOpen = sharedProposalPanelOpen || relayState.vehicleDialogOpen,
             onOpenProposals = ::openSharedProposals,
+            onOpenPhoneConnection = ::openVehicleRelay,
             onReconnect = {
                 if (restrictions.state.value.editingAllowed && !sharedState.busy) {
                     sharedState = sharedState.copy(snapshot = null, observedRouteRevision = null,
@@ -670,6 +784,7 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
                     }
                 }
             },
+            onOpenPhoneConnection = ::openVehicleRelay,
             voiceAvailable = BuildConfig.ENABLE_VEHICLE_VOICE && interaction.voiceTranscriptionAllowed &&
                 voiceState !is VoiceInputState.Failed && voiceState != VoiceInputState.Stopping,
             onVoice = {
@@ -706,6 +821,12 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
             HomeScreen(state = state, actions = actions, vehicle = vehicleState, modifier = Modifier.weight(1f))
         }
         BackHandler(enabled = isVehicle && detailsOpen) { detailsOpen = false }
+    }
+    if (isVehicle && relayState.vehicleDialogOpen && editingAllowed) {
+        VehiclePhoneConnectionDialog(relayState, BuildConfig.PROPOSAL_RELAY_BASE_URL, relayActions)
+    }
+    if (!isVehicle && relayState.candidate != null && editingAllowed) {
+        PhoneVehicleJoinDialog(relayState, relayActions)
     }
     if (sharedMode && sharedProposalPanelOpen && editingAllowed) {
         val visibleReview = sharedProposalReview
@@ -746,12 +867,13 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
             },
             onDecline = { id, revision ->
                 if (canReviewSharedProposal()) {
-                    saveInbox(inbox.decline(id, revision))
-                    selectedSharedProposal = null
-                    sharedProposalReview = null
-                    sharedProposalMessage = null
-                    val next = inbox.entries.firstOrNull { it.status == ProposalReviewStatus.PENDING }
-                    if (next != null) selectSharedProposal(next.proposal.id, next.proposal.revision)
+                    if (saveInbox(inbox.decline(id, revision))) {
+                        selectedSharedProposal = null
+                        sharedProposalReview = null
+                        sharedProposalMessage = null
+                        val next = inbox.entries.firstOrNull { it.status == ProposalReviewStatus.PENDING }
+                        if (next != null) selectSharedProposal(next.proposal.id, next.proposal.revision)
+                    }
                 }
             },
             onDismiss = ::dismissSharedProposals,
@@ -781,31 +903,50 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
     }
 
     if (!sharedMode && proposalPanelOpen && editingAllowed) {
+        val exportedProposal = exportLink?.let { link ->
+            (ProposalLinkCodec.decode(link, System.currentTimeMillis()) as? ProposalDecodeResult.Valid)?.proposal
+        }
+        val sameRelayPayload = relayState.outgoing?.link == exportLink
+        val relayDelivery = relayState.delivery.takeIf { sameRelayPayload }
         val proposalState = ProposalUiState(inbox, proposalInput, proposalMessage,
-                canApply = editingAllowed && state.progress.stage == JourneyStage.INPUT && !sending && !reading && !estimating && !planning,
+                canApply = editingAllowed && state.progress.stage == JourneyStage.INPUT && !sending && !reading && !estimating && !planning && !relayState.busy,
                 exportLink = exportLink, exportName = exportName, qr = proposalQr, qrBusy = generatingQr || readingQr,
                 pickupAvailable = state.draft.navigationPoint(NavigationPlaceRole.PICKUP) != null,
-                groceriesAvailable = state.draft.navigationPoint(NavigationPlaceRole.GROCERIES) != null)
+                groceriesAvailable = state.draft.navigationPoint(NavigationPlaceRole.GROCERIES) != null,
+                connectedVehicle = relayState.sender?.let { relayServerLabel(it.baseUrl) },
+                relayMessage = when {
+                    !sameRelayPayload && relayState.delivery == RelayDeliveryStatus.QUEUED -> "앞서 보낸 제안의 차량 수신을 기다린 뒤 다음 제안을 보낼 수 있어요"
+                    !sameRelayPayload && relayState.delivery == RelayDeliveryStatus.STORED -> "앞서 보낸 제안은 차량에 보관됐어요. 새로 만든 제안은 아직 보내지 않았어요"
+                    else -> relayState.message
+                },
+                relayBusy = relayState.busy,
+                delivery = relayDelivery,
+                exportedProposal = exportedProposal,
+                canSendToVehicle = !isVehicle && relayState.sender != null && !relayState.busy && relayState.candidate == null &&
+                    exportedProposal != null && relayState.delivery != RelayDeliveryStatus.QUEUED &&
+                    (!sameRelayPayload || relayDelivery == null))
         val proposalActions = ProposalActions(
                 onInput = { proposalInput = it.take(ProposalLinkCodec.MAX_LINK_LENGTH + 1) },
-                onReceive = { receiveProposal(proposalInput) },
+                onReceive = { receiveAppLink(proposalInput) },
                 onPaste = {
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     proposalInput = clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty().take(ProposalLinkCodec.MAX_LINK_LENGTH + 1)
                 },
                 onReadQr = { qrPicker.launch("image/*") },
                 onApprove = { id, revision ->
-                    if (editingAllowed && state.progress.stage == JourneyStage.INPUT && !sending && !reading && !estimating && !planning) {
+                    if (restrictions.state.value.editingAllowed && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+                        state.progress.stage == JourneyStage.INPUT && !sending && !reading && !estimating && !planning && !relayState.busy) {
                         when (val approval = inbox.approve(id, revision, System.currentTimeMillis())) {
                             is ProposalApprovalResult.Rejected -> proposalMessage = approval.reason
                             is ProposalApprovalResult.Approved -> when (val applied = state.draft.withProposal(approval.proposal)) {
                                 is ProposalDraftResult.Invalid -> proposalMessage = applied.reason
                                 is ProposalDraftResult.Applied -> {
-                                    clearNavigationRead()
-                                    update(state.copy(draft = applied.draft, progress = JourneyProgress(), showErrors = false,
-                                        routing = state.routing?.takeIf { it.matches(applied.draft) }))
-                                    saveInbox(approval.inbox)
-                                    proposalMessage = "이번 계획에 반영했어요. 계획 비교에서 순서를 확인하세요"
+                                    if (saveInbox(approval.inbox)) {
+                                        clearNavigationRead()
+                                        update(state.copy(draft = applied.draft, progress = JourneyProgress(), showErrors = false,
+                                            routing = state.routing?.takeIf { it.matches(applied.draft) }))
+                                        proposalMessage = "이번 계획에 반영했어요. 조건을 편집해 제안을 만들 수 있어요"
+                                    }
                                 }
                             }
                         }
@@ -813,12 +954,15 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
                 },
                 onDecline = { id, revision -> saveInbox(inbox.decline(id, revision)) },
                 onExport = { kind ->
-                    val proposal = state.draft.proposal(kind, UUID.randomUUID().toString(), System.currentTimeMillis())
-                    if (proposal == null) proposalMessage = "연결된 장소와 체류·도보·마감 시간을 확인해주세요"
-                    else {
-                        exportName = proposal.place.name
-                        exportLink = ProposalLinkCodec.encode(proposal)
-                        proposalMessage = "제안을 만들었어요. QR이나 링크로 전달해주세요"
+                    if (!relayState.busy && restrictions.state.value.editingAllowed &&
+                        lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                        val proposal = state.draft.proposal(kind, UUID.randomUUID().toString(), System.currentTimeMillis())
+                        if (proposal == null) proposalMessage = "연결된 장소와 체류·도보·마감 시간을 확인해주세요"
+                        else {
+                            exportName = proposal.place.name
+                            exportLink = ProposalLinkCodec.encode(proposal)
+                            proposalMessage = "제안을 만들었어요. 차량으로 보내거나 QR과 링크로 전달할 수 있어요"
+                        }
                     }
                 },
                 onCopy = {
@@ -836,6 +980,8 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
                     }
                 },
                 onDismiss = { proposalPanelOpen = false },
+                onSendToVehicle = { exportLink?.let(relayActions.send) },
+                onDisconnectVehicle = relayActions.disconnectSender,
         )
         if (isVehicle) VehicleProposalDialog(proposalState, proposalActions)
         else ProposalContent(proposalState, proposalActions)

@@ -7,6 +7,7 @@ plugins {
 }
 
 val routingBaseUrl = providers.gradleProperty("routingBaseUrl").orNull
+val proposalRelayBaseUrl = providers.gradleProperty("proposalRelayBaseUrl").orNull
 val vehicleVoiceEnabled = providers.gradleProperty("enableVehicleVoice").map(String::toBooleanStrict).getOrElse(false)
 fun stringConstant(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
@@ -23,11 +24,13 @@ android {
         versionName = "0.3.0"
         buildConfigField("boolean", "ENABLE_VEHICLE_VOICE", vehicleVoiceEnabled.toString())
         buildConfigField("String", "ROUTING_BASE_URL", stringConstant(routingBaseUrl.orEmpty()))
+        buildConfigField("String", "PROPOSAL_RELAY_BASE_URL", stringConstant(proposalRelayBaseUrl.orEmpty()))
     }
 
     buildTypes {
         debug {
             buildConfigField("String", "ROUTING_BASE_URL", stringConstant(routingBaseUrl ?: "http://10.0.2.2:5001"))
+            buildConfigField("String", "PROPOSAL_RELAY_BASE_URL", stringConstant(proposalRelayBaseUrl ?: "http://10.0.2.2:48680"))
         }
         release {
             isMinifyEnabled = true

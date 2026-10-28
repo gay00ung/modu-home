@@ -13,16 +13,21 @@ import io.moduhome.app.ui.theme.ModuHomeTheme
 
 class MainActivity : ComponentActivity() {
     private var incomingProposal by mutableStateOf<String?>(null)
+    private var incomingJoin by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         incomingProposal = savedInstanceState?.getString("pending_proposal") ?: proposalFrom(intent)
+        incomingJoin = joinFrom(intent)
         enableEdgeToEdge()
         setContent {
             ModuHomeTheme(vehicle = packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
                 ModuHomeApp(incomingProposal = incomingProposal, onProposalConsumed = {
                     incomingProposal = null
-                    intent?.data = null
+                    if (intent?.data?.host == "proposal") intent?.data = null
+                }, incomingJoin = incomingJoin, onJoinConsumed = {
+                    incomingJoin = null
+                    if (intent?.data?.host == "join") intent?.data = null
                 })
             }
         }
@@ -32,6 +37,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         incomingProposal = proposalFrom(intent)
+        incomingJoin = joinFrom(intent)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -40,5 +46,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun proposalFrom(intent: Intent?): String? =
-        intent?.takeIf { it.action == Intent.ACTION_VIEW }?.dataString
+        appLinkFrom(intent, "proposal")
+
+    private fun joinFrom(intent: Intent?): String? = appLinkFrom(intent, "join")
+
+    private fun appLinkFrom(intent: Intent?, host: String): String? = intent?.takeIf {
+        it.action == Intent.ACTION_VIEW && it.data?.scheme == "modu-home" && it.data?.host == host
+    }?.dataString
 }

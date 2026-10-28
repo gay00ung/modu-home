@@ -49,4 +49,5 @@ internal data class SharedVehicleActions(
     val onLeave: () -> Unit,
     val onReconnect: () -> Unit,
     val onOpenProposals: () -> Unit,
+    val onOpenPhoneConnection: () -> Unit,
 )

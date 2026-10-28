@@ -74,9 +74,14 @@ internal data class ErrandProposalInbox private constructor(val entries: List<Pr
             }
         }
         val retained = entries.filter { it.proposal.id != proposal.id && it.proposal.expiresAtMillis > nowMillis }
-        if (retained.size >= MAX_ENTRIES) return ProposalReceiveResult.Rejected("받은 제안을 먼저 정리해주세요")
+        // Keep every unread suggestion; an old reviewed receipt can make room for a new one.
+        val oldestReviewed = retained.indexOfFirst { it.status != ProposalReviewStatus.PENDING }
+        val withRoom = if (retained.size < MAX_ENTRIES) retained else {
+            if (oldestReviewed < 0) return ProposalReceiveResult.Rejected("받은 제안을 먼저 정리해주세요", ProposalReceiveFailure.FULL)
+            retained.filterIndexed { index, _ -> index != oldestReviewed }
+        }
         val entry = ProposalInboxEntry(proposal)
-        return ProposalReceiveResult.Pending(ErrandProposalInbox(retained + entry), entry)
+        return ProposalReceiveResult.Pending(ErrandProposalInbox(withRoom + entry), entry)
     }
 
     fun approve(id: String, revision: Int, nowMillis: Long): ProposalApprovalResult {
@@ -117,8 +122,10 @@ internal data class ErrandProposalInbox private constructor(val entries: List<Pr
 internal sealed interface ProposalReceiveResult {
     data class Pending(val inbox: ErrandProposalInbox, val entry: ProposalInboxEntry) : ProposalReceiveResult
     data object Duplicate : ProposalReceiveResult
-    data class Rejected(val reason: String) : ProposalReceiveResult
+    data class Rejected(val reason: String, val failure: ProposalReceiveFailure = ProposalReceiveFailure.INVALID) : ProposalReceiveResult
 }
+
+internal enum class ProposalReceiveFailure { INVALID, FULL }
 
 internal sealed interface ProposalApprovalResult {
     data class Approved(val inbox: ErrandProposalInbox, val proposal: ErrandProposal) : ProposalApprovalResult

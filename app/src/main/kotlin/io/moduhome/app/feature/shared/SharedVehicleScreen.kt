@@ -83,8 +83,11 @@ internal fun SharedVehicleScreen(
                     horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     Text(sharedTitle(state.stage), Modifier.weight(1f), fontSize = 40.sp, lineHeight = 52.sp, fontWeight = FontWeight.Bold)
                     if (state.stage == JourneyStage.INPUT) {
+                        SharedAction("휴대폰 연결", canEdit, actions.onOpenPhoneConnection)
                         SharedAction("받은 볼일 ${state.pendingProposalCount}", canEdit, actions.onOpenProposals)
                         SharedAction("가는 김에", canEdit, actions.onLeave)
+                    } else if (state.stage == JourneyStage.ACTIVE) {
+                        SharedAction("휴대폰 연결", canEdit, actions.onOpenPhoneConnection)
                     }
                 }
                 SharedCaption(when (state.stage) {

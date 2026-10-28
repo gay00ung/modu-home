@@ -1,6 +1,7 @@
 package io.moduhome.app.data.transfer
 
 import android.content.Context
+import android.annotation.SuppressLint
 import io.moduhome.app.core.transfer.ErrandProposalInbox
 import io.moduhome.app.core.transfer.ProposalInboxEntry
 import io.moduhome.app.core.transfer.ProposalReviewStatus
@@ -12,7 +13,8 @@ import org.json.JSONObject
 internal class ProposalInboxPreferences(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences("proposal_inbox", Context.MODE_PRIVATE)
 
-    fun save(inbox: ErrandProposalInbox) {
+    @SuppressLint("ApplySharedPref", "UseKtx") // The relay acknowledges only an observed durable write.
+    fun save(inbox: ErrandProposalInbox): Boolean = try {
         val entries = JSONArray()
         inbox.entries.forEach { entry ->
             entries.put(JSONObject()
@@ -20,8 +22,8 @@ internal class ProposalInboxPreferences(context: Context) {
                 .put("created", entry.proposal.createdAtMillis)
                 .put("status", entry.status.name))
         }
-        preferences.edit().putString("inbox", JSONObject().put("schema", 1).put("entries", entries).toString()).apply()
-    }
+        preferences.edit().putString("inbox", JSONObject().put("schema", 1).put("entries", entries).toString()).commit()
+    } catch (_: Exception) { false }
 
     fun load(nowMillis: Long): ProposalInboxLoadResult {
         require(nowMillis >= 0)

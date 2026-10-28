@@ -14,6 +14,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.transfer.ErrandProposalInbox
+import io.moduhome.app.core.transfer.ErrandProposal
+import io.moduhome.app.core.transfer.RelayDeliveryStatus
 import io.moduhome.app.core.transfer.ProposalReviewStatus
 import java.time.Instant
 import java.time.ZoneId
@@ -30,6 +32,12 @@ internal data class ProposalUiState(
     val qrBusy: Boolean = false,
     val pickupAvailable: Boolean = false,
     val groceriesAvailable: Boolean = false,
+    val connectedVehicle: String? = null,
+    val relayMessage: String? = null,
+    val relayBusy: Boolean = false,
+    val delivery: RelayDeliveryStatus? = null,
+    val exportedProposal: ErrandProposal? = null,
+    val canSendToVehicle: Boolean = false,
 )
 
 internal data class ProposalActions(
@@ -43,6 +51,8 @@ internal data class ProposalActions(
     val onCopy: () -> Unit,
     val onShare: () -> Unit,
     val onDismiss: () -> Unit,
+    val onSendToVehicle: () -> Unit = {},
+    val onDisconnectVehicle: () -> Unit = {},
 )
 
 @Composable
@@ -56,6 +66,17 @@ internal fun ProposalContent(state: ProposalUiState, actions: ProposalActions) {
                 }
                 Text("받은 장소와 시간을 확인하고 이번 계획에 추가하세요")
                 state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                Text("연결된 차량", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                if (state.connectedVehicle != null) {
+                    Text(state.connectedVehicle, fontWeight = FontWeight.Bold)
+                    Text("보낸 제안은 차량 수신함에 보관되고 운전자가 확인해요")
+                    TextButton(onClick = actions.onDisconnectVehicle, enabled = !state.relayBusy) { Text("이 휴대폰 연결 해제") }
+                } else {
+                    Text("차량의 휴대폰 연결 QR 링크를 열어주세요. QR 이미지를 골라 연결할 수도 있어요")
+                    OutlinedButton(onClick = actions.onReadQr, enabled = !state.qrBusy && !state.relayBusy) { Text("차량 연결 QR 이미지 열기") }
+                }
+                state.relayMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                HorizontalDivider()
                 val pending = state.inbox.entries.filter { it.status == ProposalReviewStatus.PENDING }
                 if (!state.canApply) Text("진행 중인 계획은 유지돼요. 입력 화면으로 돌아온 뒤 제안을 추가할 수 있어요",
                     style = MaterialTheme.typography.bodyMedium)
@@ -90,15 +111,41 @@ internal fun ProposalContent(state: ProposalUiState, actions: ProposalActions) {
                 HorizontalDivider()
                 Text("내 볼일 보내기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text("선택한 장소와 시간을 QR이나 링크로 전달해요. 제안은 하루 동안 유효해요", style = MaterialTheme.typography.bodyMedium)
+                if (state.pickupAvailable || state.groceriesAvailable) {
+                    OutlinedButton(onClick = actions.onDismiss, enabled = !state.relayBusy) { Text("입력 화면에서 장소·시간 조건 편집") }
+                }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { actions.onExport(VisitKind.PICKUP) }, enabled = state.pickupAvailable) { Text("픽업 제안 만들기") }
-                    OutlinedButton(onClick = { actions.onExport(VisitKind.GROCERIES) }, enabled = state.groceriesAvailable) { Text("장보기 제안 만들기") }
+                    OutlinedButton(onClick = { actions.onExport(VisitKind.PICKUP) }, enabled = state.pickupAvailable && !state.relayBusy) { Text("픽업 제안 만들기") }
+                    OutlinedButton(onClick = { actions.onExport(VisitKind.GROCERIES) }, enabled = state.groceriesAvailable && !state.relayBusy) { Text("장보기 제안 만들기") }
                 }
                 if (!state.pickupAvailable && !state.groceriesAvailable) Text("차량에서 선택한 장소를 먼저 받아보세요. 휴대폰에서 준비 여부와 시간을 바꿔 다시 보낼 수 있어요",
                     style = MaterialTheme.typography.bodySmall)
                 if (state.qrBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
                 state.exportLink?.let {
-                    Text(state.exportName.orEmpty(), fontWeight = FontWeight.Bold)
+                    state.exportedProposal?.let { proposal ->
+                        OutlinedCard(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("보낼 조건 · ${if (proposal.kind == VisitKind.PICKUP) "픽업" else "장보기"}", fontWeight = FontWeight.Bold)
+                                Text(proposal.place.name, fontWeight = FontWeight.SemiBold)
+                                if (proposal.place.address.isNotBlank()) Text(proposal.place.address)
+                                Text("체류 ${proposal.stayMinutes}분 · 편도 도보 ${proposal.walkingMinutesOneWay}분")
+                                if (proposal.kind == VisitKind.PICKUP) Text(if (proposal.ready) "제안에 수령 준비됨으로 표시" else "수령 준비 확인 필요")
+                                Text("완료 마감 · " + (proposal.deadlineAtMillis?.let { deadline ->
+                                    DateTimeFormatter.ofPattern("M월 d일 HH:mm").format(Instant.ofEpochMilli(deadline).atZone(ZoneId.systemDefault()))
+                                } ?: "마감 없음"))
+                            }
+                        }
+                    } ?: Text(state.exportName.orEmpty(), fontWeight = FontWeight.Bold)
+                    Button(onClick = actions.onSendToVehicle, enabled = state.canSendToVehicle,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+                        Text(when {
+                            state.relayBusy -> "전송 확인 중"
+                            state.delivery == RelayDeliveryStatus.QUEUED -> "차량 수신함 보관 대기"
+                            state.delivery == RelayDeliveryStatus.STORED -> "차량 수신함에 보관됨"
+                            state.delivery == RelayDeliveryStatus.REJECTED -> "조건 확인 후 새 제안을 만들어주세요"
+                            else -> "연결된 차량으로 보내기"
+                        })
+                    }
                     state.qr?.let { qr -> Image(qr, "볼일 제안 QR 코드", Modifier.size(280.dp)) }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = actions.onCopy) { Text("링크 복사") }

@@ -40,6 +40,7 @@ internal fun VehicleJourneyScreen(
     restrictionMessage: String?,
     onOpenDetails: () -> Unit,
     onOpenShared: () -> Unit,
+    onOpenPhoneConnection: () -> Unit,
     onVoice: () -> Unit,
     voiceAvailable: Boolean,
     modifier: Modifier = Modifier,
@@ -65,6 +66,10 @@ internal fun VehicleJourneyScreen(
                         }
                     }
                     if (stage == JourneyStage.INPUT) {
+                        OutlinedButton(onClick = { if (canEdit) onOpenPhoneConnection() }, enabled = canEdit,
+                            modifier = Modifier.heightIn(min = 80.dp), shape = RoundedCornerShape(18.dp)) {
+                            Text("휴대폰 연결", fontSize = 28.sp)
+                        }
                         OutlinedButton(onClick = { if (canEdit) actions.onOpenProposals() }, enabled = canEdit,
                             modifier = Modifier.heightIn(min = 80.dp), shape = RoundedCornerShape(18.dp)) {
                             Text("동승자 볼일", fontSize = 24.sp)

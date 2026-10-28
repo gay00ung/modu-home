@@ -40,6 +40,16 @@
 두 흐름의 경로 비교는 OpenStreetMap 도로망을 사용하며 실시간 교통은 포함하지 않는다
 개발 실행에는 [로컬 경로 서버](docs/routing.md)가 필요하다
 
+## 휴대폰에서 볼일 보내기
+
+- 차량의 휴대폰 연결에서 볼일 한 건을 함께 공유할지 고르고 연결 QR 표시
+- 휴대폰에서 연결 주소를 확인하고 받은 장소의 시간·준비 조건 편집
+- 제안 만들기 후 연결된 차량으로 전송하고 차량 수신함 보관 상태 확인
+- 차량은 받은 볼일에서 운전자가 검토한 뒤 계획에 반영
+
+연결은 15분 동안 유지하며 앱이 화면에 열려 있는 동안 제안을 받는다
+실행 주소와 저장·승인 경계는 [휴대폰과 차량 연결](docs/proposal-relay.md) 참고
+
 ## 개발 환경
 
 | 항목 | 설정 |
@@ -109,6 +119,7 @@ app/src/main/kotlin/io/moduhome/app/
 - [차량 내비 설정과 실행](docs/vehicle-navigation.md)
 - [차량 화면 기준](docs/vehicle-ux.md)
 - [도로 경로 서버](docs/routing.md)
+- [휴대폰과 차량 연결](docs/proposal-relay.md)
 - [작업 규칙](AGENTS.md)
 - [공모전 개발 가이드](https://appdevchallenge.auto-hmg.io/guide/development)
 - [NaviHelper SDK](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/intro)

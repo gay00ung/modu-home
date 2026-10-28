@@ -61,6 +61,7 @@ internal fun SharedJourneyFlow(
     pendingProposalCount: Int,
     proposalPanelOpen: Boolean,
     onOpenProposals: () -> Unit,
+    onOpenPhoneConnection: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
@@ -72,6 +73,7 @@ internal fun SharedJourneyFlow(
     val currentOnLeave by rememberUpdatedState(onLeave)
     val currentOnReconnect by rememberUpdatedState(onReconnect)
     val currentOnOpenProposals by rememberUpdatedState(onOpenProposals)
+    val currentOnOpenPhoneConnection by rememberUpdatedState(onOpenPhoneConnection)
     val currentProposalPanelOpen by rememberUpdatedState(proposalPanelOpen)
     val connection by gateway.connection.collectAsStateWithLifecycle()
     val routeRevision by gateway.routeRevision.collectAsStateWithLifecycle()
@@ -534,6 +536,7 @@ internal fun SharedJourneyFlow(
         onOpenProposals = {
             if (idle() && runtime.latest.session.progress.stage == JourneyStage.INPUT) currentOnOpenProposals()
         },
+        onOpenPhoneConnection = { if (idle()) currentOnOpenPhoneConnection() },
     )
 
     DisposableEffect(runtime, lifecycleOwner) {

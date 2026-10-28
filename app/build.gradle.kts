@@ -10,6 +10,7 @@ val routingBaseUrl = providers.gradleProperty("routingBaseUrl").orNull
 fun stringConstant(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
+    useLibrary("android.car", false)
     namespace = "io.moduhome.app"
     compileSdk = 37
 
@@ -59,6 +60,10 @@ kotlin {
 }
 
 dependencies {
+    implementation(libs.pleos.speech)
+    // Keep the Java bridge and native library together on the 16 KB-compatible AAR.
+    implementation(libs.jna) { artifact { type = "aar"; extension = "aar" } }
+    implementation(libs.jsr305)
     implementation(libs.zxing.core)
     implementation(libs.pleos.navi.helper)
     implementation(libs.kotlinx.coroutines.android)

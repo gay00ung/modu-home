@@ -8,10 +8,12 @@ import kotlin.math.sqrt
 
 internal interface NavigationGateway {
     val connection: StateFlow<NavigationConnection>
+    val routeRevision: StateFlow<Long>
     fun connect()
     fun close()
     suspend fun requestRoute(plan: NavigationPlan): RouteRequestResult
     suspend fun currentRoute(): NavigationSnapshot?
+    suspend fun currentGuidance(plan: NavigationPlan): GuidanceEstimateResult
     suspend fun loadPlaces(): PlaceCatalogResult
     suspend fun estimateTrip(destination: NavigationPoint): TripEstimateResult
     suspend fun currentLocation(): VehicleLocationResult

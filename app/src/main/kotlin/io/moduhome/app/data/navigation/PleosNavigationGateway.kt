@@ -2,13 +2,17 @@ package io.moduhome.app.data.navigation
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.util.Log
+import io.moduhome.app.BuildConfig
 import ai.pleos.playground.navi.constants.NaviErrorCode
 import ai.pleos.playground.navi.constants.NaviMode
 import ai.pleos.playground.navi.constants.RoutePointType
+import ai.pleos.playground.navi.constants.RouteOption
 import ai.pleos.playground.navi.constants.WaypointIndex
 import ai.pleos.playground.navi.data.BookmarkInfo
 import ai.pleos.playground.navi.data.CurrentLocationInfo
 import ai.pleos.playground.navi.data.DestinationInfo
+import ai.pleos.playground.navi.data.DestinationArrivedInfo
 import ai.pleos.playground.navi.data.RecentDestinationInfo
 import ai.pleos.playground.navi.data.RequestWaypointInfo
 import ai.pleos.playground.navi.data.RouteInfo
@@ -22,6 +26,9 @@ import ai.pleos.playground.navi.data.WaypointChangedInfo
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
 import io.moduhome.app.core.navigation.NavigationConnection
+import io.moduhome.app.core.navigation.GuidanceEstimate
+import io.moduhome.app.core.navigation.GuidanceEstimateResult
+import io.moduhome.app.core.navigation.GuidancePointObservation
 import io.moduhome.app.core.navigation.NavigationGateway
 import io.moduhome.app.core.navigation.NavigationPlan
 import io.moduhome.app.core.navigation.NavigationPoint
@@ -40,6 +47,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -55,6 +63,9 @@ internal class PleosNavigationGateway(context: Context) : NavigationGateway {
         if (supported) NavigationConnection.Connecting else NavigationConnection.Unsupported,
     )
     override val connection = mutableConnection.asStateFlow()
+    private val mutableRouteRevision = MutableStateFlow(0L)
+    override val routeRevision = mutableRouteRevision.asStateFlow()
+    private val routeObserver = routeChangeListener { mutableRouteRevision.update { it + 1 } }
     private val operation = Mutex()
     private val listeners = mutableSetOf<NaviHelperEventListener>()
     // TripInfo has no request ID or source timestamp. Do not issue the same destination twice
@@ -71,7 +82,16 @@ internal class PleosNavigationGateway(context: Context) : NavigationGateway {
             val sdk = NaviHelper(context)
             helper = sdk
             sdk.initialize(
-                onConnected = { if (!closed) mutableConnection.value = NavigationConnection.Ready },
+                onConnected = {
+                    if (!closed && helper === sdk) {
+                        try {
+                            register(sdk, routeObserver)
+                            mutableConnection.value = NavigationConnection.Ready
+                        } catch (_: Exception) {
+                            mutableConnection.value = NavigationConnection.Failed("차량 내비 상태를 구독하지 못했어요")
+                        }
+                    }
+                },
                 onFailed = {
                     if (!closed) mutableConnection.value = NavigationConnection.Failed("차량 내비를 실행한 뒤 다시 연결해주세요")
                 },
@@ -196,6 +216,37 @@ internal class PleosNavigationGateway(context: Context) : NavigationGateway {
         }
     }
 
+    override suspend fun currentGuidance(plan: NavigationPlan): GuidanceEstimateResult = withContext(Dispatchers.Main.immediate) {
+        if (!supported) return@withContext GuidanceEstimateResult.Unsupported
+        operation.withLock {
+            val sdk = readyHelper()
+                ?: return@withLock GuidanceEstimateResult.Failed("차량 내비 연결을 확인해주세요")
+            val changed = AtomicBoolean(false)
+            val observer = routeChangeListener { changed.set(true) }
+            register(sdk, observer)
+            try {
+                val queriedAt = System.currentTimeMillis()
+                val before = readSnapshot(sdk)
+                val timing = readReadback(sdk)
+                val after = readSnapshot(sdk)
+                if (readyHelper() !== sdk) return@withLock GuidanceEstimateResult.Failed("차량 내비 연결이 끊겼어요")
+                GuidanceEstimate.fromObservation(
+                    plan = plan, destinationObservation = timing?.destination,
+                    waypointObservations = timing?.waypoints,
+                    routeBefore = before, routeAfter = after,
+                    queriedAt = queriedAt, receivedAt = System.currentTimeMillis(),
+                    routeChanged = changed.get() || timing?.snapshot != before,
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                GuidanceEstimateResult.Failed("현재 안내의 남은 시간을 확인하지 못했어요")
+            } finally {
+                unregister(sdk, observer)
+            }
+        }
+    }
+
     override suspend fun loadPlaces(): PlaceCatalogResult = withContext(Dispatchers.Main.immediate) {
         operation.withLock {
             val sdk = readyHelper() ?: return@withLock PlaceCatalogResult.Failed("차량 내비 연결을 먼저 확인해주세요")
@@ -257,10 +308,14 @@ internal class PleosNavigationGateway(context: Context) : NavigationGateway {
                 }
 
                 override fun onRouteStarted(routeStartInfo: RouteStartInfo) { changed() }
+                @Suppress("OVERRIDE_DEPRECATION")
                 override fun onRouteEnded() { changed() }
                 override fun onRouteCancelled() { changed() }
                 override fun onDestinationChanged() { changed() }
                 override fun onWaypointChanged(waypointChangedInfo: WaypointChangedInfo) { changed() }
+                override fun onRoutingCompleted() { changed() }
+                override fun onReRouteEnded() { changed() }
+                override fun onRouteOptionChanged(routeOption: RouteOption) { changed() }
 
                 private fun changed() { if (armed.get()) routeChanged.complete(Unit) }
             }
@@ -331,6 +386,7 @@ internal class PleosNavigationGateway(context: Context) : NavigationGateway {
         helper?.takeIf { !closed && mutableConnection.value == NavigationConnection.Ready }
 
     private fun register(sdk: NaviHelper, listener: NaviHelperEventListener) {
+        if (listener in listeners) return
         sdk.addListener(listener)
         listeners += listener
     }
@@ -339,22 +395,41 @@ internal class PleosNavigationGateway(context: Context) : NavigationGateway {
         if (listeners.remove(listener) && helper === sdk && !closed) sdk.removeListener(listener)
     }
 
-    private suspend fun readSnapshot(sdk: NaviHelper): NavigationSnapshot? {
-        val destination = CompletableDeferred<ObservedNavigationPlace?>()
-        val waypoints = CompletableDeferred<List<ObservedNavigationPlace>>()
+    private suspend fun readSnapshot(sdk: NaviHelper): NavigationSnapshot? = readReadback(sdk)?.snapshot
+
+    private data class RouteReadback(
+        val snapshot: NavigationSnapshot,
+        val destination: GuidancePointObservation,
+        val waypoints: List<GuidancePointObservation>,
+    )
+
+    private suspend fun readReadback(sdk: NaviHelper): RouteReadback? {
+        val destination = CompletableDeferred<GuidancePointObservation>()
+        val waypoints = CompletableDeferred<List<GuidancePointObservation>>()
         val guidance = CompletableDeferred<Boolean>()
         val listener = object : NaviHelperEventListener {
             override fun onDestinationInfo(destinationInfo: DestinationInfo) {
-                destination.complete(observedPlace(destinationInfo.name, destinationInfo.latitude, destinationInfo.longitude,
-                    destinationInfo.poiId, destinationInfo.poiSubId, destinationInfo.poiProvider))
+                if (BuildConfig.DEBUG) Log.d("ModuGuidance", "destination seconds=${destinationInfo.remainTime} meters=${destinationInfo.remainDistance}")
+                destination.complete(GuidancePointObservation(
+                    observedPlace(destinationInfo.name, destinationInfo.latitude, destinationInfo.longitude,
+                        destinationInfo.poiId, destinationInfo.poiSubId, destinationInfo.poiProvider),
+                    destinationInfo.remainTime, destinationInfo.remainDistance,
+                ))
             }
             override fun onWayPointInfo(waypointInfoList: List<WaypointInfo>) {
+                if (BuildConfig.DEBUG) Log.d("ModuGuidance", "waypoints metrics=${waypointInfoList.map { it.remainTime to it.remainDistance }}")
                 // The returned list is the vehicle's order, so it must not be sorted here.
-                waypoints.complete(waypointInfoList.mapNotNull {
-                    observedPlace(it.name, it.latitude, it.longitude, it.poiId, it.poiSubId, it.poiProvider)
+                waypoints.complete(waypointInfoList.map {
+                    GuidancePointObservation(
+                        observedPlace(it.name, it.latitude, it.longitude, it.poiId, it.poiSubId, it.poiProvider),
+                        it.remainTime, it.remainDistance,
+                    )
                 })
             }
             override fun onRouteStateInfo(routeStateInfo: RouteStateInfo) {
+                if (BuildConfig.DEBUG) Log.d("ModuGuidance", "mode=${routeStateInfo.naviMode} isRouting=${routeStateInfo.isRouting}")
+                // Connect 2.1 returns isRouting=false even while ROUTE_GUIDING with live remaining
+                // metrics. Use the explicit guidance mode and verify destination/waypoint identity.
                 guidance.complete(routeStateInfo.naviMode == NaviMode.ROUTE_GUIDING ||
                     routeStateInfo.naviMode == NaviMode.SIMULATION_GUIDING)
             }
@@ -365,12 +440,32 @@ internal class PleosNavigationGateway(context: Context) : NavigationGateway {
             sdk.getWaypointInfo()
             sdk.getRouteStateInfo()
             withTimeoutOrNull(2_000) {
-                NavigationSnapshot(destination.await(), waypoints.await(), guidance.await())
+                val target = destination.await()
+                val stops = waypoints.await()
+                // Keep invalid waypoint identity as a failed read instead of silently dropping it.
+                if (stops.any { it.place == null }) return@withTimeoutOrNull null
+                RouteReadback(
+                    NavigationSnapshot(target.place, stops.map { checkNotNull(it.place) }, guidance.await()),
+                    target, stops,
+                )
             }
         } finally {
             unregister(sdk, listener)
         }
     }
+}
+
+private fun routeChangeListener(changed: () -> Unit) = object : NaviHelperEventListener {
+    override fun onRouteStarted(routeStartInfo: RouteStartInfo) { changed() }
+    override fun onRoutingCompleted() { changed() }
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onRouteEnded() { changed() }
+    override fun onReRouteEnded() { changed() }
+    override fun onRouteOptionChanged(routeOption: RouteOption) { changed() }
+    override fun onRouteCancelled() { changed() }
+    override fun onDestinationChanged() { changed() }
+    override fun onDestinationArrived(destinationArrivedInfo: DestinationArrivedInfo) { changed() }
+    override fun onWaypointChanged(waypointChangedInfo: WaypointChangedInfo) { changed() }
 }
 
 private fun NavigationPlan.toSdkRequest() = RouteWithWaypointsRequest(

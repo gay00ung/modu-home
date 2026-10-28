@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.moduhome.app.core.navigation.NavigationConnection
+import io.moduhome.app.core.navigation.GuidanceEstimateResult
 import io.moduhome.app.core.navigation.NavigationPoint
 import io.moduhome.app.core.navigation.NavigationSnapshot
 import io.moduhome.app.core.navigation.PlaceCatalogResult
@@ -40,6 +41,8 @@ internal data class VehicleNavigationUiState(
     val tripNow: Long = 0L,
     val roadComparisonAvailable: Boolean = false,
     val planning: Boolean = false,
+    val guidanceResult: GuidanceEstimateResult? = null,
+    val guidanceRefreshing: Boolean = false,
 )
 
 internal data class PlacePickerUiState(

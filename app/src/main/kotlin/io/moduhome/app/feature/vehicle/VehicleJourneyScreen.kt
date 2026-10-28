@@ -17,6 +17,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.moduhome.app.core.navigation.NavigationConnection
+import io.moduhome.app.core.navigation.GuidanceEstimateResult
 import io.moduhome.app.core.planning.ErrandJourneyPlan
 import io.moduhome.app.core.planning.JourneyStage
 import io.moduhome.app.core.planning.PlanIssueKind
@@ -93,7 +94,7 @@ internal fun VehicleJourneyScreen(
                     JourneyStage.INPUT -> VehicleInput(state, actions, vehicle, canEdit)
                     JourneyStage.COMPARE -> VehicleComparison(state, actions, canEdit)
                     JourneyStage.REVIEW -> VehicleReview(state)
-                    JourneyStage.ACTIVE -> VehicleActive(state)
+                    JourneyStage.ACTIVE -> VehicleActive(state, vehicle)
                     JourneyStage.COMPLETE -> VehicleComplete(state)
                 }
                 VehicleNavigationStatus(vehicle, actions, canEdit)
@@ -240,15 +241,15 @@ private fun VehicleComparison(state: HomeUiState, actions: JourneyActions, canEd
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(if (selected) "✓" else "○", fontSize = 32.sp, color = MaterialTheme.colorScheme.primary)
                         VehicleCaption(when {
-                            plan.id == recommended -> "추천 · 조건에 맞는 가장 빠른 귀가"
-                            plan.isValid -> "이 순서도 가능해요"
+                            plan.id == recommended -> "도로망 기준 추천 · 교통 제외"
+                            plan.isValid -> "도로망 기준으로 조건에 맞아요"
                             else -> "조건 확인 필요"
                         })
                     }
                     Text(planTitle(plan), fontSize = 34.sp, lineHeight = 44.sp, fontWeight = FontWeight.Bold)
                     Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                        VehicleMetric("집 도착 계획", formatJourneyMinute(plan.homeArrivalMinute), Modifier.weight(1f))
-                        VehicleMetric("직행보다", "+${plan.additionalMinutes}분", Modifier.weight(1f))
+                        VehicleMetric("교통 제외 도착", formatJourneyMinute(plan.homeArrivalMinute), Modifier.weight(1f))
+                        VehicleMetric("교통 제외 추가", "+${plan.additionalMinutes}분", Modifier.weight(1f))
                     }
                     HorizontalDivider()
                     plan.visits.forEachIndexed { index, visit ->
@@ -274,8 +275,8 @@ private fun VehicleReview(state: HomeUiState) {
     Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.fillMaxWidth().padding(32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(40.dp)) {
-                VehicleMetric("집 도착 계획", formatJourneyMinute(plan.homeArrivalMinute), Modifier.weight(1f))
-                VehicleMetric("직행보다", "+${plan.additionalMinutes}분", Modifier.weight(1f))
+                VehicleMetric("교통 제외 도착", formatJourneyMinute(plan.homeArrivalMinute), Modifier.weight(1f))
+                VehicleMetric("교통 제외 추가", "+${plan.additionalMinutes}분", Modifier.weight(1f))
                 VehicleMetric("들를 곳", "${plan.visits.size}곳", Modifier.weight(1f))
             }
             HorizontalDivider()
@@ -291,25 +292,44 @@ private fun VehicleReview(state: HomeUiState) {
 }
 
 @Composable
-private fun VehicleActive(state: HomeUiState) {
+private fun VehicleActive(state: HomeUiState, vehicle: VehicleNavigationUiState) {
     val plan = state.selectedPlan
     if (plan == null) {
         VehicleError("저장된 계획을 확인하지 못했어요. 차량 내비의 안내 상태를 확인해주세요")
         return
     }
     val next = plan.visits.getOrNull(state.progress.completedVisits)
+    val guidance = (vehicle.guidanceResult as? GuidanceEstimateResult.Success)?.estimate
+        ?.takeIf { it.isFresh(vehicle.tripNow) }
+    val nextGuided = guidance?.let { it.waypoints.firstOrNull() ?: it.destination }
     Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(28.dp)) {
         Row(Modifier.fillMaxWidth().padding(36.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(48.dp)) {
             Column(Modifier.weight(1.7f), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                VehicleCaption(if (next == null) "볼일을 마쳤어요 · 이제 집으로" else "계획상 다음 들를 곳")
-                Text(next?.visit?.place ?: state.draft.home, fontSize = 48.sp, lineHeight = 60.sp,
+                VehicleCaption(if (nextGuided != null) "차량 내비가 안내하는 다음 장소" else
+                    if (next == null) "볼일을 마쳤어요 · 이제 집으로" else "계획상 다음 들를 곳")
+                Text(nextGuided?.point?.name ?: next?.visit?.place ?: state.draft.home, fontSize = 48.sp, lineHeight = 60.sp,
                     fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(if (next == null) "도착 후 귀가를 마무리해주세요" else
-                    "${visitLabel(next.visit.kind)} · 체류 ${next.visit.stayMinutes}분", fontSize = 28.sp, lineHeight = 36.sp)
+                Text(if (nextGuided != null) "내비 기준 약 ${(nextGuided.remainingSeconds.toLong() + 59) / 60}분" else
+                    if (next == null) "도착 후 귀가를 마무리해주세요" else
+                        "${visitLabel(next.visit.kind)} · 체류 ${next.visit.stayMinutes}분", fontSize = 28.sp, lineHeight = 36.sp)
             }
-            VehicleMetric("계획상 집 도착", formatJourneyMinute(plan.homeArrivalMinute), Modifier.weight(1f))
+            VehicleMetric("집까지 남은 주행", guidance?.let { "${(it.destination.remainingSeconds.toLong() + 59) / 60}분" }
+                ?: if (vehicle.guidanceRefreshing) "확인 중" else "확인 필요",
+                Modifier.weight(1f))
         }
+    }
+    if (guidance != null) {
+        val remaining = plan.visits.drop(state.progress.completedVisits)
+            .sumOf { it.visit.stayMinutes + it.visit.walkingMinutesOneWay * 2 }
+        VehicleCaption("차량 내비의 현재 안내 기준 · 체류·도보 ${remaining}분 별도")
+    } else {
+        VehicleError(when (val result = vehicle.guidanceResult) {
+            is GuidanceEstimateResult.Failed -> result.reason
+            is GuidanceEstimateResult.Success -> "남은 시간 응답이 오래됐어요. 차량 내비에서 안내 시간을 확인해주세요"
+            else -> if (vehicle.guidanceRefreshing) "차량 내비의 남은 시간을 확인하고 있어요"
+                else "차량 내비에서 현재 안내 시간을 확인해주세요"
+        })
     }
     Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.fillMaxWidth().padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -320,7 +340,6 @@ private fun VehicleActive(state: HomeUiState) {
             VehicleStopLine("집", state.draft.home, "마지막 목적지", null)
         }
     }
-    VehicleEstimateSource(state)
 }
 
 @Composable

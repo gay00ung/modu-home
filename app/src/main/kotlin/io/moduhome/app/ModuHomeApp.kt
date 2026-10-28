@@ -34,6 +34,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.repeatOnLifecycle
+import io.moduhome.app.core.navigation.GuidanceEstimateResult
 import io.moduhome.app.core.navigation.NavigationConnection
 import io.moduhome.app.core.navigation.NavigationSnapshot
 import io.moduhome.app.core.navigation.RouteRequestResult
@@ -130,6 +132,7 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
         }
     }
     val connection by gateway.connection.collectAsStateWithLifecycle()
+    val routeRevision by gateway.routeRevision.collectAsStateWithLifecycle()
     DisposableEffect(gateway) {
         gateway.connect()
         onDispose { gateway.close() }
@@ -139,6 +142,8 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
     var estimating by remember(gateway) { mutableStateOf(false) }
     var planning by remember { mutableStateOf(false) }
     var tripResult by remember(gateway) { mutableStateOf<TripEstimateResult?>(null) }
+    var guidanceResult by remember(gateway) { mutableStateOf<GuidanceEstimateResult?>(null) }
+    var guidanceRefreshing by remember(gateway) { mutableStateOf(false) }
     var tripNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var navigationMessage by remember(gateway) { mutableStateOf<String?>(null) }
     var navigationError by remember(gateway) { mutableStateOf(false) }
@@ -219,9 +224,9 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
             }
         }
     }
-    LaunchedEffect(tripResult) {
+    LaunchedEffect(tripResult, guidanceResult) {
         tripNow = System.currentTimeMillis()
-        if (tripResult is TripEstimateResult.Success) {
+        if (tripResult is TripEstimateResult.Success || guidanceResult is GuidanceEstimateResult.Success) {
             while (true) {
                 delay(30_000)
                 tripNow = System.currentTimeMillis()
@@ -261,6 +266,29 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
     LaunchedEffect(gateway, connection) {
         if (connection == NavigationConnection.Ready && state.progress.stage == JourneyStage.ACTIVE && navigationSnapshot == null) {
             readNavigation()
+        }
+    }
+    val guidancePlan = state.selectedPlan?.let(state.draft::navigationPlan)
+    LaunchedEffect(gateway, connection, routeRevision, state.progress.stage, guidancePlan, lifecycleOwner) {
+        guidanceResult = null
+        if (connection != NavigationConnection.Ready || state.progress.stage != JourneyStage.ACTIVE || guidancePlan == null) {
+            return@LaunchedEffect
+        }
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            try {
+                navigationSnapshot = null
+                while (true) {
+                    guidanceRefreshing = true
+                    val result = gateway.currentGuidance(guidancePlan)
+                    guidanceResult = result
+                    navigationSnapshot = result.observedRoute
+                    guidanceRefreshing = false
+                    delay(30_000)
+                }
+            } finally {
+                guidanceRefreshing = false
+                guidanceResult = null
+            }
         }
     }
     val roadComparisonAvailable = routeGateway != null && connection == NavigationConnection.Ready &&
@@ -443,6 +471,7 @@ internal fun ModuHomeApp(incomingProposal: String? = null, onProposalConsumed: (
     val vehicleState = VehicleNavigationUiState(
         connection, sending, reading || estimating || planning, navigationMessage, navigationError, navigationSnapshot,
         tripResult = tripResult, tripNow = tripNow, roadComparisonAvailable = roadComparisonAvailable, planning = planning,
+        guidanceResult = guidanceResult, guidanceRefreshing = guidanceRefreshing,
     )
     if (isVehicle && !editingAllowed) {
         RestrictedJourneyScreen(state = state, interaction = interaction)

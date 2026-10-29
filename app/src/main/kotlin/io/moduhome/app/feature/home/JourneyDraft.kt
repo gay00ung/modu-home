@@ -58,6 +58,7 @@ internal data class JourneyDraft(
     val groceries: VisitDraft = VisitDraft(place = "동네마트", stay = "15"),
     val travel: Map<TravelLeg, String> = TravelLeg.entries.associateWith { it.initial },
     val navigationPlaces: NavigationPlaces = NavigationPlaces(),
+    val clockZoneId: String? = null,
 ) {
     fun navigationPoint(role: NavigationPlaceRole): NavigationPoint? = when (role) {
         NavigationPlaceRole.HOME -> navigationPlaces.home?.takeIf { it.name.trim() == home.trim() }
@@ -94,8 +95,10 @@ internal data class JourneyDraft(
         return NavigationPlan(destination, waypoints)
     }
 
-    fun newJourney(dateEpochDay: Long, departure: String): JourneyDraft =
-        copy(dateEpochDay = dateEpochDay, departure = departure, pickup = pickup.copy(ready = false))
+    fun newJourney(dateEpochDay: Long, departure: String, clockZoneId: String = ZoneId.systemDefault().id): JourneyDraft =
+        copy(dateEpochDay = dateEpochDay, departure = departure, clockZoneId = clockZoneId,
+            pickup = pickup.copy(ready = false, deadline = "", deadlineNextDay = false),
+            groceries = groceries.copy(deadline = "", deadlineNextDay = false))
 
     fun validate(requireTravelTimes: Boolean = true): DraftValidation {
         val errors = mutableMapOf<String, String>()

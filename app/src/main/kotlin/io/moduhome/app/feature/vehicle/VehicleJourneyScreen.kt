@@ -19,8 +19,11 @@ import androidx.compose.ui.unit.sp
 import io.moduhome.app.core.navigation.NavigationConnection
 import io.moduhome.app.core.navigation.GuidanceEstimateResult
 import io.moduhome.app.core.planning.ErrandJourneyPlan
+import io.moduhome.app.core.planning.DepartureClock
 import io.moduhome.app.core.planning.JourneyStage
 import io.moduhome.app.core.planning.PlanIssueKind
+import io.moduhome.app.core.planning.ScheduledVisit
+import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.planning.formatJourneyMinute
 import io.moduhome.app.feature.home.HomeUiState
 import io.moduhome.app.feature.home.JourneyActions
@@ -29,6 +32,7 @@ import io.moduhome.app.feature.home.VehicleNavigationUiState
 import io.moduhome.app.feature.home.VisitDraft
 import io.moduhome.app.feature.home.planTitle
 import io.moduhome.app.feature.home.visitLabel
+import java.time.format.DateTimeFormatter
 
 /** The app owns the journey and restriction state. This surface only renders it and emits intents. */
 @Composable
@@ -141,6 +145,7 @@ private fun VehicleInput(state: HomeUiState, actions: JourneyActions, vehicle: V
             onChange = { actions.onDraftChange(draft.copy(pickup = it)) },
             onPlace = { actions.onChooseNavigationPlace(NavigationPlaceRole.PICKUP) },
             pickup = true, modifier = cardModifier,
+            dateEpochDay = draft.dateEpochDay,
         ) }
         val groceriesCard: @Composable (Modifier) -> Unit = { cardModifier -> VehicleVisitCard(
             title = "장보기", visit = draft.groceries,
@@ -149,6 +154,7 @@ private fun VehicleInput(state: HomeUiState, actions: JourneyActions, vehicle: V
             onChange = { actions.onDraftChange(draft.copy(groceries = it)) },
             onPlace = { actions.onChooseNavigationPlace(NavigationPlaceRole.GROCERIES) },
             pickup = false, modifier = cardModifier,
+            dateEpochDay = draft.dateEpochDay,
         ) }
         if (stacked) {
             Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -195,6 +201,7 @@ private fun VehicleVisitCard(
     onChange: (VisitDraft) -> Unit,
     onPlace: () -> Unit,
     pickup: Boolean,
+    dateEpochDay: Long,
     modifier: Modifier = Modifier,
 ) {
     val enabled = canEdit && visit.enabled
@@ -213,6 +220,19 @@ private fun VehicleVisitCard(
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp)) {
                 Text(placeName ?: "장소 선택", fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.SemiBold,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            if (visit.enabled) {
+                val stay = visit.stay.toIntOrNull()?.takeIf { it in 0..180 }
+                val walk = visit.walking.toIntOrNull()?.takeIf { it in 0..30 }
+                if (stay !in listOf(5, 10, 15) || walk != 0) {
+                    VehicleCaption(if (stay == null || walk == null) "체류·도보 조건을 확인해주세요"
+                        else "체류 ${stay}분 · 편도 도보 ${walk}분")
+                }
+                if (visit.deadline.isNotBlank()) {
+                    val date = DepartureClock.deadlineDate(dateEpochDay, visit.deadlineNextDay)
+                    VehicleCaption(if (date == null) "마감 날짜를 확인해주세요"
+                        else "마감 ${date.format(DateTimeFormatter.ofPattern("M월 d일"))} ${visit.deadline}")
+                }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -302,7 +322,7 @@ private fun VehicleReview(state: HomeUiState) {
             HorizontalDivider()
             plan.visits.forEachIndexed { index, scheduled ->
                 VehicleStopLine("${index + 1}", scheduled.visit.place, visitLabel(scheduled.visit.kind),
-                    formatJourneyMinute(scheduled.arrivalMinute))
+                    formatJourneyMinute(scheduled.arrivalMinute), deadlineNote(scheduled, state.draft.dateEpochDay))
             }
             VehicleStopLine("집", state.draft.home, "마지막 목적지", formatJourneyMinute(plan.homeArrivalMinute))
         }
@@ -523,7 +543,7 @@ private fun VehicleMetric(label: String, value: String, modifier: Modifier = Mod
 }
 
 @Composable
-private fun VehicleStopLine(marker: String, place: String, description: String, time: String?) {
+private fun VehicleStopLine(marker: String, place: String, description: String, time: String?, note: String? = null) {
     Row(Modifier.fillMaxWidth().heightIn(min = 80.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(24.dp)) {
         Text(marker, Modifier.widthIn(min = 64.dp), fontSize = 30.sp, fontWeight = FontWeight.Bold,
@@ -532,9 +552,31 @@ private fun VehicleStopLine(marker: String, place: String, description: String, 
             Text(place, fontSize = 32.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
             VehicleCaption(description)
+            if (note != null) VehicleCaption(note)
         }
-        if (time != null) Text(time, fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.SemiBold)
+        if (time != null) Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            VehicleCaption("도착")
+            Text(time, fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.SemiBold)
+        }
     }
+}
+
+private fun deadlineNote(scheduled: ScheduledVisit, dateEpochDay: Long): String? {
+    val slack = scheduled.deadlineSlackMinutes ?: return null
+    val deadline = scheduled.visit.deadlineMinute ?: return null
+    val date = DepartureClock.deadlineDate(dateEpochDay, deadline >= 1440)
+        ?.format(DateTimeFormatter.ofPattern("M월 d일")) ?: "날짜 확인 필요"
+    val service = when (scheduled.visit.kind) {
+        VisitKind.PICKUP -> "수령"
+        VisitKind.GROCERIES -> "장보기"
+    }
+    val margin = when {
+        slack < 0 -> "${-slack}분 늦음"
+        slack == 0 -> "마감과 같아요"
+        else -> "${slack}분 여유"
+    }
+    return "교통 제외 $service 완료 ${formatJourneyMinute(scheduled.serviceFinishedMinute)}\n" +
+        "마감 $date ${formatJourneyMinute(deadline % 1440)} · $margin"
 }
 
 @Composable

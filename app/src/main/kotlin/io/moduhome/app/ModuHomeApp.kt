@@ -95,6 +95,8 @@ import io.moduhome.app.feature.home.loadRoutedJourney
 import io.moduhome.app.feature.home.RoutedJourneyLoadResult
 import io.moduhome.app.feature.home.HomeScreen
 import io.moduhome.app.feature.home.HomeUiState
+import io.moduhome.app.feature.home.DepartureDraftResult
+import io.moduhome.app.feature.home.HomeDepartureResult
 import io.moduhome.app.feature.home.JourneyActions
 import io.moduhome.app.feature.home.JourneyDraft
 import io.moduhome.app.feature.home.NavigationPlacePicker
@@ -205,6 +207,7 @@ internal fun ModuHomeApp(
     }
     var state by remember(preferences) { mutableStateOf(preferences.load(freshDraft())) }
     var cancelRequested by remember { mutableStateOf(false) }
+    var newJourneyConfirmation by remember { mutableStateOf<NewJourneyConfirmation?>(null) }
     val proposalPreferences = remember(context) { ProposalInboxPreferences(context) }
     val restoredProposals = remember(proposalPreferences) { proposalPreferences.load(System.currentTimeMillis()) }
     var inbox by remember { mutableStateOf((restoredProposals as? ProposalInboxLoadResult.Loaded)?.inbox ?: ErrandProposalInbox.empty()) }
@@ -324,7 +327,10 @@ internal fun ModuHomeApp(
     }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) dismissSharedProposals()
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                dismissSharedProposals()
+                newJourneyConfirmation = null
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -360,7 +366,7 @@ internal fun ModuHomeApp(
         return true
     }
     fun receiveProposal(link: String, showReview: Boolean = true): Boolean {
-        if (showReview) proposalPanelOpen = restrictions.state.value.editingAllowed && !sharedMode
+        if (showReview) proposalPanelOpen = restrictions.state.value.editingAllowed && !sharedMode && newJourneyConfirmation == null
         return when (val decoded = ProposalLinkCodec.decode(link.trim(), System.currentTimeMillis())) {
             is ProposalDecodeResult.Invalid -> {
                 proposalMessage = decoded.reason
@@ -636,13 +642,30 @@ internal fun ModuHomeApp(
         (!state.draft.pickup.enabled || state.draft.navigationPoint(NavigationPlaceRole.PICKUP) != null) &&
         (!state.draft.groceries.enabled || state.draft.navigationPoint(NavigationPlaceRole.GROCERIES) != null)
 
+    fun requestNewJourney(reason: String) {
+        if (!restrictions.state.value.editingAllowed || sharedMode || sending || reading || estimating || planning ||
+            state.progress.stage == JourneyStage.ACTIVE || !lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+        proposalPanelOpen = false
+        dismissCompanion()
+        dismissAddressPicker()
+        dismissPicker()
+        dismissVoice()
+        newJourneyConfirmation = NewJourneyConfirmation(state, reason)
+    }
+
     fun compareRoadRoutes() {
         val routes = routeGateway ?: return
         if (!editingAllowed || planning || sending || reading || estimating || state.progress.stage != JourneyStage.INPUT) return
         val previous = state.draft
-        val now = LocalDateTime.now()
-        val draft = previous.copy(origin = "현재 차량 위치", departure = now.format(DateTimeFormatter.ofPattern("HH:mm")),
-            dateEpochDay = now.toLocalDate().toEpochDay())
+        val draft = when (val rebased = DepartureDraftResult.prepare(previous.copy(origin = "현재 차량 위치"),
+            System.currentTimeMillis(), ZoneId.systemDefault())) {
+            is DepartureDraftResult.Ready -> rebased.draft
+            is DepartureDraftResult.CalendarReview -> { requestNewJourney(rebased.reason); return }
+            is DepartureDraftResult.Invalid -> {
+                update(state.copy(showErrors = true)); navigationMessage = rebased.reason; navigationError = true
+                return
+            }
+        }
         val validation = draft.validate(requireTravelTimes = false)
         if (validation.request == null) {
             update(state.copy(showErrors = true))
@@ -664,7 +687,23 @@ internal fun ModuHomeApp(
                 if (state.draft == previous && state.progress.stage == JourneyStage.INPUT) {
                     when (result) {
                         is RoutedJourneyLoadResult.Success -> {
-                            val next = state.copy(draft = draft, routing = result.estimates)
+                            val comparedDraft = when (val latest = DepartureDraftResult.prepare(draft, System.currentTimeMillis(), ZoneId.systemDefault())) {
+                                is DepartureDraftResult.Ready -> latest.draft
+                                is DepartureDraftResult.CalendarReview -> {
+                                    navigationMessage = latest.reason; navigationError = true
+                                    return@launch
+                                }
+                                is DepartureDraftResult.Invalid -> {
+                                    navigationMessage = latest.reason; navigationError = true
+                                    return@launch
+                                }
+                            }
+                            if (!result.estimates.isFresh(System.currentTimeMillis())) {
+                                navigationMessage = "경로를 확인하는 동안 응답이 오래됐어요. 다시 비교해주세요"
+                                navigationError = true
+                                return@launch
+                            }
+                            val next = state.copy(draft = comparedDraft, routing = result.estimates)
                             if (update(next.copy(progress = next.progress.compare(next.plans)))) {
                                 navigationMessage = "방문 순서별 도로 경로를 확인했어요"
                             }
@@ -685,6 +724,7 @@ internal fun ModuHomeApp(
             dismissCompanion()
             dismissAddressPicker()
             cancelRequested = false
+            newJourneyConfirmation = null
             dismissPicker()
             dismissVoice()
         }
@@ -716,21 +756,34 @@ internal fun ModuHomeApp(
         onSelect = { id -> if (editingAllowed) update(state.copy(progress = state.progress.select(id, state.plans))) },
         onReview = { if (editingAllowed) update(state.copy(progress = state.progress.review(state.plans))) },
         onStart = start@{
-            val selected = state.selectedPlan
-            if (editingAllowed && !sending && !reading && !estimating && !planning && state.progress.stage == JourneyStage.REVIEW && selected?.isValid == true) {
-                if (state.routing?.isFresh(System.currentTimeMillis()) == false) {
-                    update(state.copy(progress = JourneyProgress()))
-                    navigationMessage = "조회 후 5분이 지났어요. 출발 전에 경로를 다시 비교해주세요"
-                    navigationError = true
-                } else if (connection == NavigationConnection.Unsupported) {
-                    update(state.copy(progress = state.progress.start(state.plans, System.currentTimeMillis())))
+            if (editingAllowed && !sending && !reading && !estimating && !planning && state.progress.stage == JourneyStage.REVIEW) {
+                val prepared = if (state.routing != null) when (val result = HomeDepartureResult.prepare(
+                    state, System.currentTimeMillis(), ZoneId.systemDefault())) {
+                    is HomeDepartureResult.Ready -> result.state
+                    is HomeDepartureResult.Recompare -> {
+                        if (update(result.state)) { navigationMessage = result.reason; navigationError = true }
+                        return@start
+                    }
+                    is HomeDepartureResult.Refresh -> {
+                        if (update(result.state)) { navigationMessage = result.reason; navigationError = true }
+                        return@start
+                    }
+                    is HomeDepartureResult.CalendarReview -> { requestNewJourney(result.reason); return@start }
+                    is HomeDepartureResult.Rejected -> {
+                        navigationMessage = result.reason; navigationError = true
+                        return@start
+                    }
+                } else state
+                val selected = prepared.selectedPlan?.takeIf { it.isValid } ?: return@start
+                if (connection == NavigationConnection.Unsupported) {
+                    update(prepared.copy(progress = prepared.progress.start(prepared.plans, System.currentTimeMillis())))
                 } else {
-                    val plan = state.draft.navigationPlan(selected)
+                    val plan = prepared.draft.navigationPlan(selected)
                     if (plan == null) {
                         navigationMessage = "입력 화면에서 집과 들를 곳의 내비 장소를 선택해주세요"
                         navigationError = true
                     } else if (connection == NavigationConnection.Ready) {
-                        if (!update(state)) return@start
+                        if (!update(prepared)) return@start
                         val draft = state.draft
                         val selectedId = selected.id
                         sending = true
@@ -777,10 +830,7 @@ internal fun ModuHomeApp(
         } },
         onCancel = { if (editingAllowed) cancelRequested = true },
         onNewJourney = {
-            if (editingAllowed) {
-            clearNavigationRead()
-            update(HomeUiState(freshDraft(state.draft), acceptedProposals = state.acceptedProposals))
-            }
+            requestNewJourney("집과 들를 곳, 체류·도보시간은 유지해요")
         },
         onChooseNavigationPlace = ::loadPlaces,
         onReadNavigation = ::readNavigation,
@@ -1273,6 +1323,28 @@ internal fun ModuHomeApp(
             dismissButton = { TextButton(onClick = dismiss) { Text("계속 진행") } },
         )
     }
+    newJourneyConfirmation?.takeIf { editingAllowed && !sharedMode }?.let { pending ->
+        val dismiss = { newJourneyConfirmation = null }
+        val confirm: () -> Unit = {
+            if (restrictions.state.value.editingAllowed && state == pending.state && !sending && !reading && !estimating && !planning &&
+                state.progress.stage != JourneyStage.ACTIVE && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                if (update(HomeUiState(freshDraft(state.draft), acceptedProposals = state.acceptedProposals))) {
+                    newJourneyConfirmation = null
+                    clearNavigationRead()
+                    navigationMessage = "이전 마감과 픽업 준비 확인을 지웠어요. 오늘 들를 곳을 확인해주세요"
+                } else newJourneyConfirmation = pending.copy(error = "새 계획을 저장하지 못했어요. 다시 눌러주세요")
+            } else newJourneyConfirmation = null
+        }
+        val description = listOfNotNull(pending.reason, "이전 마감과 픽업 준비 확인을 지우고 오늘 계획을 새로 만들어요", pending.error).joinToString("\n\n")
+        if (isVehicle) VehicleConfirmationDialog(
+            title = "오늘 귀가를 새로 계획할까요?", description = description,
+            confirmLabel = "오늘 새로 계획", onConfirm = confirm, onDismiss = dismiss,
+        ) else AlertDialog(
+            onDismissRequest = dismiss, title = { Text("오늘 귀가를 새로 계획할까요?") }, text = { Text(description) },
+            confirmButton = { TextButton(onClick = confirm) { Text("오늘 새로 계획") } },
+            dismissButton = { TextButton(onClick = dismiss) { Text("닫기") } },
+        )
+    }
     resumeConfirmation?.takeIf { editingAllowed && !sharedMode }?.let { pending ->
         val actual = pending.approval.snapshot
         val current = if (actual.guidanceActive) "현재 내비: ${actual.destination?.name ?: "목적지 확인 필요"}" else "현재 길안내는 종료돼 있어요"
@@ -1317,3 +1389,5 @@ internal fun ModuHomeApp(
         )
     }
 }
+
+private data class NewJourneyConfirmation(val state: HomeUiState, val reason: String, val error: String? = null)

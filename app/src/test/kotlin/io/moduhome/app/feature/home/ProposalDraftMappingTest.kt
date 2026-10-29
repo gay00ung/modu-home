@@ -48,4 +48,17 @@ class ProposalDraftMappingTest {
         assertTrue(ready.proposal(VisitKind.PICKUP, "proposal_01", now, zone)!!.ready)
         assertNull(ready.copy(pickup = ready.pickup.copy(stay = "oops")).proposal(VisitKind.PICKUP, "proposal_01", now, zone))
     }
+
+    @Test fun `an absolute proposal deadline records its known timezone`() {
+        val applied = JourneyDraft(dateEpochDay = date.toEpochDay()).withProposal(proposal(now + 60_000), zone)
+            as ProposalDraftResult.Applied
+        assertEquals(zone.id, applied.draft.clockZoneId)
+    }
+
+    @Test fun `another deadline in an unknown timezone is not silently reinterpreted`() {
+        val initial = JourneyDraft(dateEpochDay = date.toEpochDay(), groceries = VisitDraft(place = "마트", stay = "10", deadline = "20:00"))
+        assertTrue(initial.withProposal(proposal(now + 60_000), zone) is ProposalDraftResult.Invalid)
+        val known = initial.copy(clockZoneId = zone.id)
+        assertTrue(known.withProposal(proposal(now + 60_000), zone) is ProposalDraftResult.Applied)
+    }
 }

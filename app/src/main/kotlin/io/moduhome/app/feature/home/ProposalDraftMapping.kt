@@ -12,6 +12,10 @@ internal sealed interface ProposalDraftResult {
 }
 
 internal fun JourneyDraft.withProposal(proposal: ErrandProposal, zone: ZoneId = ZoneId.systemDefault()): ProposalDraftResult {
+    val otherVisit = if (proposal.kind == VisitKind.PICKUP) groceries else pickup
+    if (proposal.deadlineAtMillis != null && otherVisit.deadline.isNotBlank() && clockZoneId != zone.id) {
+        return ProposalDraftResult.Invalid("이전 볼일 마감의 시간대를 확인한 뒤 새 계획에서 제안을 반영해주세요")
+    }
     val deadline = proposal.deadlineAtMillis?.let { Instant.ofEpochMilli(it).atZone(zone) }
     val dayOffset = deadline?.toLocalDate()?.toEpochDay()?.minus(dateEpochDay)
     if (dayOffset != null && dayOffset !in 0L..1L) {
@@ -24,8 +28,10 @@ internal fun JourneyDraft.withProposal(proposal: ErrandProposal, zone: ZoneId = 
         deadlineNextDay = dayOffset == 1L,
     )
     return ProposalDraftResult.Applied(when (proposal.kind) {
-        VisitKind.PICKUP -> copy(pickup = visit, navigationPlaces = navigationPlaces.copy(pickup = proposal.place))
-        VisitKind.GROCERIES -> copy(groceries = visit, navigationPlaces = navigationPlaces.copy(groceries = proposal.place))
+        VisitKind.PICKUP -> copy(pickup = visit, navigationPlaces = navigationPlaces.copy(pickup = proposal.place),
+            clockZoneId = if (otherVisit.deadline.isBlank()) zone.id else clockZoneId)
+        VisitKind.GROCERIES -> copy(groceries = visit, navigationPlaces = navigationPlaces.copy(groceries = proposal.place),
+            clockZoneId = if (otherVisit.deadline.isBlank()) zone.id else clockZoneId)
     })
 }
 

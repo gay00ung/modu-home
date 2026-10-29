@@ -56,6 +56,22 @@ class ErrandJourneyPlannerTest {
     @Test fun completingServiceAtTheDeadlineIsAllowed() {
         val plan = ErrandJourneyPlanner().compare(request(listOf(pickup.copy(deadlineMinute = 1107)))).single()
         assertTrue(plan.isValid)
+        assertEquals(0, plan.visits.single().deadlineSlackMinutes)
+    }
+
+    @Test fun deadlineSlackUsesServiceCompletionIncludingWalkingAndStay() {
+        for (slack in listOf(-1, 0, 1)) {
+            val visit = pickup.copy(walkingMinutesOneWay = 2, deadlineMinute = 1109 + slack)
+            val plan = ErrandJourneyPlanner().compare(request(listOf(visit))).single()
+            val scheduled = plan.visits.single()
+            assertEquals(1102, scheduled.arrivalMinute)
+            assertEquals(1109, scheduled.serviceFinishedMinute)
+            assertEquals(1111, scheduled.departureMinute)
+            assertEquals(slack, scheduled.deadlineSlackMinutes)
+            assertEquals(slack >= 0, plan.isValid)
+        }
+        val withoutDeadline = ErrandJourneyPlanner().compare(request(listOf(pickup))).single()
+        assertNull(withoutDeadline.visits.single().deadlineSlackMinutes)
     }
 
     @Test fun exactAdditionalTimeLimitIsAllowed() {

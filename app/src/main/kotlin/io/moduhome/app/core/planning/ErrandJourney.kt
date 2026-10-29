@@ -72,7 +72,9 @@ internal data class ScheduledVisit(
     val arrivalMinute: Int,
     val serviceFinishedMinute: Int,
     val departureMinute: Int,
-)
+) {
+    val deadlineSlackMinutes: Int? get() = visit.deadlineMinute?.minus(serviceFinishedMinute)
+}
 
 internal enum class PlanIssueKind { OVER_BUDGET, NOT_READY, DEADLINE }
 internal data class PlanIssue(val kind: PlanIssueKind, val visit: VisitKind? = null, val minutes: Int = 0)

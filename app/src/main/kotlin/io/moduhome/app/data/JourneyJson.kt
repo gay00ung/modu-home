@@ -38,6 +38,7 @@ internal object JourneyJson {
                 origin = input.getString("origin"), home = input.getString("home"),
                 departure = input.getString("departure"), dateEpochDay = input.getLong("date"),
                 budget = input.getInt("budget"),
+                clockZoneId = input.optString("clockZoneId").takeIf { it.isNotBlank() && it != "null" },
                 pickup = readVisit(input.getJSONObject("pickup")),
                 groceries = readVisit(input.getJSONObject("groceries")),
                 travel = TravelLeg.entries.associateWith { travel.optString(it.name, it.initial) },
@@ -79,6 +80,7 @@ internal object JourneyJson {
         val input = JSONObject()
             .put("origin", draft.origin).put("home", draft.home).put("departure", draft.departure)
             .put("date", draft.dateEpochDay).put("budget", draft.budget)
+            .put("clockZoneId", draft.clockZoneId)
             .put("pickup", writeVisit(draft.pickup)).put("groceries", writeVisit(draft.groceries)).put("travel", travel)
             .put("navigation", JSONObject()
                 .put("home", draft.navigationPlaces.home?.let(::writePoint))

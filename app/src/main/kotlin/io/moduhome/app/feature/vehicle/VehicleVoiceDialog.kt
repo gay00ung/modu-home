@@ -19,6 +19,12 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +48,13 @@ internal fun VehicleVoiceDialog(
     val maximumHeight = LocalWindowInfo.current.containerDpSize.height * 0.86f
     val canConfirm = command != null && state == VoiceInputState.Idle
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        val windowFocused = LocalWindowInfo.current.isWindowFocused
+        var wasFocused by remember { mutableStateOf(false) }
+        val latestOnDismiss by rememberUpdatedState(onDismiss)
+        LaunchedEffect(windowFocused) {
+            if (windowFocused) wasFocused = true
+            else if (wasFocused) latestOnDismiss()
+        }
         Surface(
             modifier = modifier.widthIn(max = 1200.dp).fillMaxWidth(0.86f).heightIn(max = maximumHeight),
             color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(28.dp),

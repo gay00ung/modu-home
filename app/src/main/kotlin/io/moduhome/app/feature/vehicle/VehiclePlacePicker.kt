@@ -80,7 +80,7 @@ internal fun VehiclePlacePicker(
                 HorizontalDivider()
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    Text("내비에서 추가했다면 새로고침하세요", Modifier.weight(1f), fontSize = 22.sp, lineHeight = 30.sp,
+                    Text("내비에서 추가했다면 새로고침하세요", Modifier.weight(1f), fontSize = 28.sp, lineHeight = 38.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(onClick = onDismiss, modifier = Modifier.widthIn(min = 180.dp).heightIn(min = 88.dp),
                         shape = RoundedCornerShape(18.dp)) {
@@ -103,7 +103,7 @@ private fun VehiclePlaceSection(
     enabled: Boolean,
     onChoose: (NavigationPoint) -> Unit,
 ) {
-    Text(title, fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold,
+    Text(title, fontSize = 28.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.primary)
     places.forEach { point ->
         OutlinedButton(
@@ -115,7 +115,7 @@ private fun VehiclePlaceSection(
                 Text(point.name, fontSize = 30.sp, lineHeight = 40.sp, fontWeight = FontWeight.SemiBold,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (point.address.isNotBlank()) {
-                    Text(point.address, fontSize = 22.sp, lineHeight = 30.sp,
+                    Text(point.address, fontSize = 28.sp, lineHeight = 38.sp,
                         maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

@@ -83,10 +83,10 @@ internal fun VehicleVoiceDialog(
                             Text(message, fontSize = 28.sp, lineHeight = 38.sp)
                         }
                         if (state is VoiceInputState.Failed) {
-                            Text("이 화면을 닫고 터치로 계획을 선택해주세요", fontSize = 26.sp, lineHeight = 36.sp,
+                            Text("이 화면을 닫고 터치로 계획을 선택해주세요", fontSize = 28.sp, lineHeight = 38.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else if (state == VoiceInputState.Idle && !message.isNullOrBlank()) {
-                            Text("다시 말하려면 닫은 뒤 ‘말로 선택’을 눌러주세요", fontSize = 22.sp, lineHeight = 30.sp,
+                            Text("다시 말하려면 닫은 뒤 ‘말로 선택’을 눌러주세요", fontSize = 28.sp, lineHeight = 38.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else if (state != VoiceInputState.Stopping) {
                             Text("‘장도 보고 갈래’ 또는 ‘추가 20분’", fontSize = 28.sp, lineHeight = 40.sp,

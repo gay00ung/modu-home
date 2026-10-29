@@ -24,10 +24,10 @@ private val VehicleTypography = Typography().let { base -> base.copy(
     titleSmall = base.titleSmall.copy(fontSize = 28.sp, lineHeight = 36.sp),
     bodyLarge = base.bodyLarge.copy(fontSize = 30.sp, lineHeight = 40.sp),
     bodyMedium = base.bodyMedium.copy(fontSize = 28.sp, lineHeight = 38.sp),
-    bodySmall = base.bodySmall.copy(fontSize = 22.sp, lineHeight = 30.sp),
-    labelLarge = base.labelLarge.copy(fontSize = 26.sp, lineHeight = 34.sp),
-    labelMedium = base.labelMedium.copy(fontSize = 24.sp, lineHeight = 32.sp),
-    labelSmall = base.labelSmall.copy(fontSize = 22.sp, lineHeight = 30.sp),
+    bodySmall = base.bodySmall.copy(fontSize = 28.sp, lineHeight = 38.sp),
+    labelLarge = base.labelLarge.copy(fontSize = 28.sp, lineHeight = 38.sp),
+    labelMedium = base.labelMedium.copy(fontSize = 28.sp, lineHeight = 38.sp),
+    labelSmall = base.labelSmall.copy(fontSize = 28.sp, lineHeight = 38.sp),
 ) }
 
 private val LightColors = lightColorScheme(

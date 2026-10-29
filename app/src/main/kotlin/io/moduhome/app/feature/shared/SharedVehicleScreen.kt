@@ -51,6 +51,7 @@ import io.moduhome.app.core.shared.SharedPlanIssue
 import io.moduhome.app.core.shared.SharedScheduledStop
 import io.moduhome.app.core.vehicle.DrivingInteraction
 import io.moduhome.app.core.vehicle.restrictContent
+import io.moduhome.app.feature.vehicle.VehicleToolbar
 import io.moduhome.app.feature.home.VehicleNavigationUiState
 import java.time.Instant
 import java.time.ZoneId
@@ -79,9 +80,7 @@ internal fun SharedVehicleScreen(
                 Modifier.statusBarsPadding().padding(horizontal = 40.dp, vertical = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    Text(sharedTitle(state.stage), Modifier.weight(1f), fontSize = 40.sp, lineHeight = 52.sp, fontWeight = FontWeight.Bold)
+                VehicleToolbar(title = sharedTitle(state.stage)) {
                     if (state.stage == JourneyStage.INPUT) {
                         SharedAction("휴대폰 연결", canEdit, actions.onOpenPhoneConnection)
                         SharedAction("받은 볼일 ${state.pendingProposalCount}", canEdit, actions.onOpenProposals)
@@ -325,7 +324,7 @@ private fun SharedPlanCard(
             plan.passengerArrivals.forEach { arrival ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(arrival.passengerName, Modifier.weight(1f), fontSize = 26.sp, lineHeight = 36.sp,
+                    Text(arrival.passengerName, Modifier.weight(1f), fontSize = 28.sp, lineHeight = 38.sp,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(clock(arrival.homeArrivalMinute), Modifier.widthIn(max = 220.dp), fontSize = 32.sp, lineHeight = 42.sp,
                         fontWeight = FontWeight.SemiBold, maxLines = 2)
@@ -508,7 +507,7 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
                         onClick = { if (state.stage == JourneyStage.COMPARE) actions.onEdit() else actions.onBack() },
                     )
                     JourneyStage.ACTIVE -> TextButton(onClick = { if (canEdit) actions.onCancel() }, enabled = canEdit,
-                        modifier = Modifier.heightIn(min = 88.dp)) { Text("계획 중단", fontSize = 26.sp) }
+                        modifier = Modifier.heightIn(min = 88.dp)) { Text("계획 중단", fontSize = 28.sp) }
                     JourneyStage.INPUT, JourneyStage.COMPLETE -> Unit
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -518,7 +517,7 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
                         JourneyStage.REVIEW -> "운전자 집이 마지막 목적지예요"
                         JourneyStage.ACTIVE -> "완료 확인은 정차한 뒤에"
                         JourneyStage.COMPLETE -> "다음 귀가도 함께 편하게"
-                    }, fontSize = 24.sp, lineHeight = 34.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }, fontSize = 28.sp, lineHeight = 38.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Button(onClick = {
                     if (enabled) when (state.stage) {
@@ -646,7 +645,7 @@ private fun SharedStopLine(marker: String, place: String, label: String, time: S
 
 @Composable
 private fun SharedCaption(text: String, modifier: Modifier = Modifier) {
-    Text(text, modifier, fontSize = 22.sp, lineHeight = 32.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(text, modifier, fontSize = 28.sp, lineHeight = 38.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable

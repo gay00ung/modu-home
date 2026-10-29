@@ -54,11 +54,7 @@ internal fun VehicleJourneyScreen(
         topBar = {
             Column(Modifier.statusBarsPadding().padding(horizontal = 40.dp, vertical = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(vehicleTitle(stage), fontSize = 40.sp, lineHeight = 50.sp, fontWeight = FontWeight.Bold)
-                        VehicleCaption(vehicleStage(stage))
-                    }
+                VehicleToolbar(title = vehicleTitle(stage)) {
                     if (stage == JourneyStage.INPUT || stage == JourneyStage.COMPLETE) {
                         OutlinedButton(onClick = { if (canEdit) onOpenShared() }, enabled = canEdit,
                             modifier = Modifier.heightIn(min = 80.dp), shape = RoundedCornerShape(18.dp)) {
@@ -72,20 +68,21 @@ internal fun VehicleJourneyScreen(
                         }
                         OutlinedButton(onClick = { if (canEdit) actions.onOpenProposals() }, enabled = canEdit,
                             modifier = Modifier.heightIn(min = 80.dp), shape = RoundedCornerShape(18.dp)) {
-                            Text("동승자 볼일", fontSize = 24.sp)
+                            Text("동승자 볼일", fontSize = 28.sp)
                         }
                         if (voiceAvailable) {
                             OutlinedButton(onClick = { if (canEdit) onVoice() }, enabled = canEdit,
                                 modifier = Modifier.heightIn(min = 80.dp), shape = RoundedCornerShape(18.dp)) {
-                                Text("말로 선택", fontSize = 24.sp)
+                                Text("말로 선택", fontSize = 28.sp)
                             }
                         }
                         TextButton(onClick = { if (canEdit) onOpenDetails() }, enabled = canEdit,
                             modifier = Modifier.heightIn(min = 80.dp)) {
-                            Text("상세 조건", fontSize = 24.sp)
+                            Text("상세 조건", fontSize = 28.sp)
                         }
                     }
                 }
+                VehicleCaption(vehicleStage(stage))
                 if (!editingAllowed || restrictionMessage != null) {
                     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(16.dp)) {
                         Text(restrictionMessage ?: "정차 후 계획을 선택하거나 바꿀 수 있어요",
@@ -135,35 +132,46 @@ private fun VehicleInput(state: HomeUiState, actions: JourneyActions, vehicle: V
             }
         }
     }
-    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-        VehicleVisitCard(
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val stacked = maxWidth < 1000.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.1f
+        val pickupCard: @Composable (Modifier) -> Unit = { cardModifier -> VehicleVisitCard(
             title = "픽업", visit = draft.pickup,
             placeName = draft.navigationPoint(NavigationPlaceRole.PICKUP)?.name,
             canEdit = canEdit, canChoosePlace = canChoosePlace,
             onChange = { actions.onDraftChange(draft.copy(pickup = it)) },
             onPlace = { actions.onChooseNavigationPlace(NavigationPlaceRole.PICKUP) },
-            pickup = true, modifier = Modifier.weight(1f).fillMaxHeight(),
-        )
-        VehicleVisitCard(
+            pickup = true, modifier = cardModifier,
+        ) }
+        val groceriesCard: @Composable (Modifier) -> Unit = { cardModifier -> VehicleVisitCard(
             title = "장보기", visit = draft.groceries,
             placeName = draft.navigationPoint(NavigationPlaceRole.GROCERIES)?.name,
             canEdit = canEdit, canChoosePlace = canChoosePlace,
             onChange = { actions.onDraftChange(draft.copy(groceries = it)) },
             onPlace = { actions.onChooseNavigationPlace(NavigationPlaceRole.GROCERIES) },
-            pickup = false, modifier = Modifier.weight(1f).fillMaxHeight(),
-        )
+            pickup = false, modifier = cardModifier,
+        ) }
+        if (stacked) {
+            Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                pickupCard(Modifier.fillMaxWidth())
+                groceriesCard(Modifier.fillMaxWidth())
+            }
+        } else {
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                pickupCard(Modifier.weight(1f).fillMaxHeight())
+                groceriesCard(Modifier.weight(1f).fillMaxHeight())
+            }
+        }
     }
     Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp)) {
-        Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("더 걸려도 괜찮은 시간", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
-                VehicleCaption("집 직행보다 최대 ${draft.budget}분 더")
-            }
-            listOf(10, 20, 30, 60).forEach { minutes ->
-                VehicleChoice("${minutes}분", draft.budget == minutes, canEdit,
-                    onClick = { if (canEdit) actions.onDraftChange(draft.copy(budget = minutes)) },
-                    modifier = Modifier.widthIn(min = 132.dp))
+        Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("더 걸려도 괜찮은 시간", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
+            VehicleCaption("집 직행보다 최대 ${draft.budget}분 더")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                listOf(10, 20, 30, 60).forEach { minutes ->
+                    VehicleChoice("${minutes}분", draft.budget == minutes, canEdit,
+                        onClick = { if (canEdit) actions.onDraftChange(draft.copy(budget = minutes)) },
+                        modifier = Modifier.widthIn(min = 132.dp))
+                }
             }
         }
     }
@@ -400,18 +408,18 @@ private fun VehicleNavigationStatus(vehicle: VehicleNavigationUiState, actions: 
                 if (vehicle.connection == NavigationConnection.Ready) {
                     OutlinedButton(onClick = { if (!busy) actions.onReadNavigation() }, enabled = !busy,
                         modifier = Modifier.heightIn(min = 80.dp).widthIn(min = 200.dp), shape = RoundedCornerShape(18.dp)) {
-                        Text("내비 확인", fontSize = 26.sp)
+                        Text("내비 확인", fontSize = 28.sp)
                     }
                 } else if (vehicle.connection is NavigationConnection.Failed) {
                     OutlinedButton(onClick = { if (canEdit) actions.onReconnectNavigation() }, enabled = canEdit,
                         modifier = Modifier.heightIn(min = 80.dp).widthIn(min = 200.dp), shape = RoundedCornerShape(18.dp)) {
-                        Text("다시 연결", fontSize = 26.sp)
+                        Text("다시 연결", fontSize = 28.sp)
                     }
                 }
             }
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             vehicle.message?.takeUnless { vehicle.error }?.let { message ->
-                Text(message, fontSize = 26.sp, lineHeight = 34.sp,
+                Text(message, fontSize = 28.sp, lineHeight = 38.sp,
                     color = if (vehicle.error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -463,9 +471,9 @@ private fun VehicleFooter(state: HomeUiState, actions: JourneyActions, vehicle: 
                     JourneyStage.COMPARE, JourneyStage.REVIEW -> OutlinedButton(
                         onClick = { if (canEdit) { if (stage == JourneyStage.COMPARE) actions.onEdit() else actions.onBack() } },
                         enabled = canEdit, modifier = Modifier.heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp),
-                    ) { Text(if (stage == JourneyStage.COMPARE) "선택 바꾸기" else "다시 비교", fontSize = 26.sp) }
+                    ) { Text(if (stage == JourneyStage.COMPARE) "선택 바꾸기" else "다시 비교", fontSize = 28.sp) }
                     JourneyStage.ACTIVE -> TextButton(onClick = { if (canEdit) actions.onCancel() }, enabled = canEdit,
-                        modifier = Modifier.heightIn(min = 88.dp)) { Text("계획 중단", fontSize = 26.sp) }
+                        modifier = Modifier.heightIn(min = 88.dp)) { Text("계획 중단", fontSize = 28.sp) }
                     JourneyStage.INPUT, JourneyStage.COMPLETE -> Unit
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -475,7 +483,7 @@ private fun VehicleFooter(state: HomeUiState, actions: JourneyActions, vehicle: 
                         JourneyStage.REVIEW -> "선택한 순서를 차량 내비로 전달해요"
                         JourneyStage.ACTIVE -> "완료 확인은 정차 후에 해주세요"
                         JourneyStage.COMPLETE -> "다음 귀가도 가는 김에"
-                    }, fontSize = 24.sp, lineHeight = 32.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }, fontSize = 28.sp, lineHeight = 38.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Button(onClick = {
                     if (enabled) when (stage) {
@@ -496,13 +504,13 @@ private fun VehicleFooter(state: HomeUiState, actions: JourneyActions, vehicle: 
 
 @Composable
 private fun VehicleChoice(label: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    OutlinedButton(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = 80.dp),
+    OutlinedButton(onClick = onClick, enabled = enabled, modifier = modifier.sizeIn(minWidth = 80.dp, minHeight = 80.dp),
         shape = RoundedCornerShape(18.dp), border = BorderStroke(if (selected) 3.dp else 1.dp,
             if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 18.dp)) {
-        Text(label, fontSize = 26.sp, lineHeight = 34.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+        Text(label, fontSize = 28.sp, lineHeight = 38.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
     }
 }
 
@@ -565,7 +573,7 @@ private fun VehicleError(message: String) {
 
 @Composable
 private fun VehicleCaption(text: String, modifier: Modifier = Modifier) {
-    Text(text, modifier, fontSize = 22.sp, lineHeight = 30.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(text, modifier, fontSize = 28.sp, lineHeight = 38.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 private fun vehicleTitle(stage: JourneyStage): String = when (stage) {

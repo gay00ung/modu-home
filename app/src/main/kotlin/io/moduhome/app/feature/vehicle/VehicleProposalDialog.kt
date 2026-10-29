@@ -89,7 +89,7 @@ internal fun VehicleProposalDialog(
                         }
                     }
                     if (!state.pickupAvailable && !state.groceriesAvailable) {
-                        Text("픽업이나 장보기 장소를 먼저 선택해주세요", fontSize = 22.sp, lineHeight = 30.sp,
+                        Text("픽업이나 장보기 장소를 먼저 선택해주세요", fontSize = 28.sp, lineHeight = 38.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (state.qrBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -106,7 +106,7 @@ internal fun VehicleProposalDialog(
                                         modifier = Modifier.padding(16.dp).size(320.dp))
                                 }
                                 Text("장소와 좌표가 포함돼요 · 함께 이동할 사람에게만 보여주세요",
-                                    fontSize = 22.sp, lineHeight = 30.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    fontSize = 28.sp, lineHeight = 38.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -127,12 +127,12 @@ internal fun VehicleProposalDialog(
 private fun VehicleProposalCard(proposal: ErrandProposal, canApply: Boolean, onApprove: () -> Unit, onDecline: () -> Unit) {
     OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            Text(visitLabel(proposal.kind), fontSize = 26.sp, lineHeight = 34.sp,
+            Text(visitLabel(proposal.kind), fontSize = 28.sp, lineHeight = 38.sp,
                 fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
             Text(proposal.place.name, fontSize = 32.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (proposal.place.address.isNotBlank() && proposal.place.address != proposal.place.name) {
-                Text(proposal.place.address, fontSize = 22.sp, lineHeight = 30.sp,
+                Text(proposal.place.address, fontSize = 28.sp, lineHeight = 38.sp,
                     maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text("체류 ${proposal.stayMinutes}분 · 편도 도보 ${proposal.walkingMinutesOneWay}분",
@@ -146,7 +146,7 @@ private fun VehicleProposalCard(proposal: ErrandProposal, canApply: Boolean, onA
                     .format(Instant.ofEpochMilli(deadline).atZone(ZoneId.systemDefault()))
                 Text("완료 마감 · $text", fontSize = 28.sp, lineHeight = 38.sp)
             }
-            Text("추가하면 기존 ${visitLabel(proposal.kind)} 장소와 조건을 바꿔요", fontSize = 26.sp, lineHeight = 36.sp,
+            Text("추가하면 기존 ${visitLabel(proposal.kind)} 장소와 조건을 바꿔요", fontSize = 28.sp, lineHeight = 38.sp,
                 fontWeight = FontWeight.Medium)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 OutlinedButton(onClick = onDecline, modifier = Modifier.weight(1f).heightIn(min = 88.dp),

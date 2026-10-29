@@ -20,6 +20,28 @@ python3 tools/proposal-relay/relay.py
 - 공개 주소는 ASCII 최대 2048자, 경로 없는 HTTP(S) 주소와 1~65535 포트로 설정
 - 자동 시작·외부 배포·파일 저장 기능 없이 개발 환경에서 직접 실행
 
+## HTTPS 연결
+
+인증서 체인과 개인키를 지정하면 서버가 TLS를 직접 처리한다
+파일은 저장소 밖에 두고 공개 주소의 호스트 이름과 일치하는 인증서를 사용한다
+
+```sh
+python3 tools/proposal-relay/relay.py \
+  --public-url https://relay.example:48680 \
+  --tls-cert /run/secrets/relay-fullchain.pem \
+  --tls-key /run/secrets/relay-private.key
+```
+
+- TLS 1.2 이상과 HTTP/1.1 사용
+- 인증서와 암호화하지 않은 PEM 개인키를 함께 지정하며 잘못된 파일·키 불일치는 소켓을 열기 전에 거절
+- TLS 리스너의 공개 주소는 HTTPS만 허용
+- 접속 IP 검사를 통과한 요청만 TLS 처리하며 핸드셰이크는 요청 스레드에서 수행
+- 핸드셰이크를 끝내지 않는 연결이 새 접속 처리를 막지 않도록 5초 소켓 제한 적용
+- 앱은 기본 인증서 체인·호스트 이름 검증을 사용하며 테스트용 CA는 테스트 클라이언트에서만 신뢰
+- LAN 접속은 기존 `--host`·`--allow-client` 규칙을 함께 적용
+
+별도 프록시에서 HTTPS를 처리할 때는 이 서버를 루프백 HTTP로 실행하고 `--public-url`에 프록시의 HTTPS 주소를 지정한다
+
 ## 프로토콜
 
 요청 본문은 UTF-8 JSON이며 모든 응답 후 연결을 닫는다
@@ -57,7 +79,7 @@ python3 tools/proposal-relay/relay.py
 
 서버는 링크를 전달하는 역할만 담당한다
 제안 내용의 유효성, 수신함의 영속 저장, 기존 볼일 교체와 사용자 승인은 앱에서 처리한다
-인터넷 운영 서비스에는 별도의 배포·접근 제어·HTTPS 구성이 필요하다
+인터넷 운영 서비스에는 배포 환경의 접근 제어·인증서 관리·요청 제한을 별도로 구성한다
 
 ## 테스트
 
@@ -67,3 +89,5 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/proposal-relay -
 
 테스트 서버는 `127.0.0.1`의 임시 포트에서만 실행하고 종료한다
 시간 주입으로 만료 경계를 확인하며 인증·역할 분리·동시 중복·상한·상태·삭제·HTTP 프레이밍을 검증한다
+HTTPS 테스트는 OpenSSL CLI로 임시 CA·서버 인증서를 생성하고 종료 시 지운다
+암호화 전송·인증서 신뢰·호스트 이름·구형 TLS 거절·IP 제한·미완료 핸드셰이크를 실제 소켓으로 확인한다

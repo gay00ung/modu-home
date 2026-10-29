@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import re
 import secrets
+import ssl
 import threading
 import time
 from typing import Callable
@@ -82,6 +83,22 @@ def _public_url(value: str) -> str:
     except ValueError:
         raise ValueError("public URL must be an HTTP(S) base URL without credentials, query or fragment") from None
     return value.rstrip("/")
+
+
+def _tls_context(cert_file: str | None, key_file: str | None) -> ssl.SSLContext | None:
+    if cert_file is None and key_file is None:
+        return None
+    if not cert_file or not key_file:
+        raise ValueError("TLS requires both --tls-cert and --tls-key")
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.set_alpn_protocols(["http/1.1"])
+    try:
+        # An empty password prevents an encrypted key from opening an interactive prompt.
+        context.load_cert_chain(cert_file, key_file, password="")
+    except (OSError, ValueError):
+        raise ValueError("could not load the TLS certificate chain and unencrypted private key") from None
+    return context
 
 
 @dataclass(repr=False)
@@ -214,7 +231,10 @@ class RelayServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, address: tuple[str, int], store: RelayStore, allowed_clients: tuple[str, ...] | None = None):
+    def __init__(self, address: tuple[str, int], store: RelayStore,
+                 allowed_clients: tuple[str, ...] | None = None, *, tls_context: ssl.SSLContext | None = None):
+        if tls_context is not None and urlsplit(store.public_base_url).scheme != "https":
+            raise ValueError("a TLS listener requires an HTTPS public URL")
         host = _local_ipv4("127.0.0.1" if address[0] == "localhost" else address[0], listener=True)
         if allowed_clients is None:
             if not host.is_loopback:
@@ -226,6 +246,7 @@ class RelayServer(ThreadingHTTPServer):
                 raise ValueError("at least one allowed client address is required")
         self.store = store
         self.allowed_clients = clients
+        self.tls_context = tls_context
         super().__init__((str(host), address[1]), RelayHandler)
 
     def verify_request(self, request, client_address) -> bool:
@@ -238,6 +259,14 @@ class RelayServer(ThreadingHTTPServer):
     def handle_error(self, request, client_address) -> None:
         # The default implementation prints tracebacks and client addresses.
         pass
+
+    def finish_request(self, request, client_address) -> None:
+        if self.tls_context is None:
+            return super().finish_request(request, client_address)
+        # Client filtering precedes this worker; an unfinished handshake cannot block accept().
+        with self.tls_context.wrap_socket(request, server_side=True, do_handshake_on_connect=False) as connection:
+            connection.settimeout(5)
+            super().finish_request(connection, client_address)
 
     def service_actions(self) -> None:
         self.store.prune_expired()
@@ -390,14 +419,18 @@ def main() -> None:
     parser.add_argument("--public-url", default=DEFAULT_PUBLIC_URL)
     parser.add_argument("--allow-client", action="append", default=None,
                         help="exact loopback/private IPv4 client address; repeat for each test device")
+    parser.add_argument("--tls-cert", help="PEM certificate chain for the HTTPS listener")
+    parser.add_argument("--tls-key", help="unencrypted PEM private key, stored outside the repository")
     args = parser.parse_args()
     try:
         store = RelayStore(args.public_url)
     except ValueError:
         parser.error("public URL must be an HTTP(S) base URL without credentials, query or fragment")
     try:
+        tls_context = _tls_context(args.tls_cert, args.tls_key)
         listener = RelayServer((args.host, args.port), store,
-                               None if args.allow_client is None else tuple(args.allow_client))
+                               None if args.allow_client is None else tuple(args.allow_client),
+                               tls_context=tls_context)
     except ValueError as error:
         parser.error(str(error))
     except (OSError, OverflowError):

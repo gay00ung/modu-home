@@ -63,6 +63,7 @@ internal fun SharedJourneyFlow(
     onOpenProposals: () -> Unit,
     onOpenPhoneConnection: () -> Unit,
     modifier: Modifier = Modifier,
+    toolbarActions: (@Composable (Boolean) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -702,7 +703,7 @@ internal fun SharedJourneyFlow(
         connection = connection, sending = state.sending, reading = state.reading || state.polling,
         message = state.message, error = state.error, snapshot = state.snapshot,
         roadComparisonAvailable = routeGateway != null, planning = state.planning,
-    ), interaction, modifier)
+    ), interaction, modifier, toolbarActions)
 
     state.picker?.takeIf { interaction.editingAllowed }?.let { selection ->
         val title = when (val target = selection.target) {

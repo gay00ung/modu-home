@@ -9,16 +9,19 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import io.moduhome.app.core.model.JourneyShortcutRequest
 import io.moduhome.app.ui.theme.ModuHomeTheme
 
 class MainActivity : ComponentActivity() {
     private var incomingProposal by mutableStateOf<String?>(null)
     private var incomingJoin by mutableStateOf<String?>(null)
+    private var incomingJourney by mutableStateOf<JourneyShortcutRequest?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         incomingProposal = savedInstanceState?.getString("pending_proposal") ?: proposalFrom(intent)
         incomingJoin = joinFrom(intent)
+        incomingJourney = JourneyShortcutIntents.request(intent)
         enableEdgeToEdge()
         setContent {
             ModuHomeTheme(vehicle = packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
@@ -28,6 +31,9 @@ class MainActivity : ComponentActivity() {
                 }, incomingJoin = incomingJoin, onJoinConsumed = {
                     incomingJoin = null
                     if (intent?.data?.host == "join") intent?.data = null
+                }, incomingJourney = incomingJourney, onJourneyConsumed = {
+                    incomingJourney = null
+                    JourneyShortcutIntents.consume(intent)
                 })
             }
         }
@@ -38,6 +44,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         incomingProposal = proposalFrom(intent)
         incomingJoin = joinFrom(intent)
+        incomingJourney = JourneyShortcutIntents.request(intent)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

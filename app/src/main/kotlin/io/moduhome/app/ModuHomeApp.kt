@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.setValue
@@ -46,6 +47,11 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.withResumed
 import androidx.core.net.toUri
 import io.moduhome.app.core.address.AddressSearchResult
+import io.moduhome.app.core.model.JourneyMode
+import io.moduhome.app.core.model.JourneyShortcutRequest
+import io.moduhome.app.data.notification.JourneyNotifications
+import io.moduhome.app.feature.vehicle.journeyShortcut
+import io.moduhome.app.feature.vehicle.VehicleJourneyShortcutAction
 import io.moduhome.app.data.address.AndroidAddressSearchGateway
 import io.moduhome.app.core.transfer.CompanionErrandSource
 import io.moduhome.app.core.navigation.GuidanceEstimateResult
@@ -129,10 +135,16 @@ internal fun ModuHomeApp(
     onProposalConsumed: () -> Unit = {},
     incomingJoin: String? = null,
     onJoinConsumed: () -> Unit = {},
+    incomingJourney: JourneyShortcutRequest? = null,
+    onJourneyConsumed: () -> Unit = {},
 ) {
     val uiContext = LocalContext.current
     val context = uiContext.applicationContext
     val isVehicle = remember(context) { context.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE) }
+    val journeyNotifications = remember(context) {
+        JourneyNotifications(context) { JourneyShortcutIntents.pendingIntent(context, it) }
+    }
+    var journeyShortcutEnabled by remember(journeyNotifications) { mutableStateOf(journeyNotifications.available) }
     val restrictions = remember(uiContext) { PleosDrivingRestrictions(uiContext) }
     val interaction by restrictions.state.collectAsStateWithLifecycle()
     val editingAllowed = interaction.editingAllowed
@@ -185,6 +197,7 @@ internal fun ModuHomeApp(
             return false
         }
         sharedState = next
+        journeyNotifications.update(JourneyMode.TOGETHER, next.session.journeyShortcut())
         return true
     }
     val scope = rememberCoroutineScope()
@@ -227,6 +240,22 @@ internal fun ModuHomeApp(
         return previous.newJourney(departure = now.format(DateTimeFormatter.ofPattern("HH:mm")), dateEpochDay = now.toLocalDate().toEpochDay())
     }
     var state by remember(preferences) { mutableStateOf(preferences.load(freshDraft())) }
+    val refreshJourneyShortcuts by rememberUpdatedState {
+        journeyShortcutEnabled = journeyNotifications.available
+        journeyNotifications.refresh(state.journeyShortcut(), sharedState.session.journeyShortcut())
+    }
+    var notificationPermissionRequested by rememberSaveable { mutableStateOf(journeyNotifications.permissionRequested) }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        refreshJourneyShortcuts()
+    }
+    DisposableEffect(journeyNotifications, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) refreshJourneyShortcuts()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) refreshJourneyShortcuts()
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     fun homeNavigationIdle(): Boolean = !sharedMode && restrictions.state.value.editingAllowed &&
         lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
         !sending && !reading && !estimating && !planning
@@ -462,6 +491,7 @@ internal fun ModuHomeApp(
             proposalQr = null
         }
         state = next
+        journeyNotifications.update(JourneyMode.SOLO, next.journeyShortcut())
         return true
     }
     fun clearNavigationRead() {
@@ -1044,6 +1074,52 @@ internal fun ModuHomeApp(
             JourneyStage.INPUT -> Unit
         }
     }
+    LaunchedEffect(incomingJourney, sharedMode, state.progress, sharedState.session.progress, interaction, lifecycleOwner) {
+        val request = incomingJourney ?: return@LaunchedEffect
+        if (!isVehicle) {
+            onJourneyConsumed()
+            return@LaunchedEffect
+        }
+        if (!interaction.editingAllowed) return@LaunchedEffect
+        lifecycleOwner.lifecycle.withResumed {
+            val current = if (sharedMode) sharedState.session.journeyShortcut() else state.journeyShortcut()
+            if (current?.request == request) {
+                detailsOpen = false
+                dismissVoice()
+                dismissPicker()
+                dismissSharedProposals()
+                proposalPanelOpen = false
+                relayActions.dismissVehicle()
+            }
+            onJourneyConsumed()
+        }
+    }
+    fun openJourneyShortcutSettings() {
+        if (!isVehicle || !restrictions.state.value.editingAllowed ||
+            !lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+        if (sharedMode && sharedState.busy || !sharedMode && (sending || reading || estimating || planning)) return
+        if (journeyNotifications.permissionRequired && !notificationPermissionRequested) {
+            journeyNotifications.recordPermissionRequest()
+            notificationPermissionRequested = true
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+        if (!journeyNotifications.openSettings()) {
+            val message = "차량 알림 설정을 열지 못했어요. 앱 목록에서 모두 집으로를 다시 열어주세요"
+            if (sharedMode) sharedState = sharedState.copy(message = message, error = true)
+            else {
+                navigationMessage = message
+                navigationError = true
+            }
+        }
+    }
+    val journeyShortcutActions: (@Composable (Boolean) -> Unit)? = if (isVehicle && !journeyShortcutEnabled) {
+        { enabled ->
+            val label = if (journeyNotifications.permissionRequired && !notificationPermissionRequested)
+                "계획 바로가기 켜기" else "차량 알림 설정 열기"
+            VehicleJourneyShortcutAction(label, enabled, ::openJourneyShortcutSettings)
+        }
+    } else null
     val vehicleState = VehicleNavigationUiState(
         connection, sending, reading || estimating || planning, navigationMessage, navigationError, navigationSnapshot,
         tripResult = tripResult, tripNow = tripNow, roadComparisonAvailable = roadComparisonAvailable, planning = planning,
@@ -1082,6 +1158,7 @@ internal fun ModuHomeApp(
             proposalPanelOpen = sharedProposalPanelOpen || relayState.vehicleDialogOpen,
             onOpenProposals = ::openSharedProposals,
             onOpenPhoneConnection = ::openVehicleRelay,
+            toolbarActions = journeyShortcutActions,
             onReconnect = {
                 if (restrictions.state.value.editingAllowed && !sharedState.busy) {
                     sharedState = sharedState.copy(snapshot = null, observedRouteRevision = null,
@@ -1101,6 +1178,7 @@ internal fun ModuHomeApp(
         RestrictedJourneyScreen(state = state, interaction = interaction)
     } else if (isVehicle && !detailsOpen) {
         VehicleJourneyScreen(state, actions, vehicleState, editingAllowed,
+            toolbarActions = journeyShortcutActions,
             restrictionMessage = when (val status = interaction) {
                 is DrivingInteraction.Unknown -> status.reason
                 is DrivingInteraction.Known -> if (status.editingAllowed) null else "계획 변경은 정차 후에 할 수 있어요"

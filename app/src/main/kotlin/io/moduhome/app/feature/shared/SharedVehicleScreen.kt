@@ -66,6 +66,7 @@ internal fun SharedVehicleScreen(
     vehicle: VehicleNavigationUiState,
     interaction: DrivingInteraction,
     modifier: Modifier = Modifier,
+    toolbarActions: (@Composable (Boolean) -> Unit)? = null,
 ) {
     if (!interaction.editingAllowed) {
         SharedRestrictedScreen(state, interaction, modifier)
@@ -82,6 +83,7 @@ internal fun SharedVehicleScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 VehicleToolbar(title = sharedTitle(state.stage)) {
+                    if (state.stage == JourneyStage.REVIEW || state.stage == JourneyStage.ACTIVE) toolbarActions?.invoke(canEdit)
                     if (state.stage == JourneyStage.INPUT) {
                         SharedAction("휴대폰 연결", canEdit, actions.onOpenPhoneConnection)
                         SharedAction("받은 볼일 ${state.pendingProposalCount}", canEdit, actions.onOpenProposals)

@@ -49,6 +49,7 @@ internal fun VehicleJourneyScreen(
     voiceAvailable: Boolean,
     modifier: Modifier = Modifier,
     voiceUnavailableMessage: String? = null,
+    toolbarActions: (@Composable (Boolean) -> Unit)? = null,
 ) {
     val stage = state.progress.stage
     val busy = vehicle.sending || vehicle.reading || vehicle.planning
@@ -60,6 +61,7 @@ internal fun VehicleJourneyScreen(
             Column(Modifier.statusBarsPadding().padding(horizontal = 40.dp, vertical = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 VehicleToolbar(title = vehicleTitle(stage)) {
+                    if (stage == JourneyStage.REVIEW || stage == JourneyStage.ACTIVE) toolbarActions?.invoke(canEdit)
                     if (stage == JourneyStage.INPUT || stage == JourneyStage.COMPLETE) {
                         OutlinedButton(onClick = { if (canEdit) onOpenShared() }, enabled = canEdit,
                             modifier = Modifier.heightIn(min = 80.dp), shape = RoundedCornerShape(18.dp)) {

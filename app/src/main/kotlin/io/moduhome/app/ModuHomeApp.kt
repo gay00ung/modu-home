@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.Manifest
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -40,6 +41,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.withResumed
 import androidx.core.net.toUri
 import io.moduhome.app.core.address.AddressSearchResult
 import io.moduhome.app.data.address.AndroidAddressSearchGateway
@@ -106,6 +108,7 @@ import io.moduhome.app.feature.home.VehicleNavigationUiState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
@@ -136,17 +139,26 @@ internal fun ModuHomeApp(
     var voiceMessage by remember { mutableStateOf<String?>(null) }
     var voiceCommand by remember { mutableStateOf<JourneyVoiceCommand?>(null) }
     var voiceRequest by remember { mutableLongStateOf(0L) }
-    fun dismissVoice() {
+    var voicePermissionPending by remember { mutableStateOf(false) }
+    var voiceStartAfterPermission by remember { mutableStateOf(false) }
+    var voicePermissionMessage by remember { mutableStateOf<String?>(null) }
+    fun dismissVoice(keepPermissionRequest: Boolean = false) {
         voiceRequest += 1
         voice.stop()
         voiceDialogOpen = false
         voiceCommand = null
         voiceMessage = null
+        if (!keepPermissionRequest) {
+            voicePermissionPending = false
+            voiceStartAfterPermission = false
+        }
     }
     DisposableEffect(restrictions, voice, lifecycleOwner) {
         restrictions.connect()
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) dismissVoice()
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                dismissVoice(keepPermissionRequest = voicePermissionPending)
+            }
             if (event == Lifecycle.Event.ON_RESUME) restrictions.connect()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -206,6 +218,52 @@ internal fun ModuHomeApp(
         return previous.newJourney(departure = now.format(DateTimeFormatter.ofPattern("HH:mm")), dateEpochDay = now.toLocalDate().toEpochDay())
     }
     var state by remember(preferences) { mutableStateOf(preferences.load(freshDraft())) }
+    fun canStartVoice(): Boolean = BuildConfig.ENABLE_VEHICLE_VOICE && isVehicle && !sharedMode &&
+        restrictions.state.value.editingAllowed && restrictions.state.value.voiceTranscriptionAllowed &&
+        state.progress.stage == JourneyStage.INPUT && voice.state.value == VoiceInputState.Idle &&
+        lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+    fun startVoice() {
+        if (!canStartVoice() || context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+        voiceRequest += 1
+        val request = voiceRequest
+        voiceDialogOpen = true
+        voiceCommand = null
+        voiceMessage = null
+        voicePermissionMessage = null
+        scope.launch {
+            val result = voice.recognize()
+            if (request == voiceRequest && voiceDialogOpen && restrictions.state.value.editingAllowed &&
+                restrictions.state.value.voiceTranscriptionAllowed) {
+                when (result) {
+                    is VoiceRecognitionResult.Recognized -> when (val parsed = KoreanJourneyVoiceParser.parse(result.text)) {
+                        is VoiceCommandParseResult.Supported -> voiceCommand = parsed.command
+                        is VoiceCommandParseResult.Unsupported -> voiceMessage = parsed.reason
+                    }
+                    is VoiceRecognitionResult.Unavailable -> voiceMessage = result.reason
+                    VoiceRecognitionResult.NoSpeech -> voiceMessage = "말씀을 듣지 못했어요. 버튼을 눌러 다시 시작해주세요"
+                    VoiceRecognitionResult.Stopped -> voiceMessage = "음성 입력을 중지했어요"
+                    VoiceRecognitionResult.Busy -> voiceMessage = "이미 음성을 듣고 있어요"
+                }
+            }
+        }
+    }
+    val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val requested = voicePermissionPending
+        voicePermissionPending = false
+        if (requested) {
+            if (granted) {
+                voiceStartAfterPermission = true
+                val request = voiceRequest
+                scope.launch {
+                    val resumed = withTimeoutOrNull(1_000) { lifecycleOwner.lifecycle.withResumed { true } } == true
+                    if (resumed && voiceStartAfterPermission && request == voiceRequest) {
+                        voiceStartAfterPermission = false
+                        startVoice()
+                    } else voiceStartAfterPermission = false
+                }
+            } else voicePermissionMessage = "마이크 권한이 없어 음성을 들을 수 없어요. 터치로 선택해주세요"
+        }
+    }
     var cancelRequested by remember { mutableStateOf(false) }
     var newJourneyConfirmation by remember { mutableStateOf<NewJourneyConfirmation?>(null) }
     val proposalPreferences = remember(context) { ProposalInboxPreferences(context) }
@@ -926,31 +984,17 @@ internal fun ModuHomeApp(
             },
             onOpenPhoneConnection = ::openVehicleRelay,
             voiceAvailable = BuildConfig.ENABLE_VEHICLE_VOICE && interaction.voiceTranscriptionAllowed &&
+                !voicePermissionPending && !voiceStartAfterPermission &&
                 voiceState !is VoiceInputState.Failed && voiceState != VoiceInputState.Stopping,
-            voiceUnavailableMessage = if (BuildConfig.ENABLE_VEHICLE_VOICE && voiceState is VoiceInputState.Failed)
+            voiceUnavailableMessage = voicePermissionMessage ?: if (BuildConfig.ENABLE_VEHICLE_VOICE && voiceState is VoiceInputState.Failed)
                 "음성 연결을 확인하지 못했어요. 터치로 계획을 선택해주세요" else null,
             onVoice = {
-                if (BuildConfig.ENABLE_VEHICLE_VOICE && editingAllowed && interaction.voiceTranscriptionAllowed &&
-                    state.progress.stage == JourneyStage.INPUT && voiceState == VoiceInputState.Idle) {
-                    voiceRequest += 1
-                    val request = voiceRequest
-                    voiceDialogOpen = true
-                    voiceCommand = null
-                    voiceMessage = null
-                    scope.launch {
-                        val result = voice.recognize()
-                        if (request == voiceRequest && voiceDialogOpen && interaction.editingAllowed && interaction.voiceTranscriptionAllowed) {
-                            when (result) {
-                                is VoiceRecognitionResult.Recognized -> when (val parsed = KoreanJourneyVoiceParser.parse(result.text)) {
-                                    is VoiceCommandParseResult.Supported -> voiceCommand = parsed.command
-                                    is VoiceCommandParseResult.Unsupported -> voiceMessage = parsed.reason
-                                }
-                                is VoiceRecognitionResult.Unavailable -> voiceMessage = result.reason
-                                VoiceRecognitionResult.NoSpeech -> voiceMessage = "말씀을 듣지 못했어요. 버튼을 눌러 다시 시작해주세요"
-                                VoiceRecognitionResult.Stopped -> voiceMessage = "음성 입력을 중지했어요"
-                                VoiceRecognitionResult.Busy -> voiceMessage = "이미 음성을 듣고 있어요"
-                            }
-                        }
+                if (canStartVoice() && !voicePermissionPending && !voiceStartAfterPermission) {
+                    voicePermissionMessage = null
+                    if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startVoice()
+                    else {
+                        voicePermissionPending = true
+                        microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
                     }
                 }
             },

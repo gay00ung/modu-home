@@ -5,6 +5,7 @@ import ai.pleos.playground.stt.constant.ErrorType
 import ai.pleos.playground.stt.constant.Mode
 import ai.pleos.playground.stt.listener.OnInitializeListener
 import ai.pleos.playground.stt.listener.ResultListener
+import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Handler
@@ -15,15 +16,13 @@ import io.moduhome.app.core.voice.KoreanJourneyVoiceParser
 import io.moduhome.app.core.voice.VoiceInputGateway
 import io.moduhome.app.core.voice.VoiceInputState
 import io.moduhome.app.core.voice.VoiceRecognitionResult
-import io.moduhome.app.core.voice.awaitVoiceRecognitionResult
+import io.moduhome.app.core.voice.VoicePcmInput
+import io.moduhome.app.core.voice.awaitOwnedPcmRecognition
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,8 +32,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 import kotlin.coroutines.resume
 
-/** Each explicit request owns one ON_DEVICE session. Audio and recognized text are never persisted here. */
-internal class PleosVoiceInputGateway(context: Context) : VoiceInputGateway {
+/** Each explicit request owns its microphone and sends PCM to one ON_DEVICE session. */
+internal class PleosVoiceInputGateway(
+    context: Context,
+    private val inputFactory: () -> VoicePcmInput = { AndroidVoicePcmInput(context) },
+) : VoiceInputGateway {
     private val context = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private val mutableState = MutableStateFlow<VoiceInputState>(VoiceInputState.Idle)
@@ -50,9 +52,13 @@ internal class PleosVoiceInputGateway(context: Context) : VoiceInputGateway {
         if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
             return@withContext VoiceRecognitionResult.Unavailable("Pleos 차량에서 음성 입력을 사용할 수 있어요")
         }
+        if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            return@withContext VoiceRecognitionResult.Unavailable("마이크 권한을 허용한 뒤 다시 눌러주세요")
+        }
         if (active != null) return@withContext VoiceRecognitionResult.Busy
         val session = try {
-            Session(++nextSessionId, SpeechToText(context, Mode.ON_DEVICE))
+            val input = inputFactory()
+            Session(++nextSessionId, SpeechToText(context, Mode.ON_DEVICE), input)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -90,19 +96,38 @@ internal class PleosVoiceInputGateway(context: Context) : VoiceInputGateway {
             null -> return VoiceRecognitionResult.Unavailable("차량 음성 서비스에 연결하지 못했어요. 다시 시도해주세요")
         }
         if (!isCurrent(session) || session.stopping) return VoiceRecognitionResult.Stopped
-        return coroutineScope {
-            val result = async(start = CoroutineStart.UNDISPATCHED) { awaitRecognition(session) }
-            try {
-                awaitVoiceRecognitionResult(result, session.ended)
-            } finally {
-                result.cancel()
-            }
-        }
+        prepareRecognition(session)
+        return awaitOwnedPcmRecognition(
+            input = session.input,
+            result = session.recognition,
+            inputEnded = session.ended,
+            onStarted = { withContext(Dispatchers.Main.immediate) {
+                if (isCurrent(session) && !session.stopping && !session.recognition.isCompleted) {
+                    debug(session, "capture_started")
+                    mutableState.value = VoiceInputState.Listening()
+                }
+            } },
+            sendFrame = { frame -> withContext(Dispatchers.Main.immediate) {
+                if (isCurrent(session) && !session.stopping && !session.ended.isCompleted && !session.recognition.isCompleted) {
+                    session.pcmSent = true
+                    session.sdk.sendAudio(frame)
+                }
+            } },
+            completeInput = { withContext(Dispatchers.Main.immediate) {
+                if (isCurrent(session) && !session.stopping && session.pcmSent && !session.inputCompleted) {
+                    session.inputCompleted = true
+                    debug(session, "input_complete")
+                    session.sdk.completeAudioSend()
+                }
+            } },
+        )
     }
 
     private fun requestStop(session: Session) {
         if (!isCurrent(session)) return
+        if (!session.stopping) debug(session, "capture_stop_requested")
         session.stopping = true
+        session.input.stop()
         mutableState.value = VoiceInputState.Stopping
         val initialization = session.initialization
         session.initialization = null
@@ -143,21 +168,17 @@ internal class PleosVoiceInputGateway(context: Context) : VoiceInputGateway {
         }
     }
 
-    private suspend fun awaitRecognition(session: Session): VoiceRecognitionResult = suspendCancellableCoroutine { continuation ->
-        session.recognition = continuation
-        continuation.invokeOnCancellation { onMain { requestStop(session) } }
-        if (!continuation.isActive || !isCurrent(session) || session.stopping) return@suspendCancellableCoroutine
+    private fun prepareRecognition(session: Session) {
+        if (!isCurrent(session) || session.stopping) return
         val listener = object : ResultListener {
             override fun onReady() = onMain {
-                if (isCurrent(session)) debug(session, "ready")
-                listening(session)
+                if (isCurrent(session)) debug(session, "sdk_ready")
             }
             override fun onStartedRecognition() = onMain {
                 if (isCurrent(session)) debug(session, "started")
-                listening(session)
             }
             override fun onUpdated(stt: String, completed: Boolean) = onMain {
-                if (!isCurrent(session) || session.stopping || session.recognition == null) return@onMain
+                if (!isCurrent(session) || session.stopping || !session.pcmSent || session.recognition.isCompleted) return@onMain
                 if (completed) {
                     debug(session, "final_received")
                     val text = stt.trim()
@@ -177,9 +198,9 @@ internal class PleosVoiceInputGateway(context: Context) : VoiceInputGateway {
             override fun onUpdatedEpdData(on: Long, off: Long) = Unit
             override fun onUpdatedRms(rms: Double) = Unit
             override fun onEndedRecognition() = onMain {
-                if (isCurrent(session)) {
+                if (isCurrent(session) && session.pcmSent) {
                     debug(session, "end")
-                    if (!session.stopping && session.recognition != null) {
+                    if (!session.stopping && !session.recognition.isCompleted) {
                         debug(session, "awaiting_final")
                         mutableState.value = VoiceInputState.Processing
                     }
@@ -197,10 +218,6 @@ internal class PleosVoiceInputGateway(context: Context) : VoiceInputGateway {
         try {
             session.sdk.addListener(listener)
             session.sdk.setLocale(Locale.KOREA)
-            if (!continuation.isActive || !isCurrent(session) || session.stopping) return@suspendCancellableCoroutine
-            session.requested = true
-            debug(session, "request")
-            session.sdk.request()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -208,39 +225,26 @@ internal class PleosVoiceInputGateway(context: Context) : VoiceInputGateway {
         }
     }
 
-    private fun listening(session: Session) = onMain {
-        if (isCurrent(session) && !session.stopping && session.recognition != null && !session.ended.isCompleted) {
-            mutableState.value = VoiceInputState.Listening()
-        }
-    }
-
     private fun finish(session: Session, result: VoiceRecognitionResult) {
         if (!isCurrent(session)) return
-        val continuation = session.recognition
-        session.recognition = null
-        if (continuation?.isActive == true) continuation.resume(result)
+        session.recognition.complete(result)
     }
 
     private suspend fun shutdown(session: Session): String? {
         if (session.released) return session.shutdownFailure
         session.stopping = true
         session.initialization = null
-        session.recognition = null
         if (active === session) mutableState.value = VoiceInputState.Stopping
-        var failure: String? = null
-        if (session.requested && !session.ended.isCompleted) {
+        var failure = if (session.input.isClosed) null else "차량 마이크 종료를 확인하지 못했어요. 터치로 계획을 선택해주세요"
+        debug(session, if (session.input.isClosed) "capture_closed" else "capture_close_failed")
+        if (session.pcmSent && !session.ended.isCompleted) {
             debug(session, "stop_requested")
             try {
                 session.sdk.stop()
             } catch (_: Exception) {
                 debug(session, "stop_failed")
+                if (failure == null) failure = "차량 음성 연결을 종료하지 못했어요. 터치로 계획을 선택해주세요"
             }
-            val ended = withTimeoutOrNull(STOP_CONFIRMATION_TIMEOUT_MILLIS) {
-                session.ended.await()
-                true
-            } == true
-            debug(session, if (ended) "end_confirmed" else "end_timeout")
-            if (!ended) failure = "차량 음성 입력 종료를 확인하지 못했어요. 음성 입력을 다시 시작할 수 없어요"
         }
         try {
             session.listener?.let { session.sdk.removeListener(it) }
@@ -256,6 +260,7 @@ internal class PleosVoiceInputGateway(context: Context) : VoiceInputGateway {
             if (failure == null) failure = "차량 음성 연결을 해제하지 못했어요. 음성 입력을 다시 시작할 수 없어요"
         } finally {
             session.released = true
+            session.recognition.cancel()
             session.shutdownFailure = failure
             if (active === session) {
                 active = null
@@ -289,11 +294,12 @@ internal class PleosVoiceInputGateway(context: Context) : VoiceInputGateway {
         else -> "음성 입력을 사용할 수 없어요"
     }
 
-    private class Session(val id: Long, val sdk: SpeechToText) {
+    private class Session(val id: Long, val sdk: SpeechToText, val input: VoicePcmInput) {
         var initialization: CancellableContinuation<Initialization>? = null
-        var recognition: CancellableContinuation<VoiceRecognitionResult>? = null
+        val recognition = CompletableDeferred<VoiceRecognitionResult>()
         var listener: ResultListener? = null
-        var requested = false
+        var pcmSent = false
+        var inputCompleted = false
         val ended = CompletableDeferred<Unit>()
         var stopping = false
         var released = false
@@ -308,6 +314,5 @@ internal class PleosVoiceInputGateway(context: Context) : VoiceInputGateway {
 
     companion object {
         private const val INITIALIZATION_TIMEOUT_MILLIS = 8_000L
-        private const val STOP_CONFIRMATION_TIMEOUT_MILLIS = 3_000L
     }
 }

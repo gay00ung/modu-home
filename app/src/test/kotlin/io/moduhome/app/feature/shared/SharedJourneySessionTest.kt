@@ -33,9 +33,9 @@ class SharedJourneySessionTest {
     private val home = NavigationPoint("운전자 집", 37.51, 127.01)
     private val checked = DropoffVerification(AccessCheck.SUITABLE, AccessCheck.SUITABLE, "사용자 확인", now - 500)
     private val draft = SharedJourneyDraft(home, listOf(
-        SharedPassengerDraft("p1", "동승자 1", NavigationPoint("집 1", 37.52, 127.02), true, now - 1000, checked),
-        SharedPassengerDraft("p2", "동승자 2", NavigationPoint("집 2", 37.53, 127.03), true, now - 1000, checked),
-    ), SharedErrandDraft(VisitKind.PICKUP, NavigationPoint("픽업", 37.54, 127.04), ready = true))
+        SharedPassengerDraft("p1", "동승자 1", NavigationPoint("집 1", 37.52, 127.02, placeId = "poi-1"), true, now - 1000, checked),
+        SharedPassengerDraft("p2", "동승자 2", NavigationPoint("집 2", 37.53, 127.03, placeId = "poi-2"), true, now - 1000, checked),
+    ), SharedErrandDraft(VisitKind.PICKUP, NavigationPoint("픽업", 37.54, 127.04, placeId = "poi-pickup"), ready = true))
     private val routing by lazy {
         val gateway = object : RouteEstimateGateway {
             override suspend fun estimate(points: List<NavigationPoint>) = RouteEstimateResult.Success(response(points))

@@ -1,6 +1,7 @@
 package io.moduhome.app.data.shared
 
 import io.moduhome.app.core.navigation.NavigationPoint
+import io.moduhome.app.core.navigation.NavigationPlan
 import io.moduhome.app.core.planning.JourneyStage
 import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.routing.ObservedRouteLeg
@@ -128,6 +129,54 @@ class SharedJourneyJsonTest {
         val pendingOriginal = ErrandProposalInbox.restore(listOf(ProposalInboxEntry(proposal)))
         assertEquals(ProposalReviewStatus.APPROVED, restored.reconcileProposalInbox(pendingOriginal).entries.single().status)
         assertTrue(restored.reviewProposal(pendingOriginal, proposal.id, proposal.revision, now + 1, zone) is SharedProposalReviewResult.Rejected)
+    }
+
+    @Test fun addressSegmentRestoreRetainsTheSeparateFinalHomeAndWaitsForFreshReadback() {
+        val compared = routedSession()
+        val routing = requireNotNull(compared.routing)
+        val plan = routing.plans.first { it.stops.first().place.point.placeId.isEmpty() }
+        val progress = compared.progress.select(plan.id, routing.plans).review(routing.plans).start(plan, home, now + 1)
+        assertNotEquals(home, progress.pendingWindow!!.destination)
+        val restored = SharedJourneyJson.decode(encoded(compared.copy(progress = progress)), now + 100)
+        assertEquals(JourneyStage.ACTIVE, restored.progress.stage)
+        assertEquals(home, restored.progress.driverHome)
+        assertEquals(progress.pendingWindow, restored.progress.pendingWindow)
+        assertNull(restored.progress.confirmedWindow)
+    }
+
+    @Test fun legacyHomeDestinationWindowsMigrateWithoutLosingRecordedStopsOrApprovingNewGuidance() {
+        val compared = routedSession()
+        val routing = requireNotNull(compared.routing)
+        val plan = routing.plans.first()
+        val started = compared.progress.review(routing.plans).start(plan, home, now + 1)
+        for (completed in 0..1) {
+            val legacy = started.copy(driverHome = null, completedStopCount = completed,
+                completedAtMillis = List(completed) { now + 2 },
+                pendingWindow = NavigationPlan(home, plan.stops.drop(completed).take(2).map { it.place.point }),
+                confirmedWindow = if (completed == 0) null else NavigationPlan(home, plan.stops.take(2).map { it.place.point }))
+            val raw = JSONObject(encoded(compared.copy(progress = legacy)))
+            raw.getJSONObject("progress").remove("driverHome")
+            val restored = SharedJourneyJson.decode(raw.toString(), now + 100)
+            assertEquals(JourneyStage.ACTIVE, restored.progress.stage)
+            assertEquals(completed, restored.progress.completedStopCount)
+            assertEquals(legacy.completedAtMillis, restored.progress.completedAtMillis)
+            assertEquals(home, restored.progress.driverHome)
+            assertEquals(plan.currentWindow(home, completed), restored.progress.pendingWindow)
+            assertNull(restored.progress.confirmedWindow)
+            assertEquals(compared.acceptedProposals, restored.acceptedProposals)
+        }
+    }
+
+    @Test fun anAlteredFinalHomeCannotBeHiddenBehindAValidAddressWindow() {
+        val compared = routedSession()
+        val routing = requireNotNull(compared.routing)
+        val plan = routing.plans.first()
+        val progress = compared.progress.review(routing.plans).start(plan, home, now + 1)
+            .copy(driverHome = home.copy(latitude = 37.0))
+        val restored = SharedJourneyJson.decode(encoded(compared.copy(progress = progress)), now + 100)
+        assertEquals(JourneyStage.INPUT, restored.progress.stage)
+        assertEquals(home, restored.draft.driverHome)
+        assertEquals(compared.acceptedProposals, restored.acceptedProposals)
     }
 
     @Test fun acceptanceAfterItsOwnExpiryCannotBeTrustedAsHistory() {

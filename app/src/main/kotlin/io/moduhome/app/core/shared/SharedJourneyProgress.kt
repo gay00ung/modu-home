@@ -4,13 +4,14 @@ import io.moduhome.app.core.navigation.NavigationPlan
 import io.moduhome.app.core.navigation.NavigationPoint
 import io.moduhome.app.core.navigation.NavigationSnapshot
 import io.moduhome.app.core.navigation.remainingAfter
+import io.moduhome.app.core.navigation.verifiableNavigationWindow
 import io.moduhome.app.core.planning.JourneyStage
 
-/** The full shared plan stays intact; only the next two stops fit in the vehicle route. */
+/** The full shared plan stays intact; each vehicle window must have a verifiable identity. */
 internal fun SharedJourneyPlan.currentWindow(home: NavigationPoint, completedCount: Int): NavigationPlan {
     require(stops.size <= 3)
     require(completedCount in 0..stops.size)
-    return NavigationPlan(home, stops.drop(completedCount).take(2).map { it.place.point })
+    return verifiableNavigationWindow(home, stops.drop(completedCount).map { it.place.point })
 }
 
 /**
@@ -26,6 +27,7 @@ internal data class SharedJourneyProgress(
     val startedAtMillis: Long? = null,
     val confirmedWindow: NavigationPlan? = null,
     val pendingWindow: NavigationPlan? = null,
+    val driverHome: NavigationPoint? = null,
 ) {
     init {
         require(completedStopCount in 0..3)
@@ -55,7 +57,7 @@ internal data class SharedJourneyProgress(
         require(now >= 0)
         return if (stage == JourneyStage.REVIEW && selectedPlanId == plan.id && plan.isValid) {
             copy(stage = JourneyStage.ACTIVE, completedStopCount = 0, completedAtMillis = emptyList(),
-                startedAtMillis = now, confirmedWindow = null, pendingWindow = plan.currentWindow(home, 0))
+                startedAtMillis = now, confirmedWindow = null, pendingWindow = plan.currentWindow(home, 0), driverHome = home)
         } else this
     }
 
@@ -63,7 +65,7 @@ internal data class SharedJourneyProgress(
     fun confirmStop(plan: SharedJourneyPlan, now: Long): SharedJourneyProgress {
         if (stage != JourneyStage.ACTIVE || !matches(plan) || navigationPending ||
             completedStopCount >= plan.stops.size) return this
-        val home = confirmedWindow?.destination ?: return this
+        val home = driverHome ?: return this
         require(now >= (completedAtMillis.lastOrNull() ?: startedAtMillis ?: 0))
         val completed = completedStopCount + 1
         return copy(completedStopCount = completed, completedAtMillis = completedAtMillis + now,
@@ -104,7 +106,7 @@ internal data class SharedJourneyProgress(
             completedStopCount = completed,
             completedAtMillis = completedAtMillis + List(count) { now },
             confirmedWindow = observedRemainder,
-            pendingWindow = plan.currentWindow(pending.destination, completed),
+            pendingWindow = plan.currentWindow(checkNotNull(driverHome), completed),
         )
     }
 
@@ -156,10 +158,11 @@ internal data class SharedJourneyProgress(
         if (selectedPlanId != plan.id || !plan.isValid || plan.stops.size > 3 || completedStopCount > plan.stops.size) {
             return false
         }
+        val home = driverHome ?: return false
         val window = pendingWindow ?: confirmedWindow ?: return false
-        return window == plan.currentWindow(window.destination, completedStopCount)
+        return window == plan.currentWindow(home, completedStopCount)
     }
 
     private fun keepsHome(home: NavigationPoint): Boolean =
-        (pendingWindow ?: confirmedWindow)?.destination?.let { it == home } ?: true
+        driverHome == home
 }

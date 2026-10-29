@@ -49,6 +49,7 @@ import io.moduhome.app.core.shared.AccessCheck
 import io.moduhome.app.core.shared.SharedJourneyPlan
 import io.moduhome.app.core.shared.SharedPlanIssue
 import io.moduhome.app.core.shared.SharedScheduledStop
+import io.moduhome.app.core.shared.currentWindow
 import io.moduhome.app.core.vehicle.DrivingInteraction
 import io.moduhome.app.core.vehicle.restrictContent
 import io.moduhome.app.feature.vehicle.VehicleToolbar
@@ -363,7 +364,14 @@ private fun SharedReview(state: SharedVehicleUiState) {
             SharedStopLine("집", state.draft.driverHome?.name ?: "운전자 집 확인 필요", "운전자의 마지막 목적지", clock(plan.driverHomeArrivalMinute))
         }
     }
-    if (plan.stops.size == 3) SharedStagedGuidanceNote()
+    val home = state.draft.driverHome
+    val window = home?.let { plan.currentWindow(it, 0) }
+    if (window != null && window.destination != home) {
+        val end = plan.stops.firstOrNull { it.place.point == window.destination }
+        SharedStagedGuidanceNote("${end?.let(::stopLabel) ?: "선택한 주소"}까지 먼저 안내해요. 정차 완료 후 남은 순서와 운전자 집으로 이어가요")
+    } else if (plan.stops.size == 3) {
+        SharedStagedGuidanceNote("중간 정차가 3곳이에요. 첫 정차를 완료하면 나머지 경유지를 차량 내비에 반영해요")
+    }
     plan.issues.forEach { SharedError(issueText(it, plan)) }
     SharedEstimateNote(state)
 }
@@ -425,7 +433,7 @@ private fun SharedActive(
         SharedAction("운전자 집으로 다시 안내", canEdit && vehicle.connection == NavigationConnection.Ready,
             actions.onRetryNavigation, Modifier.fillMaxWidth())
     } else if (plan.stops.size == 3 && state.completedStops == 0) {
-        SharedStagedGuidanceNote()
+        SharedStagedGuidanceNote("정차를 완료할 때마다 남은 순서를 확인해요. 새 주소는 해당 볼일이나 하차 장소까지 안내한 뒤 집으로 이어가요")
     }
     Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.fillMaxWidth().padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -537,9 +545,9 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
 }
 
 @Composable
-private fun SharedStagedGuidanceNote() {
+private fun SharedStagedGuidanceNote(message: String) {
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(20.dp)) {
-        Text("중간 정차가 3곳이에요. 첫 정차를 완료하면 나머지 경유지를 차량 내비에 반영해요",
+        Text(message,
             Modifier.fillMaxWidth().padding(24.dp), fontSize = 28.sp, lineHeight = 40.sp, fontWeight = FontWeight.Medium)
     }
 }

@@ -1,6 +1,7 @@
 package io.moduhome.app.feature.shared
 
 import io.moduhome.app.core.navigation.remainingAfter
+import io.moduhome.app.core.navigation.NavigationPlan
 import io.moduhome.app.core.planning.JourneyStage
 import io.moduhome.app.core.shared.SharedJourneyProgress
 import io.moduhome.app.core.shared.currentWindow
@@ -70,7 +71,7 @@ internal data class SharedJourneySession(
                 JourneyStage.INPUT -> input()
                 JourneyStage.COMPARE, JourneyStage.REVIEW -> {
                     if (!routing.isFresh(nowMillis) || progress.completedStopCount != 0 || progress.startedAtMillis != null ||
-                        progress.confirmedWindow != null || progress.pendingWindow != null ||
+                        progress.confirmedWindow != null || progress.pendingWindow != null || progress.driverHome != null ||
                         (progress.stage == JourneyStage.REVIEW && !plan.isValid)) input()
                     else SharedJourneySession(draft, progress, routing, history)
                 }
@@ -78,10 +79,16 @@ internal data class SharedJourneySession(
                     val started = progress.startedAtMillis
                     if (!plan.isValid || started == null || started < routing.validatedAtMillis || started > nowMillis) return input()
                     val home = draft.driverHome ?: return input()
-                    val current = plan.currentWindow(home, progress.completedStopCount)
-                    val previous = plan.currentWindow(home, (progress.completedStopCount - 1).coerceAtLeast(0))
+                    if (progress.driverHome != null && progress.driverHome != home) return input()
+                    // Older records used home as every window's destination. Validate that exact
+                    // layout before migrating intent; no historical confirmation survives restart.
+                    fun recordedWindow(completed: Int): NavigationPlan = if (progress.driverHome == null) {
+                        NavigationPlan(home, plan.stops.drop(completed).take(2).map { it.place.point })
+                    } else plan.currentWindow(home, completed)
+                    val current = recordedWindow(progress.completedStopCount)
+                    val previous = recordedWindow((progress.completedStopCount - 1).coerceAtLeast(0))
                     val observedPreviousSuffixes = (1..minOf(2, progress.completedStopCount)).mapNotNull { count ->
-                        val priorWindow = plan.currentWindow(home, progress.completedStopCount - count)
+                        val priorWindow = recordedWindow(progress.completedStopCount - count)
                         priorWindow.takeIf { count <= it.waypoints.size }?.remainingAfter(count)
                     }
                     val pending = progress.pendingWindow
@@ -91,8 +98,9 @@ internal data class SharedJourneySession(
                         (pending == null && confirmed != current)) return input()
                     if (progress.stage == JourneyStage.COMPLETE) {
                         if (progress.completedStopCount != plan.stops.size || (pending ?: confirmed) != current) input()
-                        else SharedJourneySession(draft, progress, routing, history)
-                    } else SharedJourneySession(draft, progress.afterRestart(plan, home), routing, history)
+                        else SharedJourneySession(draft, progress.copy(driverHome = home), routing, history)
+                    } else SharedJourneySession(draft, progress.copy(driverHome = home,
+                        confirmedWindow = null, pendingWindow = plan.currentWindow(home, progress.completedStopCount)), routing, history)
                 }
             }
         }

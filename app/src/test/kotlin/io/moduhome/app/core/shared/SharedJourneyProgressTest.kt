@@ -414,6 +414,30 @@ class SharedJourneyProgressTest {
         assertEquals(JourneyStage.COMPLETE, recovered.finish(twoStopPlan, 3_000).stage)
     }
 
+    @Test fun addressDestinationWindowsKeepTheActualDriverHomeThroughEveryCompletionAndRestart() {
+        val address = stops.last().copy(placeId = "", provider = "")
+        val last = plan.stops.last() as SharedScheduledStop.Errand
+        val addressPlan = plan.copy(stops = plan.stops.dropLast(1) +
+            last.copy(errand = last.errand.copy(place = last.place.copy(point = address))))
+        var progress = SharedJourneyProgress().compare(listOf(addressPlan)).review(listOf(addressPlan))
+            .start(addressPlan, home, 1_000)
+        assertEquals(NavigationPlan(address, stops.take(2)), progress.pendingWindow)
+        assertEquals(home, progress.driverHome)
+        for (completed in 0..2) {
+            progress = confirm(progress)
+            val restarted = progress.afterRestart(addressPlan, home)
+            assertEquals(home, restarted.driverHome)
+            assertEquals(progress.confirmedWindow, restarted.pendingWindow)
+            assertEquals(null, restarted.confirmedWindow)
+            assertSame(progress, progress.afterRestart(addressPlan, address))
+            progress = progress.confirmStop(addressPlan, 2_000L + completed)
+            assertEquals(completed + 1, progress.completedStopCount)
+            assertEquals(home, progress.driverHome)
+        }
+        assertEquals(NavigationPlan(home), progress.pendingWindow)
+        assertEquals(JourneyStage.COMPLETE, progress.finish(addressPlan, 3_000).stage)
+    }
+
     private fun start(): SharedJourneyProgress = SharedJourneyProgress().compare(listOf(plan))
         .select(plan.id, listOf(plan)).review(listOf(plan)).start(plan, home, 1_000)
 

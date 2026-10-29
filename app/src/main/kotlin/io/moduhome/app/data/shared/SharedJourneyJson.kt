@@ -139,6 +139,7 @@ internal object SharedJourneyJson {
         return JSONObject().put("stage", progress.stage.name).put("selected", progress.selectedPlanId?.let { checkedText(it, 512) })
             .put("completed", progress.completedStopCount).put("completedAt", completed).put("startedAt", progress.startedAtMillis)
             .put("confirmed", progress.confirmedWindow?.let(::writePlan)).put("pending", progress.pendingWindow?.let(::writePlan))
+            .put("driverHome", progress.driverHome?.let(::writePoint))
     }
 
     private fun readProgress(json: JSONObject): SharedJourneyProgress {
@@ -146,7 +147,8 @@ internal object SharedJourneyJson {
         val times = (0 until completed.length()).map { index -> numberLong(completed.get(index)) }
         return SharedJourneyProgress(JourneyStage.valueOf(text(json, "stage", 32)), optionalText(json, "selected", 512),
             integer(json, "completed"), times, optionalLong(json, "startedAt"),
-            optionalObject(json, "confirmed")?.let(::readPlan), optionalObject(json, "pending")?.let(::readPlan))
+            optionalObject(json, "confirmed")?.let(::readPlan), optionalObject(json, "pending")?.let(::readPlan),
+            optionalObject(json, "driverHome")?.let(::readPoint))
     }
 
     private fun writePlan(plan: NavigationPlan): JSONObject {

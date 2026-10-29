@@ -161,7 +161,7 @@ internal fun SharedJourneyFlow(
                 val next = session.copy(progress = session.progress.observeNavigation(result.snapshot))
                 publish(runtime.latest.copy(session = next, snapshot = result.snapshot,
                     observedRouteRevision = gateway.routeRevision.value,
-                    message = "경유 순서와 운전자 집을 차량 내비에서 확인했어요", error = false))
+                    message = "이번 구간의 경유 순서와 목적지를 차량 내비에서 확인했어요", error = false))
             }
             RouteRequestResult.Unavailable -> showError("차량 내비 연결을 확인한 뒤 남은 순서를 다시 반영해주세요")
             is RouteRequestResult.Rejected -> publish(runtime.latest.copy(snapshot = result.snapshot,
@@ -777,7 +777,7 @@ private fun routeChangeDescription(confirmation: SharedRouteConfirmation): Strin
     } else append("현재 차량 내비는 길안내 중이 아니에요\n")
     append("\n남은 정차 · ")
     append(confirmation.plan.waypoints.joinToString(" → ") { it.name }.ifBlank { "중간 정차 없음" })
-    append("\n마지막 목적지 · ${confirmation.plan.destination.name}\n\n")
+    append("\n이번 안내 목적지 · ${confirmation.plan.destination.name}\n\n")
     append("이 순서로 안내를 바꿀까요? 이미 완료한 정차 기록은 그대로 남겨요")
 }
 
@@ -791,7 +791,7 @@ private fun passedStopsDescription(confirmation: SharedPassedStopConfirmation, s
     }
     val observed = confirmation.snapshot
     append("현재 내비 경유 · ${observed.waypoints.joinToString(" → ") { it.name }.ifBlank { "중간 정차 없음" }}\n")
-    append("마지막 목적지 · ${observed.destination?.name ?: confirmation.session.draft.driverHome?.name.orEmpty()}\n\n")
+    append("이번 안내 목적지 · ${observed.destination?.name ?: "확인 필요"}\n\n")
     append(if (stops.size == 2) "두 정차를 모두 마쳤을 때 확인해주세요. " else "이 정차를 실제로 마쳤을 때 확인해주세요. ")
     append("확인한 완료 기록을 보관하고 나머지 순서의 안내를 확인해요")
 }

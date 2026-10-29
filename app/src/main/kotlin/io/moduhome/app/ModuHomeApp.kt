@@ -34,6 +34,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -98,6 +99,8 @@ import io.moduhome.app.feature.home.loadRoutedJourney
 import io.moduhome.app.feature.home.RoutedJourneyLoadResult
 import io.moduhome.app.feature.home.HomeScreen
 import io.moduhome.app.feature.transfer.CompanionHomeScreen
+import io.moduhome.app.feature.transfer.CompanionAddressStateSaver
+import io.moduhome.app.feature.transfer.companionDraftSaver
 import io.moduhome.app.feature.home.HomeUiState
 import io.moduhome.app.feature.home.DepartureDraftResult
 import io.moduhome.app.feature.home.HomeDepartureResult
@@ -271,11 +274,11 @@ internal fun ModuHomeApp(
     val proposalPreferences = remember(context) { ProposalInboxPreferences(context) }
     val restoredProposals = remember(proposalPreferences) { proposalPreferences.load(System.currentTimeMillis()) }
     var inbox by remember { mutableStateOf((restoredProposals as? ProposalInboxLoadResult.Loaded)?.inbox ?: ErrandProposalInbox.empty()) }
-    var proposalPanelOpen by remember { mutableStateOf(false) }
+    var proposalPanelOpen by rememberSaveable { mutableStateOf(false) }
     var proposalInput by remember { mutableStateOf("") }
     var proposalMessage by remember { mutableStateOf((restoredProposals as? ProposalInboxLoadResult.Failed)?.reason) }
-    var exportLink by remember { mutableStateOf<String?>(null) }
-    var exportName by remember { mutableStateOf<String?>(null) }
+    var exportLink by rememberSaveable { mutableStateOf<String?>(null) }
+    var exportName by rememberSaveable { mutableStateOf<String?>(null) }
     var proposalQr by remember { mutableStateOf<ImageBitmap?>(null) }
     var generatingQr by remember { mutableStateOf(false) }
     var readingQr by remember { mutableStateOf(false) }
@@ -287,11 +290,17 @@ internal fun ModuHomeApp(
     var sharedProposalNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var relayState by remember { mutableStateOf(ProposalRelayState()) }
     val addressGateway = remember(context) { AndroidAddressSearchGateway(context) }
-    var addressPicker by remember { mutableStateOf<CompanionAddressState?>(null) }
+    var addressPicker by rememberSaveable(stateSaver = CompanionAddressStateSaver) { mutableStateOf<CompanionAddressState?>(null) }
     var addressRequest by remember { mutableLongStateOf(0L) }
     var addressJob by remember { mutableStateOf<Job?>(null) }
-    var companionDraft by remember { mutableStateOf<CompanionErrandDraft?>(null) }
-    var preparedCompanion by remember { mutableStateOf<CompanionErrandDraft?>(null) }
+    val draftSaver = remember {
+        companionDraftSaver(received = { id, revision ->
+            inbox.entries.firstOrNull { it.proposal.id == id && it.proposal.revision == revision &&
+                it.status == ProposalReviewStatus.PENDING }?.proposal
+        })
+    }
+    var companionDraft by rememberSaveable(stateSaver = draftSaver) { mutableStateOf<CompanionErrandDraft?>(null) }
+    var preparedCompanion by rememberSaveable(stateSaver = draftSaver) { mutableStateOf<CompanionErrandDraft?>(null) }
     var companionErrors by remember { mutableStateOf<Map<CompanionErrandField, String>>(emptyMap()) }
     var companionMessage by remember { mutableStateOf<String?>(null) }
     fun canOpenCompanion(): Boolean = !isVehicle && restrictions.state.value.editingAllowed &&

@@ -24,7 +24,7 @@ internal data class CompanionErrandDraft(
     val source: CompanionErrandSource,
     val baseDate: LocalDate,
     val zoneId: ZoneId,
-    private val openedAtMillis: Long,
+    val openedAtMillis: Long,
     val stayMinutes: String,
     val walkingMinutesOneWay: String,
     val ready: Boolean,

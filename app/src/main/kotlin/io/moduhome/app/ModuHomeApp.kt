@@ -927,6 +927,8 @@ internal fun ModuHomeApp(
             onOpenPhoneConnection = ::openVehicleRelay,
             voiceAvailable = BuildConfig.ENABLE_VEHICLE_VOICE && interaction.voiceTranscriptionAllowed &&
                 voiceState !is VoiceInputState.Failed && voiceState != VoiceInputState.Stopping,
+            voiceUnavailableMessage = if (BuildConfig.ENABLE_VEHICLE_VOICE && voiceState is VoiceInputState.Failed)
+                "음성 연결을 확인하지 못했어요. 터치로 계획을 선택해주세요" else null,
             onVoice = {
                 if (BuildConfig.ENABLE_VEHICLE_VOICE && editingAllowed && interaction.voiceTranscriptionAllowed &&
                     state.progress.stage == JourneyStage.INPUT && voiceState == VoiceInputState.Idle) {

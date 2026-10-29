@@ -14,6 +14,7 @@ internal sealed interface VoiceInputState {
     data object Idle : VoiceInputState
     data object Preparing : VoiceInputState
     data class Listening(val partialText: String = "") : VoiceInputState
+    data object Processing : VoiceInputState
     data object Stopping : VoiceInputState
     data class Failed(val reason: String) : VoiceInputState
 }

@@ -15,11 +15,15 @@ import io.moduhome.app.core.voice.KoreanJourneyVoiceParser
 import io.moduhome.app.core.voice.VoiceInputGateway
 import io.moduhome.app.core.voice.VoiceInputState
 import io.moduhome.app.core.voice.VoiceRecognitionResult
+import io.moduhome.app.core.voice.awaitVoiceRecognitionResult
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -86,7 +90,14 @@ internal class PleosVoiceInputGateway(context: Context) : VoiceInputGateway {
             null -> return VoiceRecognitionResult.Unavailable("차량 음성 서비스에 연결하지 못했어요. 다시 시도해주세요")
         }
         if (!isCurrent(session) || session.stopping) return VoiceRecognitionResult.Stopped
-        return withTimeoutOrNull(RECOGNITION_TIMEOUT_MILLIS) { awaitRecognition(session) } ?: VoiceRecognitionResult.NoSpeech
+        return coroutineScope {
+            val result = async(start = CoroutineStart.UNDISPATCHED) { awaitRecognition(session) }
+            try {
+                awaitVoiceRecognitionResult(result, session.ended)
+            } finally {
+                result.cancel()
+            }
+        }
     }
 
     private fun requestStop(session: Session) {
@@ -158,7 +169,9 @@ internal class PleosVoiceInputGateway(context: Context) : VoiceInputGateway {
                     }
                     finish(session, result)
                 } else {
-                    mutableState.value = VoiceInputState.Listening(stt.take(KoreanJourneyVoiceParser.MAX_TEXT_LENGTH))
+                    if (!session.ended.isCompleted) {
+                        mutableState.value = VoiceInputState.Listening(stt.take(KoreanJourneyVoiceParser.MAX_TEXT_LENGTH))
+                    }
                 }
             }
             override fun onUpdatedEpdData(on: Long, off: Long) = Unit
@@ -166,8 +179,11 @@ internal class PleosVoiceInputGateway(context: Context) : VoiceInputGateway {
             override fun onEndedRecognition() = onMain {
                 if (isCurrent(session)) {
                     debug(session, "end")
+                    if (!session.stopping && session.recognition != null) {
+                        debug(session, "awaiting_final")
+                        mutableState.value = VoiceInputState.Processing
+                    }
                     session.ended.complete(Unit)
-                    finish(session, VoiceRecognitionResult.NoSpeech)
                 }
             }
             override fun onError(errorType: ErrorType) = onMain {
@@ -193,7 +209,7 @@ internal class PleosVoiceInputGateway(context: Context) : VoiceInputGateway {
     }
 
     private fun listening(session: Session) = onMain {
-        if (isCurrent(session) && !session.stopping && session.recognition != null) {
+        if (isCurrent(session) && !session.stopping && session.recognition != null && !session.ended.isCompleted) {
             mutableState.value = VoiceInputState.Listening()
         }
     }
@@ -292,7 +308,6 @@ internal class PleosVoiceInputGateway(context: Context) : VoiceInputGateway {
 
     companion object {
         private const val INITIALIZATION_TIMEOUT_MILLIS = 8_000L
-        private const val RECOGNITION_TIMEOUT_MILLIS = 15_000L
         private const val STOP_CONFIRMATION_TIMEOUT_MILLIS = 3_000L
     }
 }

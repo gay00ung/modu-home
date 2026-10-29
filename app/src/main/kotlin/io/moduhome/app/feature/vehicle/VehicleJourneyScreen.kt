@@ -48,6 +48,7 @@ internal fun VehicleJourneyScreen(
     onVoice: () -> Unit,
     voiceAvailable: Boolean,
     modifier: Modifier = Modifier,
+    voiceUnavailableMessage: String? = null,
 ) {
     val stage = state.progress.stage
     val busy = vehicle.sending || vehicle.reading || vehicle.planning
@@ -95,6 +96,9 @@ internal fun VehicleJourneyScreen(
                     }
                 }
                 if (vehicle.error && vehicle.message != null) VehicleError(vehicle.message)
+                if (canEdit && stage == JourneyStage.INPUT && voiceUnavailableMessage != null) {
+                    VehicleError(voiceUnavailableMessage)
+                }
             }
         },
         bottomBar = { VehicleFooter(state, actions, vehicle, canEdit) },

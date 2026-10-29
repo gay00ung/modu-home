@@ -68,6 +68,10 @@ internal fun VehicleVoiceDialog(
                             LinearProgressIndicator(Modifier.fillMaxWidth())
                             Text("음성 입력을 멈추고 있어요", fontSize = 30.sp, lineHeight = 42.sp)
                         }
+                        VoiceInputState.Processing -> {
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                            Text("말씀을 확인하고 있어요", fontSize = 30.sp, lineHeight = 42.sp)
+                        }
                         is VoiceInputState.Failed -> {
                             Text("음성 입력 종료를 확인하지 못했어요", fontSize = 30.sp, lineHeight = 42.sp,
                                 fontWeight = FontWeight.SemiBold)
@@ -88,7 +92,7 @@ internal fun VehicleVoiceDialog(
                         } else if (state == VoiceInputState.Idle && !message.isNullOrBlank()) {
                             Text("다시 말하려면 닫은 뒤 ‘말로 선택’을 눌러주세요", fontSize = 28.sp, lineHeight = 38.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        } else if (state != VoiceInputState.Stopping) {
+                        } else if (state == VoiceInputState.Preparing || state is VoiceInputState.Listening) {
                             Text("‘장도 보고 갈래’ 또는 ‘추가 20분’", fontSize = 28.sp, lineHeight = 40.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }

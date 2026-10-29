@@ -12,6 +12,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
+import androidx.core.content.edit
 import androidx.core.net.toUri
 import io.moduhome.app.R
 import io.moduhome.app.core.model.JourneyMode
@@ -55,8 +56,9 @@ internal class JourneyNotifications(
 
     fun recordPermissionRequest() {
         runCatching {
-            context.getSharedPreferences("journey_notifications", Context.MODE_PRIVATE).edit()
-                .putBoolean("permission_requested", true).commit()
+            context.getSharedPreferences("journey_notifications", Context.MODE_PRIVATE).edit(commit = true) {
+                putBoolean("permission_requested", true)
+            }
         }
     }
 

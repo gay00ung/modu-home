@@ -73,6 +73,27 @@ internal data class SharedJourneyProgress(
     }
 
     /**
+     * A segment can end at a physical stop instead of home. With no active guidance, the user
+     * may explicitly confirm that exact terminal stop. This never confirms a vehicle route.
+     */
+    fun canConfirmTerminalStop(plan: SharedJourneyPlan, snapshot: NavigationSnapshot?): Boolean {
+        if (stage != JourneyStage.ACTIVE || !navigationPending || !matches(plan) ||
+            snapshot == null || snapshot.guidanceActive || snapshot.waypoints.isNotEmpty()) return false
+        val next = plan.stops.getOrNull(completedStopCount)?.place?.point ?: return false
+        val pending = pendingWindow ?: return false
+        return pending.waypoints.isEmpty() && pending.destination == next
+    }
+
+    /** Call only after explicit physical completion approval bound to this state and readback. */
+    fun confirmTerminalStop(plan: SharedJourneyPlan, snapshot: NavigationSnapshot?, now: Long): SharedJourneyProgress {
+        if (!canConfirmTerminalStop(plan, snapshot)) return this
+        require(now >= (completedAtMillis.lastOrNull() ?: startedAtMillis ?: 0))
+        val completed = completedStopCount + 1
+        return copy(completedStopCount = completed, completedAtMillis = completedAtMillis + now,
+            pendingWindow = plan.currentWindow(checkNotNull(driverHome), completed))
+    }
+
+    /**
      * Only call after the user explicitly confirms that the first pending stop was completed.
      * A shorter native route alone never proves a passenger got out or an errand was done.
      */

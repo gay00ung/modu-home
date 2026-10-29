@@ -16,6 +16,7 @@ internal data class SharedVehicleUiState(
     val errors: List<String> = emptyList(),
     val navigationPending: Boolean = false,
     val passedStopCount: Int = 0,
+    val terminalStopCompletionAvailable: Boolean = false,
     val estimateLabel: String? = null,
     val directHomeMinutes: Int? = null,
     val pendingProposalCount: Int = 0,

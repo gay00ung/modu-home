@@ -20,6 +20,7 @@ internal data class SharedJourneyFlowState(
     val picker: SharedPlaceSelection? = null,
     val confirmation: SharedRouteConfirmation? = null,
     val passedStopConfirmation: SharedPassedStopConfirmation? = null,
+    val terminalStopConfirmation: SharedTerminalStopConfirmation? = null,
     val cancelRequested: Boolean = false,
     val finishConfirmation: SharedJourneyProgress? = null,
     val planPage: Int = 0,
@@ -29,7 +30,7 @@ internal data class SharedJourneyFlowState(
     val errors: List<String> = emptyList(),
 ) {
     val busy: Boolean get() = planning || sending || reading || polling
-    val dialogOpen: Boolean get() = picker != null || confirmation != null || passedStopConfirmation != null ||
+    val dialogOpen: Boolean get() = picker != null || confirmation != null || passedStopConfirmation != null || terminalStopConfirmation != null ||
         cancelRequested || finishConfirmation != null
 }
 
@@ -60,3 +61,27 @@ internal data class SharedPassedStopConfirmation(
     val routeRevision: Long,
     val interaction: DrivingInteraction,
 )
+
+/** The readback proves only that guidance is inactive; physical completion comes from the user. */
+internal data class SharedTerminalStopConfirmation(
+    val session: SharedJourneySession,
+    val plan: SharedJourneyPlan,
+    val snapshot: NavigationSnapshot,
+    val routeRevision: Long,
+    val interaction: DrivingInteraction,
+) {
+    fun approvalAfterRead(
+        currentSession: SharedJourneySession,
+        currentInteraction: DrivingInteraction,
+        currentSnapshot: NavigationSnapshot?,
+        revisionBefore: Long,
+        revisionAfter: Long,
+    ): RouteChangeApproval? {
+        val selected = currentSession.routing?.takeIf { it.matches(currentSession.draft) }?.plans
+            ?.firstOrNull { it.id == currentSession.progress.selectedPlanId }
+        if (currentSession != session || selected != plan || currentInteraction != interaction ||
+            !currentInteraction.editingAllowed || revisionBefore != routeRevision || currentSnapshot != snapshot ||
+            !currentSession.progress.canConfirmTerminalStop(plan, currentSnapshot)) return null
+        return RouteChangeApproval.fromObservation(currentSnapshot, revisionBefore, revisionAfter)
+    }
+}

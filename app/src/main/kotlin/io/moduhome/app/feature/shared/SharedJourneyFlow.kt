@@ -86,7 +86,7 @@ internal fun SharedJourneyFlow(
         // A failed durable update must leave the previous session authoritative.
         val fallback = runtime.latest.copy(
             planning = false, sending = false, reading = false, polling = false,
-            picker = null, confirmation = null, passedStopConfirmation = null,
+            picker = null, confirmation = null, passedStopConfirmation = null, terminalStopConfirmation = null,
             cancelRequested = false, finishConfirmation = null,
             operationRevision = runtime.latest.operationRevision + 1,
             message = "변경사항을 저장하지 못했어요. 차량 내비 전송을 멈췄어요", error = true,
@@ -98,11 +98,12 @@ internal fun SharedJourneyFlow(
     fun canInteract(): Boolean = runtime.mounted && currentInteraction.editingAllowed &&
         lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
 
-    fun idle(allowRouteDialog: Boolean = false, allowPassedStopDialog: Boolean = false): Boolean {
+    fun idle(allowRouteDialog: Boolean = false, allowPassedStopDialog: Boolean = false, allowTerminalStopDialog: Boolean = false): Boolean {
         val current = runtime.latest
         return canInteract() && !currentProposalPanelOpen && !current.busy && runtime.operation?.isActive != true && current.picker == null &&
             !current.cancelRequested && current.finishConfirmation == null && (allowRouteDialog || current.confirmation == null) &&
-            (allowPassedStopDialog || current.passedStopConfirmation == null)
+            (allowPassedStopDialog || current.passedStopConfirmation == null) &&
+            (allowTerminalStopDialog || current.terminalStopConfirmation == null)
     }
 
     fun operationMatches(token: Long, session: SharedJourneySession): Boolean = canInteract() &&
@@ -117,7 +118,7 @@ internal fun SharedJourneyFlow(
         val current = runtime.latest
         publish(current.copy(
             planning = false, sending = false, reading = false, polling = false,
-            picker = null, confirmation = null, passedStopConfirmation = null,
+            picker = null, confirmation = null, passedStopConfirmation = null, terminalStopConfirmation = null,
             cancelRequested = false, finishConfirmation = null,
             operationRevision = current.operationRevision + 1,
             message = message ?: current.message,
@@ -330,6 +331,13 @@ internal fun SharedJourneyFlow(
             return
         }
         val plan = current.session.selectedPlan() ?: return
+        if (gateway.connection.value == NavigationConnection.Ready &&
+            current.canConfirmTerminalStop(gateway.routeRevision.value)) {
+            publish(current.copy(terminalStopConfirmation = SharedTerminalStopConfirmation(
+                current.session, plan, checkNotNull(current.snapshot), gateway.routeRevision.value, currentInteraction,
+            )))
+            return
+        }
         val now = System.currentTimeMillis()
         val lastRecordedAt = current.session.progress.completedAtMillis.lastOrNull()
             ?: current.session.progress.startedAtMillis ?: 0L
@@ -354,6 +362,42 @@ internal fun SharedJourneyFlow(
         val session = current.session.copy(progress = current.session.progress.requestNavigation(plan, home))
         launchOperation(current.copy(session = session, reading = true, message = "현재 내비와 남은 순서를 비교하고 있어요", error = false)) { token ->
             prepareRemainingWindow(token, session)
+        }
+    }
+
+    fun confirmTerminalStop(confirmation: SharedTerminalStopConfirmation) {
+        val current = runtime.latest
+        if (!idle(allowTerminalStopDialog = true) || current.terminalStopConfirmation != confirmation ||
+            current.session != confirmation.session || current.session.selectedPlan() != confirmation.plan ||
+            currentInteraction != confirmation.interaction || gateway.routeRevision.value != confirmation.routeRevision ||
+            gateway.connection.value != NavigationConnection.Ready) return
+        launchOperation(current.copy(terminalStopConfirmation = null, reading = true,
+            message = "현재 길안내 상태와 완료할 정차를 다시 확인하고 있어요", error = false)) { token ->
+            val revisionBefore = gateway.routeRevision.value
+            val snapshot = gateway.currentRoute()
+            if (!operationMatches(token, confirmation.session)) return@launchOperation
+            val approval = confirmation.approvalAfterRead(runtime.latest.session, currentInteraction,
+                snapshot, revisionBefore, gateway.routeRevision.value)
+            if (approval == null) {
+                publish(runtime.latest.copy(snapshot = snapshot, observedRouteRevision = null,
+                    message = "확인 중 내비나 입력 제한 상태가 바뀌었어요. 정차 완료를 다시 확인해주세요", error = true))
+                return@launchOperation
+            }
+            val now = System.currentTimeMillis()
+            val prior = confirmation.session.progress
+            if (now < (prior.completedAtMillis.lastOrNull() ?: prior.startedAtMillis ?: 0L)) {
+                showError("기기 시각이 진행 기록보다 이전이에요. 시간을 확인한 뒤 다시 눌러주세요")
+                return@launchOperation
+            }
+            val progress = prior.confirmTerminalStop(confirmation.plan, snapshot, now)
+            if (progress == prior) {
+                showError("실제 완료한 정차와 현재 내비 상태를 다시 확인해주세요")
+                return@launchOperation
+            }
+            val session = confirmation.session.copy(progress = progress)
+            if (!publish(runtime.latest.copy(session = session, snapshot = snapshot, observedRouteRevision = approval.routeRevision,
+                    message = "직접 확인한 정차 완료를 기록했어요. 다음 안내를 확인해요", error = false))) return@launchOperation
+            progress.pendingWindow?.let { sendWindow(token, session, it, approval) }
         }
     }
 
@@ -440,6 +484,7 @@ internal fun SharedJourneyFlow(
             current.picker != null -> dismissPicker()
             current.confirmation != null -> publish(current.copy(confirmation = null))
             current.passedStopConfirmation != null -> publish(current.copy(passedStopConfirmation = null))
+            current.terminalStopConfirmation != null -> publish(current.copy(terminalStopConfirmation = null))
             current.finishConfirmation != null -> publish(current.copy(finishConfirmation = null))
             current.cancelRequested -> publish(current.copy(cancelRequested = false))
             current.busy -> showError("차량 내비 응답을 확인하고 있어요. 잠시 뒤 다시 눌러주세요")
@@ -551,7 +596,7 @@ internal fun SharedJourneyFlow(
             lifecycleOwner.lifecycle.removeObserver(observer)
             val current = runtime.latest
             val next = current.copy(planning = false, sending = false, reading = false, polling = false,
-                picker = null, confirmation = null, passedStopConfirmation = null,
+                picker = null, confirmation = null, passedStopConfirmation = null, terminalStopConfirmation = null,
                 cancelRequested = false, finishConfirmation = null,
                 operationRevision = current.operationRevision + 1)
             currentCallback(next)
@@ -565,7 +610,7 @@ internal fun SharedJourneyFlow(
     }
 
     LaunchedEffect(routeRevision, interaction, state.session, state.picker,
-        state.confirmation, state.passedStopConfirmation, state.finishConfirmation) {
+        state.confirmation, state.passedStopConfirmation, state.terminalStopConfirmation, state.finishConfirmation) {
         val current = runtime.latest
         val confirmation = current.confirmation
         if (confirmation != null && (!currentInteraction.editingAllowed || confirmation.session != current.session ||
@@ -582,15 +627,22 @@ internal fun SharedJourneyFlow(
                 message = "안내나 입력 제한 상태가 바뀌었어요. 정차 완료를 다시 확인해주세요", error = true))
         }
         val finish = runtime.latest.finishConfirmation
+        val terminal = runtime.latest.terminalStopConfirmation
+        if (terminal != null && (terminal.session != runtime.latest.session || terminal.plan != runtime.latest.session.selectedPlan() ||
+                terminal.interaction != currentInteraction || terminal.routeRevision != gateway.routeRevision.value ||
+                !currentInteraction.editingAllowed)) {
+            publish(runtime.latest.copy(terminalStopConfirmation = null,
+                message = "안내나 입력 제한 상태가 바뀌었어요. 정차 완료를 다시 확인해주세요", error = true))
+        }
         if (finish != null && finish != runtime.latest.session.progress) publish(runtime.latest.copy(finishConfirmation = null))
     }
 
     LaunchedEffect(runtime, connection, routeRevision, interaction.editingAllowed, state.session.progress.stage,
         state.session.progress.completedStopCount, state.planning, state.sending, state.reading,
-        state.confirmation, state.passedStopConfirmation, state.cancelRequested, state.finishConfirmation, lifecycleOwner) {
+        state.confirmation, state.passedStopConfirmation, state.terminalStopConfirmation, state.cancelRequested, state.finishConfirmation, lifecycleOwner) {
         if (connection != NavigationConnection.Ready || !interaction.editingAllowed ||
             state.session.progress.stage != JourneyStage.ACTIVE || state.planning || state.sending || state.reading ||
-            state.confirmation != null || state.passedStopConfirmation != null || state.cancelRequested ||
+            state.confirmation != null || state.passedStopConfirmation != null || state.terminalStopConfirmation != null || state.cancelRequested ||
             state.finishConfirmation != null) return@LaunchedEffect
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (currentCoroutineContext().isActive) {
@@ -609,15 +661,17 @@ internal fun SharedJourneyFlow(
                             currentInteraction.editingAllowed && stable) {
                             val observed = session.observeRoute(snapshot)
                             val pending = observed.progress.navigationPending
+                            val terminal = observed.selectedPlan()?.let { observed.progress.canConfirmTerminalStop(it, snapshot) } == true
                             val message = when {
                                 snapshot == null -> "차량 내비 안내를 확인하지 못했어요. 남은 순서를 다시 확인해주세요"
+                                terminal -> "현재 길안내가 없어요. 실제 정차를 마쳤다면 직접 완료를 확인해주세요"
                                 !snapshot.guidanceActive -> if (session.progress.completedStopCount == session.selectedPlan()?.stops?.size)
                                     "차량 내비 안내가 끝났어요. 집에 도착했다면 귀가를 마쳐주세요" else "차량 내비 안내가 종료됐어요. 남은 순서를 확인해주세요"
                                 pending -> "차량 내비 안내와 계획이 달라요. 남은 순서를 확인해주세요"
                                 else -> "차량 내비가 계획의 남은 순서를 안내하고 있어요"
                             }
                             publish(runtime.latest.copy(session = observed, snapshot = snapshot,
-                                observedRouteRevision = revisionAfter, message = message, error = pending))
+                                observedRouteRevision = revisionAfter, message = message, error = pending && !terminal))
                         }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
@@ -640,6 +694,7 @@ internal fun SharedJourneyFlow(
         navigationPending = state.session.progress.navigationPending ||
             (state.session.progress.stage == JourneyStage.ACTIVE && state.observedRouteRevision != routeRevision),
         passedStopCount = if (connection == NavigationConnection.Ready) state.passedStopsObservation(routeRevision)?.count ?: 0 else 0,
+        terminalStopCompletionAvailable = connection == NavigationConnection.Ready && state.canConfirmTerminalStop(routeRevision),
         estimateLabel = state.session.routing?.source, directHomeMinutes = state.session.routing?.directHomeMinutes,
         pendingProposalCount = pendingProposalCount,
     )
@@ -686,6 +741,16 @@ internal fun SharedJourneyFlow(
                 onDismiss = { publish(runtime.latest.copy(passedStopConfirmation = null)) },
             )
         }
+    }
+    state.terminalStopConfirmation?.takeIf { interaction.editingAllowed && it.interaction == interaction }?.let { confirmation ->
+        val stop = confirmation.plan.stops.getOrNull(confirmation.session.progress.completedStopCount)
+        if (stop != null) VehicleConfirmationDialog(
+            title = if (stop is SharedScheduledStop.Dropoff) "이 장소에서 하차를 마쳤나요?" else "이 장소에서 볼일을 마쳤나요?",
+            description = "현재 차량 내비는 길안내 중이 아니에요\n\n${stop.place.point.name}\n\n실제로 마쳤을 때만 확인해주세요. 완료를 기록하고 남은 순서를 이어 안내해요",
+            confirmLabel = "완료 후 다음 안내",
+            onConfirm = { confirmTerminalStop(confirmation) },
+            onDismiss = { publish(runtime.latest.copy(terminalStopConfirmation = null)) },
+        )
     }
     if (state.cancelRequested && interaction.editingAllowed) {
         VehicleConfirmationDialog(
@@ -740,6 +805,12 @@ private fun SharedJourneySession.plans(): List<SharedJourneyPlan> = routing?.tak
 private fun SharedJourneySession.selectedPlan(): SharedJourneyPlan? = plans().firstOrNull { it.id == progress.selectedPlanId }
 
 private data class SharedPassedStopsObservation(val count: Int, val snapshot: NavigationSnapshot)
+
+private fun SharedJourneyFlowState.canConfirmTerminalStop(currentRevision: Long): Boolean {
+    if (observedRouteRevision != currentRevision) return false
+    val plan = session.selectedPlan() ?: return false
+    return session.progress.canConfirmTerminalStop(plan, snapshot)
+}
 
 private fun SharedJourneyFlowState.passedStopsObservation(currentRevision: Long): SharedPassedStopsObservation? {
     if (session.progress.stage != JourneyStage.ACTIVE || observedRouteRevision != currentRevision) return null

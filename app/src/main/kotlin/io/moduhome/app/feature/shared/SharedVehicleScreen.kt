@@ -403,7 +403,9 @@ private fun SharedActive(
         }
     }
     if (state.navigationPending && next != null) {
-        SharedError("남은 순서가 아직 차량 내비에 반영되지 않았어요")
+        if (state.terminalStopCompletionAvailable) {
+            SharedCaption("현재 길안내가 없어요. 이 장소에서 실제 정차를 마쳤다면 아래에서 완료를 확인해주세요")
+        } else SharedError("남은 순서가 아직 차량 내비에 반영되지 않았어요")
         if (state.canConfirmPassedStop) {
             Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(24.dp)) {
                 Column(Modifier.fillMaxWidth().padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -487,6 +489,7 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
         JourneyStage.REVIEW -> if (vehicle.sending) "차량 내비 확인 중" else "차량 내비로 시작"
         JourneyStage.ACTIVE -> when {
             next == null && plan != null && state.completedStops == plan.stops.size -> "집에 도착했어요"
+            state.terminalStopCompletionAvailable -> if (next is SharedScheduledStop.Dropoff) "하차 완료 직접 확인" else "볼일 완료 직접 확인"
             state.navigationPending -> "내비 반영을 먼저 확인"
             next != null -> when (next) {
                 is SharedScheduledStop.Dropoff -> "${next.passenger.name} 하차 완료"
@@ -501,7 +504,7 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
         JourneyStage.COMPARE -> !anyValid || plan?.isValid == true
         JourneyStage.REVIEW -> plan?.isValid == true && connected
         JourneyStage.ACTIVE -> plan != null && state.completedStops in 0..plan.stops.size &&
-            (!state.navigationPending || state.completedStops == plan.stops.size)
+            (!state.navigationPending || state.terminalStopCompletionAvailable || state.completedStops == plan.stops.size)
         JourneyStage.COMPLETE -> true
     }
     Surface(color = MaterialTheme.colorScheme.surface) {

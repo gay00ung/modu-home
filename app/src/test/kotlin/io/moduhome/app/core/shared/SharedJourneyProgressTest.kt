@@ -9,6 +9,7 @@ import io.moduhome.app.core.planning.JourneyStage
 import io.moduhome.app.core.planning.VisitKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -436,6 +437,73 @@ class SharedJourneyProgressTest {
         }
         assertEquals(NavigationPlan(home), progress.pendingWindow)
         assertEquals(JourneyStage.COMPLETE, progress.finish(addressPlan, 3_000).stage)
+    }
+
+    @Test fun endedAddressSegmentNeedsExplicitCompletionAndThenKeepsTheRealHomePending() {
+        val (addressPlan, guiding) = terminalAddressJourney()
+        val ended = NavigationSnapshot(null, emptyList(), false)
+        val pending = guiding.requestNavigation(addressPlan, home)
+        assertSame(pending, pending.observeNavigation(ended))
+        assertTrue(pending.canConfirmTerminalStop(addressPlan, ended))
+        val completed = pending.confirmTerminalStop(addressPlan, ended, 3_000)
+        assertEquals(3, completed.completedStopCount)
+        assertEquals(listOf(2_000L, 2_001L, 3_000L), completed.completedAtMillis)
+        assertEquals(home, completed.driverHome)
+        assertEquals(NavigationPlan(home), completed.pendingWindow)
+        assertEquals(pending.confirmedWindow, completed.confirmedWindow)
+        assertTrue(completed.navigationPending)
+    }
+
+    @Test fun endedSegmentCanBeExplicitlyRecordedAfterRestartWithoutInventingAnyVehicleConfirmation() {
+        val (addressPlan, guiding) = terminalAddressJourney()
+        val restarted = guiding.afterRestart(addressPlan, home)
+        val ended = NavigationSnapshot(null, emptyList(), false)
+        assertNull(restarted.confirmedWindow)
+        val completed = restarted.confirmTerminalStop(addressPlan, ended, 3_000)
+        assertEquals(3, completed.completedStopCount)
+        assertNull(completed.confirmedWindow)
+        assertEquals(NavigationPlan(home), completed.pendingWindow)
+    }
+
+    @Test fun missingActiveOrUnclearedVehicleRoutesCannotAuthorizeTerminalCompletion() {
+        val (addressPlan, guiding) = terminalAddressJourney()
+        val pending = guiding.requestNavigation(addressPlan, home)
+        for (observed in listOf(null, snapshot(checkNotNull(guiding.confirmedWindow)),
+            NavigationSnapshot(null, listOf(observed(stops.first())), false))) {
+            assertFalse(pending.canConfirmTerminalStop(addressPlan, observed))
+            assertSame(pending, pending.confirmTerminalStop(addressPlan, observed, 3_000))
+        }
+        val ended = NavigationSnapshot(null, emptyList(), false)
+        assertSame(guiding, guiding.confirmTerminalStop(addressPlan, ended, 3_000))
+        assertSame(pending, pending.confirmTerminalStop(addressPlan.copy(id = "other"), ended, 3_000))
+    }
+
+    @Test fun inactiveGuidanceCannotSkipAKnownWaypointBeforeTheAddressDestination() {
+        val (addressPlan, _) = terminalAddressJourney()
+        val initial = SharedJourneyProgress().compare(listOf(addressPlan)).review(listOf(addressPlan)).start(addressPlan, home, 1_000)
+        val ended = NavigationSnapshot(null, emptyList(), false)
+        assertFalse(initial.canConfirmTerminalStop(addressPlan, ended))
+        assertSame(initial, initial.confirmTerminalStop(addressPlan, ended, 3_000))
+    }
+
+    @Test fun terminalCompletionCannotMoveTimeBackwardsOrBeRepeatedForTheHomeWindow() {
+        val (addressPlan, guiding) = terminalAddressJourney()
+        val pending = guiding.requestNavigation(addressPlan, home)
+        val ended = NavigationSnapshot(null, emptyList(), false)
+        assertThrows(IllegalArgumentException::class.java) { pending.confirmTerminalStop(addressPlan, ended, 2_000) }
+        val completed = pending.confirmTerminalStop(addressPlan, ended, 3_000)
+        assertSame(completed, completed.confirmTerminalStop(addressPlan, ended, 3_001))
+        val finished = completed.finish(addressPlan, 4_000)
+        assertSame(finished, finished.confirmTerminalStop(addressPlan, ended, 4_001))
+    }
+
+    private fun terminalAddressJourney(): Pair<SharedJourneyPlan, SharedJourneyProgress> {
+        val last = plan.stops.last() as SharedScheduledStop.Errand
+        val address = last.place.point.copy(placeId = "")
+        val addressPlan = plan.copy(stops = plan.stops.dropLast(1) + last.copy(errand = last.errand.copy(place = last.place.copy(point = address))))
+        var progress = SharedJourneyProgress().compare(listOf(addressPlan)).review(listOf(addressPlan)).start(addressPlan, home, 1_000)
+        for (index in 0..1) progress = confirm(progress).confirmStop(addressPlan, 2_000L + index)
+        return addressPlan to confirm(progress)
     }
 
     private fun start(): SharedJourneyProgress = SharedJourneyProgress().compare(listOf(plan))

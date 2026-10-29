@@ -9,6 +9,7 @@ import io.moduhome.app.core.planning.TravelEstimates
 import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.navigation.NavigationPlan
 import io.moduhome.app.core.navigation.NavigationPoint
+import io.moduhome.app.core.navigation.verifiableNavigationWindow
 import io.moduhome.app.core.transfer.ErrandProposalInbox
 import io.moduhome.app.core.transfer.ProposalApprovalResult
 import io.moduhome.app.core.transfer.ProposalReviewStatus
@@ -84,15 +85,16 @@ internal data class JourneyDraft(
         )
     }
 
-    fun navigationPlan(plan: ErrandJourneyPlan): NavigationPlan? {
-        val destination = navigationPoint(NavigationPlaceRole.HOME) ?: return null
-        val waypoints = plan.visits.map { scheduled ->
+    fun navigationPlan(plan: ErrandJourneyPlan, completedVisits: Int = 0): NavigationPlan? {
+        if (completedVisits !in 0..plan.visits.size) return null
+        val home = navigationPoint(NavigationPlaceRole.HOME) ?: return null
+        val remaining = plan.visits.drop(completedVisits).map { scheduled ->
             navigationPoint(when (scheduled.visit.kind) {
                 VisitKind.PICKUP -> NavigationPlaceRole.PICKUP
                 VisitKind.GROCERIES -> NavigationPlaceRole.GROCERIES
             }) ?: return null
         }
-        return NavigationPlan(destination, waypoints)
+        return verifiableNavigationWindow(home, remaining)
     }
 
     fun newJourney(dateEpochDay: Long, departure: String, clockZoneId: String = ZoneId.systemDefault().id): JourneyDraft =
@@ -229,6 +231,7 @@ internal data class HomeUiState(
         else ErrandJourneyPlanner().compare(request, routed.routedTimes)
     }.orEmpty()
     val selectedPlan get() = progress.selected(plans)
+    val navigationWindow get() = selectedPlan?.let { draft.navigationPlan(it, progress.completedVisits) }
 }
 
 internal fun parseClockMinute(text: String): Int? {

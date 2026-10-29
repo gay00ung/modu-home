@@ -84,6 +84,9 @@ internal data class NavigationSnapshot(
         destination?.matches(plan.destination) == true &&
         waypoints.size == plan.waypoints.size &&
         waypoints.zip(plan.waypoints).all { (actual, expected) -> actual.matches(expected) }
+
+    fun confirmsSuffixOf(plan: NavigationPlan): Boolean = waypoints.size <= plan.waypoints.size &&
+        confirms(plan.copy(waypoints = plan.waypoints.takeLast(waypoints.size)))
 }
 
 internal sealed interface NavigationConnection {

@@ -50,8 +50,8 @@ import io.moduhome.app.data.address.AndroidAddressSearchGateway
 import io.moduhome.app.core.transfer.CompanionErrandSource
 import io.moduhome.app.core.navigation.GuidanceEstimateResult
 import io.moduhome.app.core.navigation.RouteChangeApproval
-import io.moduhome.app.core.navigation.remainingAfter
 import io.moduhome.app.feature.home.NavigationResumeConfirmation
+import io.moduhome.app.feature.home.HomeVisitCompletionConfirmation
 import io.moduhome.app.core.navigation.NavigationConnection
 import io.moduhome.app.core.navigation.NavigationSnapshot
 import io.moduhome.app.core.navigation.RouteRequestResult
@@ -189,8 +189,9 @@ internal fun ModuHomeApp(
     }
     val scope = rememberCoroutineScope()
     var gatewayRevision by remember { mutableIntStateOf(0) }
-    val gateway = remember(context, restrictions, gatewayRevision) {
-        PleosNavigationGateway(context) { restrictions.state.value.editingAllowed }
+    val gateway = remember(context, restrictions, lifecycleOwner, gatewayRevision) {
+        PleosNavigationGateway(context) { restrictions.state.value.editingAllowed &&
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
     }
     val routeGateway = remember {
         BuildConfig.ROUTING_BASE_URL.takeIf(String::isNotBlank)?.let {
@@ -211,6 +212,9 @@ internal fun ModuHomeApp(
     var guidanceResult by remember(gateway) { mutableStateOf<GuidanceEstimateResult?>(null) }
     var guidanceRefreshing by remember(gateway) { mutableStateOf(false) }
     var resumeConfirmation by remember(gateway) { mutableStateOf<NavigationResumeConfirmation?>(null) }
+    var visitCompletionConfirmation by remember(gateway) { mutableStateOf<HomeVisitCompletionConfirmation?>(null) }
+    var homeNavigationJob by remember(gateway) { mutableStateOf<Job?>(null) }
+    var homeNavigationRequest by remember(gateway) { mutableLongStateOf(0L) }
     var tripNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var navigationMessage by remember(gateway) { mutableStateOf<String?>(null) }
     var navigationError by remember(gateway) { mutableStateOf(false) }
@@ -223,6 +227,47 @@ internal fun ModuHomeApp(
         return previous.newJourney(departure = now.format(DateTimeFormatter.ofPattern("HH:mm")), dateEpochDay = now.toLocalDate().toEpochDay())
     }
     var state by remember(preferences) { mutableStateOf(preferences.load(freshDraft())) }
+    fun homeNavigationIdle(): Boolean = !sharedMode && restrictions.state.value.editingAllowed &&
+        lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+        !sending && !reading && !estimating && !planning
+    fun homeNavigationMatches(request: Long, expected: HomeUiState, limits: DrivingInteraction): Boolean =
+        request == homeNavigationRequest && state == expected && !sharedMode &&
+            limits == restrictions.state.value && limits.editingAllowed &&
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+    fun invalidateHomeNavigation() {
+        homeNavigationRequest += 1
+        homeNavigationJob?.cancel()
+        homeNavigationJob = null
+        sending = false
+        reading = false
+        resumeConfirmation = null
+        visitCompletionConfirmation = null
+    }
+    fun launchHomeNavigation(read: Boolean, work: suspend (Long) -> Unit) {
+        homeNavigationRequest += 1
+        val request = homeNavigationRequest
+        if (read) reading = true else sending = true
+        homeNavigationJob = scope.launch {
+            try { work(request) }
+            finally {
+                if (request == homeNavigationRequest) {
+                    reading = false
+                    sending = false
+                    homeNavigationJob = null
+                }
+            }
+        }
+    }
+    DisposableEffect(lifecycleOwner, gateway, interaction, sharedMode) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) invalidateHomeNavigation()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            invalidateHomeNavigation()
+        }
+    }
     fun canStartVoice(): Boolean = BuildConfig.ENABLE_VEHICLE_VOICE && isVehicle && !sharedMode &&
         restrictions.state.value.editingAllowed && restrictions.state.value.voiceTranscriptionAllowed &&
         state.progress.stage == JourneyStage.INPUT && voice.state.value == VoiceInputState.Idle &&
@@ -424,6 +469,9 @@ internal fun ModuHomeApp(
         navigationError = false
         navigationSnapshot = null
         tripResult = null
+        guidanceResult = null
+        resumeConfirmation = null
+        visitCompletionConfirmation = null
     }
     fun saveInbox(next: ErrandProposalInbox): Boolean {
         if (!proposalPreferences.save(next)) {
@@ -643,17 +691,15 @@ internal fun ModuHomeApp(
         }
     }
     fun readNavigation() {
-        if (reading || sending || estimating || planning || connection != NavigationConnection.Ready) return
-        reading = true
-        scope.launch {
-            try {
+        if (!homeNavigationIdle() || connection != NavigationConnection.Ready) return
+        val expected = state
+        val limits = restrictions.state.value
+        launchHomeNavigation(read = true) { request ->
                 val snapshot = gateway.currentRoute()
+                if (!homeNavigationMatches(request, expected, limits)) return@launchHomeNavigation
                 navigationSnapshot = snapshot
                 navigationError = snapshot == null
                 navigationMessage = if (snapshot == null) "차량 내비의 경로를 읽지 못했어요" else "현재 차량 내비의 안내 경로예요"
-            } finally {
-                reading = false
-            }
         }
     }
     LaunchedEffect(gateway, connection, sharedMode) {
@@ -661,12 +707,12 @@ internal fun ModuHomeApp(
             readNavigation()
         }
     }
-    val guidancePlan = state.selectedPlan?.let(state.draft::navigationPlan)?.remainingAfter(state.progress.completedVisits)
+    val guidancePlan = state.navigationWindow
     LaunchedEffect(gateway, connection, routeRevision, state.progress.stage, guidancePlan, lifecycleOwner,
-        reading, sending, resumeConfirmation, sharedMode) {
+        reading, sending, resumeConfirmation, visitCompletionConfirmation, sharedMode) {
         guidanceResult = null
         if (sharedMode || connection != NavigationConnection.Ready || state.progress.stage != JourneyStage.ACTIVE || guidancePlan == null ||
-            reading || sending || resumeConfirmation != null) {
+            reading || sending || resumeConfirmation != null || visitCompletionConfirmation != null) {
             return@LaunchedEffect
         }
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -686,35 +732,111 @@ internal fun ModuHomeApp(
             }
         }
     }
-    LaunchedEffect(routeRevision, editingAllowed, state.progress) {
+    LaunchedEffect(routeRevision, interaction, state, sharedMode) {
         val pending = resumeConfirmation
-        if (pending != null && (!editingAllowed || pending.progress != state.progress ||
-                pending.approval.routeRevision != routeRevision)) {
+        if (pending != null && (sharedMode || !pending.isCurrent(state, interaction, routeRevision))) {
             resumeConfirmation = null
             navigationMessage = "안내 상태가 바뀌었어요. 남은 순서를 다시 확인해주세요"
+            navigationError = true
+        }
+        val completing = visitCompletionConfirmation
+        if (completing != null && (sharedMode || !completing.isCurrent(state, interaction, routeRevision))) {
+            visitCompletionConfirmation = null
+            navigationMessage = "계획이나 안내 상태가 바뀌었어요. 완료할 볼일을 다시 확인해주세요"
             navigationError = true
         }
     }
 
     fun prepareNavigationResume() {
-        if (!restrictions.state.value.editingAllowed || sending || reading || estimating || planning ||
+        if (!homeNavigationIdle() ||
             state.progress.stage != JourneyStage.ACTIVE || connection != NavigationConnection.Ready) return
-        val progress = state.progress
-        val remaining = state.selectedPlan?.let(state.draft::navigationPlan)?.remainingAfter(progress.completedVisits) ?: return
-        reading = true
-        scope.launch {
-            try {
+        val expected = state
+        val limits = restrictions.state.value
+        val remaining = expected.navigationWindow ?: return
+        visitCompletionConfirmation = null
+        launchHomeNavigation(read = true) { request ->
                 val before = gateway.routeRevision.value
                 val snapshot = gateway.currentRoute()
                 val approval = RouteChangeApproval.fromObservation(snapshot, before, gateway.routeRevision.value)
-                if (state.progress == progress && restrictions.state.value.editingAllowed) {
+                if (homeNavigationMatches(request, expected, limits)) {
                     navigationSnapshot = snapshot
                     if (approval == null) {
                         navigationMessage = "현재 내비 안내를 확인하지 못했어요. 다시 시도해주세요"
                         navigationError = true
-                    } else resumeConfirmation = NavigationResumeConfirmation(remaining, approval, progress)
+                    } else resumeConfirmation = NavigationResumeConfirmation(remaining, approval, expected, limits)
                 }
-            } finally { reading = false }
+        }
+    }
+    fun showHomeRouteResult(result: RouteRequestResult, destinationName: String) {
+        navigationError = result !is RouteRequestResult.Confirmed
+        when (result) {
+            is RouteRequestResult.Confirmed -> {
+                navigationSnapshot = result.snapshot
+                navigationMessage = "이번 안내 목적지: $destinationName · 남은 방문 순서는 유지돼요"
+            }
+            is RouteRequestResult.Rejected -> {
+                navigationSnapshot = result.snapshot
+                navigationMessage = "진행 기록은 저장했어요. ${result.reason}"
+            }
+            RouteRequestResult.Unavailable -> navigationMessage = "진행 기록은 저장했어요. 차량 내비 연결 후 남은 순서로 다시 안내해주세요"
+        }
+    }
+    fun prepareVisitCompletion(kind: VisitKind) {
+        if (!homeNavigationIdle() || state.progress.stage != JourneyStage.ACTIVE) return
+        if (connection == NavigationConnection.Unsupported) {
+            update(state.copy(progress = state.progress.completeVisit(state.plans, kind, System.currentTimeMillis())))
+            return
+        }
+        if (connection != NavigationConnection.Ready) return
+        val expected = state
+        val limits = restrictions.state.value
+        resumeConfirmation = null
+        launchHomeNavigation(read = true) { request ->
+            val before = gateway.routeRevision.value
+            val snapshot = gateway.currentRoute()
+            if (!homeNavigationMatches(request, expected, limits)) return@launchHomeNavigation
+            navigationSnapshot = snapshot
+            visitCompletionConfirmation = HomeVisitCompletionConfirmation.fromObservation(
+                expected, kind, limits, snapshot, before, gateway.routeRevision.value,
+            )
+            if (visitCompletionConfirmation == null) {
+                navigationMessage = "현재 내비와 계획이 달라요. 남은 순서로 다시 안내한 뒤 완료를 확인해주세요"
+                navigationError = true
+            }
+        }
+    }
+    fun confirmVisitCompletion(pending: HomeVisitCompletionConfirmation) {
+        val limits = restrictions.state.value
+        if (!homeNavigationIdle() || visitCompletionConfirmation != pending ||
+            !pending.isCurrent(state, limits, gateway.routeRevision.value)) return
+        visitCompletionConfirmation = null
+        launchHomeNavigation(read = true) { request ->
+            val before = gateway.routeRevision.value
+            val snapshot = gateway.currentRoute()
+            if (!homeNavigationMatches(request, pending.state, limits)) return@launchHomeNavigation
+            val completion = pending.afterRead(state, restrictions.state.value, snapshot, before,
+                gateway.routeRevision.value, System.currentTimeMillis())
+            if (completion == null) {
+                navigationMessage = "확인 중 내비나 입력 제한이 바뀌었어요. 볼일 완료를 다시 확인해주세요"
+                navigationError = true
+                return@launchHomeNavigation
+            }
+            // Physical completion survives an interrupted or rejected SDK transmission.
+            if (!update(completion.state)) return@launchHomeNavigation
+            val remaining = completion.state.navigationWindow ?: return@launchHomeNavigation
+            if (!completion.navigationRequired) {
+                navigationSnapshot = snapshot
+                navigationMessage = if (snapshot?.guidanceActive == true) "완료를 기록했어요. 현재 내비의 남은 안내를 유지해요" else
+                    "완료만 기록했어요. 안내가 필요하면 남은 순서로 다시 안내를 눌러주세요"
+                navigationError = false
+                return@launchHomeNavigation
+            }
+            reading = false
+            sending = true
+            guidanceResult = null
+            navigationMessage = "완료를 기록했어요. 다음 안내를 확인하고 있어요"
+            val result = gateway.requestRoute(remaining, completion.approval)
+            if (homeNavigationMatches(request, completion.state, limits)) showHomeRouteResult(result, remaining.destination.name)
         }
     }
     val roadComparisonAvailable = routeGateway != null && connection == NavigationConnection.Ready &&
@@ -836,7 +958,7 @@ internal fun ModuHomeApp(
         onSelect = { id -> if (editingAllowed) update(state.copy(progress = state.progress.select(id, state.plans))) },
         onReview = { if (editingAllowed) update(state.copy(progress = state.progress.review(state.plans))) },
         onStart = start@{
-            if (editingAllowed && !sending && !reading && !estimating && !planning && state.progress.stage == JourneyStage.REVIEW) {
+            if (homeNavigationIdle() && state.progress.stage == JourneyStage.REVIEW) {
                 val prepared = if (state.routing != null) when (val result = HomeDepartureResult.prepare(
                     state, System.currentTimeMillis(), ZoneId.systemDefault())) {
                     is HomeDepartureResult.Ready -> result.state
@@ -863,46 +985,22 @@ internal fun ModuHomeApp(
                         navigationMessage = "입력 화면에서 집과 들를 곳의 내비 장소를 선택해주세요"
                         navigationError = true
                     } else if (connection == NavigationConnection.Ready) {
-                        if (!update(prepared)) return@start
-                        val draft = state.draft
-                        val selectedId = selected.id
-                        sending = true
+                        val started = prepared.copy(progress = prepared.progress.start(prepared.plans, System.currentTimeMillis()))
+                        // Persist the itinerary intent before changing the external navigator.
+                        if (!update(started)) return@start
+                        val limits = restrictions.state.value
                         clearNavigationRead()
-                        scope.launch {
-                            try {
-                                val result = gateway.requestRoute(plan)
-                                if (state.progress.stage == JourneyStage.REVIEW &&
-                                    state.progress.selectedPlanId == selectedId && state.draft == draft) {
-                                    when (result) {
-                                        is RouteRequestResult.Confirmed -> {
-                                            navigationSnapshot = result.snapshot
-                                            if (update(state.copy(progress = state.progress.start(state.plans, System.currentTimeMillis())))) {
-                                                navigationMessage = "경유 순서와 최종 목적지가 내비에 반영됐어요"
-                                            } else {
-                                                navigationMessage = "내비에 순서는 반영됐지만 진행 기록을 저장하지 못했어요. 다시 확인해주세요"
-                                            }
-                                        }
-                                        RouteRequestResult.Unavailable -> {
-                                            navigationMessage = "차량 내비 연결을 확인해주세요"
-                                            navigationError = true
-                                        }
-                                        is RouteRequestResult.Rejected -> {
-                                            navigationSnapshot = result.snapshot
-                                            navigationMessage = result.reason
-                                            navigationError = true
-                                        }
-                                    }
-                                }
-                            } finally {
-                                sending = false
-                            }
+                        navigationMessage = "계획을 저장했어요. 이번 안내 목적지를 확인하고 있어요"
+                        launchHomeNavigation(read = false) { request ->
+                            val result = gateway.requestRoute(plan)
+                            if (homeNavigationMatches(request, started, limits)) showHomeRouteResult(result, plan.destination.name)
                         }
                     }
                 }
             }
         },
-        onCompleteVisit = { kind -> if (editingAllowed) update(state.copy(progress = state.progress.completeVisit(state.plans, kind))) },
-        onFinish = { if (editingAllowed) update(state.copy(progress = state.progress.finish(state.plans, System.currentTimeMillis()))) },
+        onCompleteVisit = ::prepareVisitCompletion,
+        onFinish = { if (homeNavigationIdle()) update(state.copy(progress = state.progress.finish(state.plans, System.currentTimeMillis()))) },
         onBack = { if (editingAllowed && !sending) update(state.copy(progress = state.progress.back())) },
         onEdit = { if (editingAllowed && !sending) {
             clearNavigationRead()
@@ -1428,33 +1526,17 @@ internal fun ModuHomeApp(
         val actual = pending.approval.snapshot
         val current = if (actual.guidanceActive) "현재 내비: ${actual.destination?.name ?: "목적지 확인 필요"}" else "현재 길안내는 종료돼 있어요"
         val order = (pending.plan.waypoints + pending.plan.destination).joinToString(" → ") { it.name }
-        val description = "$current\n\n남은 순서: $order\n완료한 볼일 ${pending.progress.completedVisits}건은 유지해요"
+        val description = "$current\n\n이번 안내: $order\n마지막 집: ${pending.state.draft.home}\n완료한 볼일 ${pending.progress.completedVisits}건은 유지해요"
         val dismiss: () -> Unit = { resumeConfirmation = null }
         val confirm: () -> Unit = {
-            if (restrictions.state.value.editingAllowed && state.progress == pending.progress && !sending && !reading) {
+            if (homeNavigationIdle() && pending.isCurrent(state, restrictions.state.value, gateway.routeRevision.value)) {
                 resumeConfirmation = null
-                sending = true
                 navigationMessage = "남은 순서를 차량 내비에 반영하고 있어요"
                 navigationError = false
-                scope.launch {
-                    try {
-                        val result = gateway.requestRoute(pending.plan, pending.approval)
-                        if (state.progress == pending.progress) when (result) {
-                            is RouteRequestResult.Confirmed -> {
-                                navigationSnapshot = result.snapshot
-                                navigationMessage = "완료한 볼일을 제외한 남은 순서로 안내를 재개했어요"
-                            }
-                            is RouteRequestResult.Rejected -> {
-                                navigationSnapshot = result.snapshot
-                                navigationMessage = result.reason
-                                navigationError = true
-                            }
-                            RouteRequestResult.Unavailable -> {
-                                navigationMessage = "차량 내비 연결을 확인한 뒤 다시 시도해주세요"
-                                navigationError = true
-                            }
-                        }
-                    } finally { sending = false }
+                val limits = restrictions.state.value
+                launchHomeNavigation(read = false) { request ->
+                    val result = gateway.requestRoute(pending.plan, pending.approval)
+                    if (homeNavigationMatches(request, pending.state, limits)) showHomeRouteResult(result, pending.plan.destination.name)
                 }
             }
         }
@@ -1464,6 +1546,29 @@ internal fun ModuHomeApp(
         ) else AlertDialog(
             onDismissRequest = dismiss, title = { Text("남은 순서로 안내를 재개할까요?") },
             text = { Text(description) }, confirmButton = { TextButton(onClick = confirm) { Text("이 순서로 안내") } },
+            dismissButton = { TextButton(onClick = dismiss) { Text("닫기") } },
+        )
+    }
+    visitCompletionConfirmation?.takeIf { editingAllowed && !sharedMode }?.let { pending ->
+        val next = pending.nextWindow
+        val description = listOfNotNull(
+            pending.placeName,
+            if (pending.guidanceEnded) "이번 구간의 길안내가 끝났어요. 실제 볼일을 마쳤는지 직접 확인해주세요" else
+                "실제로 볼일을 마친 뒤 눌러주세요",
+            if (!pending.navigationRequired) {
+                if (pending.guidanceEnded) "완료만 기록하고 안내는 시작하지 않아요. 남은 볼일도 실제 완료 후 확인해주세요" else
+                    "현재 내비 안내를 유지해요. 내비가 이미 지난 볼일은 다시 추가하지 않아요"
+            } else next?.let { "완료 후 안내 순서: ${(it.waypoints + it.destination).joinToString(" → ") { place -> place.name }}" },
+            "마지막 집: ${pending.state.draft.home}",
+        ).joinToString("\n\n")
+        val dismiss: () -> Unit = { visitCompletionConfirmation = null }
+        val confirm: () -> Unit = { confirmVisitCompletion(pending) }
+        if (isVehicle) VehicleConfirmationDialog(
+            title = "${if (pending.kind == VisitKind.PICKUP) "픽업" else "장보기"} 완료를 기록할까요?",
+            description = description, confirmLabel = "완료 확인", onConfirm = confirm, onDismiss = dismiss,
+        ) else AlertDialog(
+            onDismissRequest = dismiss, title = { Text("볼일 완료를 기록할까요?") }, text = { Text(description) },
+            confirmButton = { TextButton(onClick = confirm) { Text("완료 확인") } },
             dismissButton = { TextButton(onClick = dismiss) { Text("닫기") } },
         )
     }

@@ -185,8 +185,10 @@ internal data class JourneyProgress(
             copy(stage = JourneyStage.ACTIVE, startedAtMillis = nowMillis, completedVisits = 0, completedAtMillis = null)
         } else this
 
-    fun completeVisit(plans: List<ErrandJourneyPlan>, expectedVisit: VisitKind): JourneyProgress {
+    fun completeVisit(plans: List<ErrandJourneyPlan>, expectedVisit: VisitKind, nowMillis: Long): JourneyProgress {
         val plan = selected(plans) ?: return this
+        val started = startedAtMillis ?: return this
+        if (started < 0 || nowMillis < started) return this
         return if (stage == JourneyStage.ACTIVE && plan.visits.getOrNull(completedVisits)?.visit?.kind == expectedVisit) {
             copy(completedVisits = completedVisits + 1)
         } else this

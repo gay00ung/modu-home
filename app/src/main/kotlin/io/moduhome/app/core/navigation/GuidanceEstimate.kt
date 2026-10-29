@@ -57,7 +57,7 @@ internal class GuidanceEstimate private constructor(
                 ?: return failed("차량 내비 목적지를 확인하지 못했어요")
             if (!snapshotDestination.identifies(plan.destination) ||
                 !destinationObservation.identifies(plan.destination, snapshotDestination)) {
-                return failed("차량 내비가 안내하는 집이 계획과 달라요")
+                return failed("차량 내비가 안내하는 목적지가 계획과 달라요")
             }
             val remainingCount = routeAfter.waypoints.size
             if (remainingCount > plan.waypoints.size || waypointObservations.size != remainingCount) {

@@ -24,10 +24,10 @@ class JourneyProgressTest {
     @Test fun allVisitsAndHomeArrivalMustBeConfirmedSeparately() {
         val active = started()
         assertEquals(active, active.finish(plans, 2000))
-        val afterPickup = active.completeVisit(plans, VisitKind.PICKUP)
+        val afterPickup = active.completeVisit(plans, VisitKind.PICKUP, 1100)
         assertEquals(1, afterPickup.completedVisits)
         assertEquals(afterPickup, afterPickup.finish(plans, 2000))
-        val afterGroceries = afterPickup.completeVisit(plans, VisitKind.GROCERIES)
+        val afterGroceries = afterPickup.completeVisit(plans, VisitKind.GROCERIES, 1200)
         assertEquals(JourneyStage.ACTIVE, afterGroceries.stage)
         val finished = afterGroceries.finish(plans, 3000)
         assertEquals(JourneyStage.COMPLETE, finished.stage)
@@ -35,18 +35,18 @@ class JourneyProgressTest {
     }
 
     @Test fun repeatedCompletionCannotSkipPastTheVisitCount() {
-        val state = started().completeVisit(plans, VisitKind.PICKUP).completeVisit(plans, VisitKind.GROCERIES).completeVisit(plans, VisitKind.GROCERIES)
+        val state = started().completeVisit(plans, VisitKind.PICKUP, 1100).completeVisit(plans, VisitKind.GROCERIES, 1200).completeVisit(plans, VisitKind.GROCERIES, 1200)
         assertEquals(2, state.completedVisits)
     }
 
     @Test fun duplicateCompletionForOneVisitCannotCompleteTheNextVisit() {
-        val once = started().completeVisit(plans, VisitKind.PICKUP)
-        assertEquals(once, once.completeVisit(plans, VisitKind.PICKUP))
+        val once = started().completeVisit(plans, VisitKind.PICKUP, 1100)
+        assertEquals(once, once.completeVisit(plans, VisitKind.PICKUP, 1100))
         assertEquals(1, once.completedVisits)
     }
 
     @Test fun backCannotDiscardAnActiveJourney() {
-        val active = started().completeVisit(plans, VisitKind.PICKUP)
+        val active = started().completeVisit(plans, VisitKind.PICKUP, 1100)
         assertEquals(active, active.back())
     }
 
@@ -58,5 +58,14 @@ class JourneyProgressTest {
 
     @Test fun editingClearsPreviousConfirmation() {
         assertEquals(JourneyProgress(), JourneyProgress().compare(plans).back())
+    }
+
+    @Test fun aClockBeforeStartOrAMissingStartCannotRecordAVisit() {
+        val active = started()
+        assertEquals(active, active.completeVisit(plans, VisitKind.PICKUP, 999))
+        val missing = active.copy(startedAtMillis = null)
+        assertEquals(missing, missing.completeVisit(plans, VisitKind.PICKUP, 2000))
+        val invalid = active.copy(startedAtMillis = -1)
+        assertEquals(invalid, invalid.completeVisit(plans, VisitKind.PICKUP, 2000))
     }
 }

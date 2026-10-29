@@ -10,8 +10,8 @@ import org.junit.Test
 
 class NavigationPlanTest {
     private val home = NavigationPoint("집", 37.5, 127.0)
-    private val pickup = NavigationPoint("픽업", 37.51, 127.01)
-    private val groceries = NavigationPoint("마트", 37.52, 127.02)
+    private val pickup = NavigationPoint("픽업", 37.51, 127.01, placeId = "pickup")
+    private val groceries = NavigationPoint("마트", 37.52, 127.02, placeId = "groceries")
     private val draft = JourneyDraft(
         home = home.name,
         pickup = VisitDraft(place = pickup.name, stay = "5", ready = true),
@@ -59,5 +59,35 @@ class NavigationPlanTest {
     @Test fun surroundingWhitespaceKeepsTheSelectedPlace() {
         val changed = draft.copy(home = " 집 ").clearUnmatchedPlaces()
         assertEquals(home, changed.navigationPlaces.home)
+    }
+
+    @Test fun twoNewAddressesBecomeSeparateDestinationsBeforeTheOriginalHome() {
+        val addressPickup = pickup.copy(placeId = "")
+        val addressGroceries = groceries.copy(placeId = "")
+        val addresses = draft.copy(navigationPlaces = NavigationPlaces(home, addressPickup, addressGroceries))
+        val selected = plans(addresses).single { it.visits.first().visit.kind == VisitKind.PICKUP }
+        assertEquals(addressPickup, addresses.navigationPlan(selected, 0)?.destination)
+        assertEquals(emptyList<NavigationPoint>(), addresses.navigationPlan(selected, 0)?.waypoints)
+        assertEquals(addressGroceries, addresses.navigationPlan(selected, 1)?.destination)
+        assertEquals(emptyList<NavigationPoint>(), addresses.navigationPlan(selected, 1)?.waypoints)
+        assertEquals(home, addresses.navigationPlan(selected, 2)?.destination)
+    }
+
+    @Test fun aKnownPoiCanPrecedeAnAddressAndIsDroppedBeforeBuildingTheNextWindow() {
+        val address = groceries.copy(placeId = "")
+        val mixed = draft.copy(navigationPlaces = NavigationPlaces(home, pickup, address))
+        val selected = plans(mixed).single { it.visits.first().visit.kind == VisitKind.PICKUP }
+        assertEquals(listOf(pickup), mixed.navigationPlan(selected)?.waypoints)
+        assertEquals(address, mixed.navigationPlan(selected)?.destination)
+        assertEquals(emptyList<NavigationPoint>(), mixed.navigationPlan(selected, 1)?.waypoints)
+        assertEquals(address, mixed.navigationPlan(selected, 1)?.destination)
+        assertEquals(home, mixed.navigationPlan(selected, 2)?.destination)
+    }
+
+    @Test fun invalidCompletionCountsCannotCreateARouteOrSkipHomeValidation() {
+        val selected = plans().first()
+        assertNull(draft.navigationPlan(selected, -1))
+        assertNull(draft.navigationPlan(selected, 3))
+        assertNull(draft.copy(navigationPlaces = draft.navigationPlaces.copy(home = null)).navigationPlan(selected, 2))
     }
 }

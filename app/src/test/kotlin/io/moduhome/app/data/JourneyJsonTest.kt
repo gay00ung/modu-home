@@ -52,7 +52,7 @@ class JourneyJsonTest {
         val reviewed = compared.copy(progress = compared.progress.review(compared.plans))
         val active = reviewed.copy(progress = reviewed.progress.start(reviewed.plans, now))
         val done = active.plans.first { it.id == active.progress.selectedPlanId }.visits.fold(active) { current, visit ->
-            current.copy(progress = current.progress.completeVisit(current.plans, visit.visit.kind))
+            current.copy(progress = current.progress.completeVisit(current.plans, visit.visit.kind, now + 1))
         }.let { it.copy(progress = it.progress.finish(it.plans, now + 10)) }
         assertEquals(JourneyStage.COMPLETE, done.progress.stage)
         for (current in listOf(compared, reviewed, active, done)) {
@@ -70,6 +70,22 @@ class JourneyJsonTest {
             assertEquals(JourneyProgress(), restored.progress)
             assertNull(restored.routing)
         }
+    }
+
+    @Test fun aRestoredAddressItineraryRebuildsTheNextWindowWithoutAStoredRouteApproval() {
+        val addresses = state.copy(draft = draft.copy(navigationPlaces = NavigationPlaces(home,
+            pickup.copy(placeId = ""), groceries.copy(placeId = ""))))
+        val selected = addresses.plans.single { it.visits.first().visit.kind == VisitKind.PICKUP }
+        val active = addresses.copy(progress = JourneyProgress().compare(addresses.plans).select(selected.id, addresses.plans)
+            .review(addresses.plans).start(addresses.plans, now))
+        val firstDone = active.copy(progress = active.progress.completeVisit(active.plans, VisitKind.PICKUP, now + 1))
+        val restored = JourneyJson.decode(encoded(firstDone), fallback, now + 2)
+        assertEquals(firstDone, restored)
+        assertEquals(groceries.copy(placeId = ""), restored.navigationWindow?.destination)
+        assertEquals(emptyList<NavigationPoint>(), restored.navigationWindow?.waypoints)
+        val allDone = restored.copy(progress = restored.progress.completeVisit(restored.plans, VisitKind.GROCERIES, now + 3))
+        assertEquals(home, JourneyJson.decode(encoded(allDone), fallback, now + 4).navigationWindow?.destination)
+        assertFalse(JSONObject(encoded(firstDone)).has("approval"))
     }
 
     @Test fun expiredAcceptanceRemainsHistoricalEvidence() {

@@ -16,9 +16,9 @@ import io.moduhome.app.feature.home.JourneyDraft
 import io.moduhome.app.feature.home.VehicleNavigationUiState
 import io.moduhome.app.feature.home.VisitDraft
 import io.moduhome.app.feature.shared.SharedJourneyDraft
-import io.moduhome.app.feature.shared.SharedVehicleActions
 import io.moduhome.app.feature.shared.SharedVehicleScreen
 import io.moduhome.app.feature.shared.SharedVehicleUiState
+import io.moduhome.app.feature.shared.sharedLayoutActions
 import io.moduhome.app.ui.theme.ModuHomeTheme
 
 /** Read-only layout sample: no preferences, vehicle SDK, microphone, or network access. */
@@ -62,14 +62,7 @@ fun SharedComparisonLayoutPreview() {
             Text("화면 배치 예시 · 실제 조작 없음", fontSize = 18.sp, lineHeight = 26.sp)
             SharedVehicleScreen(
                 state = SharedVehicleUiState(SharedJourneyDraft(), stage = JourneyStage.COMPARE),
-                actions = SharedVehicleActions(
-                    onDraftChange = {}, onPassengerCountChange = {}, onChooseDriverHome = {},
-                    onChoosePassengerDropoff = {}, onErrandChoice = {}, onChooseErrandPlace = {},
-                    onConfirmDropoff = { _, _ -> }, onCompare = {}, onSelectPlan = {}, onPlanPageChange = {},
-                    onReview = {}, onStart = {}, onCompleteNextStop = {}, onConfirmPassedStop = {},
-                    onRetryNavigation = {}, onFinish = {}, onBack = {}, onEdit = {}, onNewJourney = {},
-                    onCancel = {}, onLeave = {}, onReconnect = {}, onOpenProposals = {}, onOpenPhoneConnection = {},
-                ),
+                actions = sharedLayoutActions,
                 vehicle = VehicleNavigationUiState(),
                 interaction = DrivingInteraction.Known(distractionOptimizationRequired = false),
                 modifier = Modifier.weight(1f),

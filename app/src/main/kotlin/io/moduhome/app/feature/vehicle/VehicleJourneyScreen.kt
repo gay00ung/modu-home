@@ -13,10 +13,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.moduhome.app.core.navigation.NavigationConnection
@@ -560,29 +558,6 @@ private fun VehicleChoice(label: String, selected: Boolean, enabled: Boolean, on
             containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 18.dp)) {
         Text(label, fontSize = 28.sp, lineHeight = 38.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
-    }
-}
-
-@Composable
-private fun VehicleMetrics(metrics: List<Pair<String, String>>, modifier: Modifier = Modifier, spacing: Dp = 24.dp) {
-    val density = LocalDensity.current
-    val textMeasurer = rememberTextMeasurer()
-    val valueStyle = LocalTextStyle.current.copy(fontSize = 52.sp, lineHeight = 64.sp, fontWeight = FontWeight.Bold)
-    FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(spacing), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        metrics.forEach { (label, value) ->
-            val textWidth = with(density) { textMeasurer.measure(value, valueStyle, softWrap = false).size.width.toDp() }
-            val minimumWidth = maxOf(200.dp * density.fontScale, textWidth)
-            // 날짜가 붙은 시각도 같은 줄에 들어갈 너비로 배분한다
-            VehicleMetric(label, value, Modifier.widthIn(min = minimumWidth).weight(minimumWidth.value))
-        }
-    }
-}
-
-@Composable
-private fun VehicleMetric(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        VehicleCaption(label)
-        Text(value, fontSize = 52.sp, lineHeight = 64.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
     }
 }
 

@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,6 +53,8 @@ import io.moduhome.app.core.shared.currentWindow
 import io.moduhome.app.core.vehicle.DrivingInteraction
 import io.moduhome.app.core.vehicle.restrictContent
 import io.moduhome.app.feature.vehicle.VehicleActionBar
+import io.moduhome.app.feature.vehicle.VehicleMetric
+import io.moduhome.app.feature.vehicle.VehicleMetrics
 import io.moduhome.app.feature.vehicle.VehicleToolbar
 import io.moduhome.app.feature.home.VehicleNavigationUiState
 import java.time.Instant
@@ -320,7 +323,7 @@ private fun SharedPlanCard(
             })
             Text(orderLabel(plan), fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold,
                 maxLines = 3, overflow = TextOverflow.Ellipsis)
-            SharedMetric("교통 제외 · 운전자 집 도착", clock(plan.driverHomeArrivalMinute))
+            VehicleMetric("교통 제외 · 운전자 집 도착", clock(plan.driverHomeArrivalMinute))
             Text(plan.driverAdditionalMinutes?.let { "집 직행보다 +${it}분" } ?: "추가시간 확인 필요", fontSize = 28.sp, lineHeight = 38.sp,
                 fontWeight = FontWeight.SemiBold)
             HorizontalDivider()
@@ -349,11 +352,9 @@ private fun SharedReview(state: SharedVehicleUiState) {
     }
     Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.fillMaxWidth().padding(32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-                SharedMetric("교통 제외 · 집 도착", clock(plan.driverHomeArrivalMinute), Modifier.weight(1f))
-                SharedMetric("집 직행보다 추가", plan.driverAdditionalMinutes?.let { "+${it}분" } ?: "확인 필요", Modifier.weight(1f))
-                SharedMetric("중간 정차", "${plan.stops.size}곳", Modifier.weight(1f))
-            }
+            VehicleMetrics(listOf("교통 제외 · 집 도착" to clock(plan.driverHomeArrivalMinute),
+                "집 직행보다 추가" to (plan.driverAdditionalMinutes?.let { "+${it}분" } ?: "확인 필요"),
+                "중간 정차" to "${plan.stops.size}곳"), modifier = Modifier.fillMaxWidth(), spacing = 32.dp)
             HorizontalDivider()
             plan.stops.forEachIndexed { index, stop ->
                 val arrivalMinute = when (stop) {
@@ -401,7 +402,7 @@ private fun SharedActive(
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                 next?.let { Text(stopLabel(it), fontSize = 30.sp, lineHeight = 40.sp) }
             }
-            SharedMetric("정차 완료", "${state.completedStops}/${plan.stops.size}곳", Modifier.weight(1f))
+            VehicleMetric("정차 완료", "${state.completedStops}/${plan.stops.size}곳", Modifier.weight(1f))
         }
     }
     if (state.navigationPending && next != null) {
@@ -631,24 +632,21 @@ private fun SharedAction(label: String, enabled: Boolean, onClick: () -> Unit, m
 }
 
 @Composable
-private fun SharedMetric(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SharedCaption(label)
-        Text(value, fontSize = 52.sp, lineHeight = 64.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-    }
-}
-
-@Composable
 private fun SharedStopLine(marker: String, place: String, label: String, time: String?) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 80.dp), verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-        Text(marker, Modifier.widthIn(min = 64.dp), fontSize = 30.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(place, fontSize = 32.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
-            SharedCaption(label)
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val stacked = maxWidth < 800.dp || fontScale > 1.1f
+        Row(Modifier.fillMaxWidth().heightIn(min = 80.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            Text(marker, Modifier.widthIn(min = 64.dp), fontSize = 30.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(place, fontSize = 32.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                SharedCaption(label)
+                if (stacked) time?.let { Text(it, fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.SemiBold) }
+            }
+            if (!stacked) time?.let { Text(it, fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.SemiBold) }
         }
-        time?.let { Text(it, fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.SemiBold) }
     }
 }
 

@@ -135,18 +135,6 @@ private fun ProposalListContent(state: ProposalUiState, actions: ProposalActions
             OutlinedButton(onClick = actions.onPaste) { Text("붙여넣기") }
             OutlinedButton(onClick = actions.onReadQr, enabled = !state.qrBusy) { Text("QR 이미지 열기") }
         }
-        HorizontalDivider()
-        Text("내 볼일 보내기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Text("선택한 장소와 시간을 QR이나 링크로 전달해요. 제안은 하루 동안 유효해요", style = MaterialTheme.typography.bodyMedium)
-        if (state.pickupAvailable || state.groceriesAvailable) {
-            OutlinedButton(onClick = actions.onDismiss, enabled = !state.relayBusy) { Text("입력 화면에서 장소·시간 조건 편집") }
-        }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { actions.onExport(VisitKind.PICKUP) }, enabled = state.pickupAvailable && !state.relayBusy) { Text("픽업 제안 만들기") }
-            OutlinedButton(onClick = { actions.onExport(VisitKind.GROCERIES) }, enabled = state.groceriesAvailable && !state.relayBusy) { Text("장보기 제안 만들기") }
-        }
-        if (!state.pickupAvailable && !state.groceriesAvailable) Text("주소로 새 볼일을 만들거나 받은 볼일의 조건을 정해 보내세요",
-            fontSize = 16.sp, lineHeight = 24.sp)
         if (state.exportLink != null) {
             Text(state.exportName.orEmpty(), fontWeight = FontWeight.SemiBold)
             ProposalQrAndShare(state, actions)

@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
@@ -96,6 +97,7 @@ import io.moduhome.app.feature.home.proposal
 import io.moduhome.app.feature.home.loadRoutedJourney
 import io.moduhome.app.feature.home.RoutedJourneyLoadResult
 import io.moduhome.app.feature.home.HomeScreen
+import io.moduhome.app.feature.transfer.CompanionHomeScreen
 import io.moduhome.app.feature.home.HomeUiState
 import io.moduhome.app.feature.home.DepartureDraftResult
 import io.moduhome.app.feature.home.HomeDepartureResult
@@ -292,9 +294,10 @@ internal fun ModuHomeApp(
     var preparedCompanion by remember { mutableStateOf<CompanionErrandDraft?>(null) }
     var companionErrors by remember { mutableStateOf<Map<CompanionErrandField, String>>(emptyMap()) }
     var companionMessage by remember { mutableStateOf<String?>(null) }
-    fun canEditCompanion(): Boolean = !isVehicle && proposalPanelOpen && restrictions.state.value.editingAllowed &&
+    fun canOpenCompanion(): Boolean = !isVehicle && restrictions.state.value.editingAllowed &&
         lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
         !relayState.busy && relayState.candidate == null
+    fun canEditCompanion(): Boolean = proposalPanelOpen && canOpenCompanion()
     fun clearAddressSearch(message: String? = null) {
         addressRequest += 1
         addressJob?.cancel()
@@ -594,6 +597,16 @@ internal fun ModuHomeApp(
                 } finally { readingQr = false }
             }
         }
+    }
+    fun openCompanionAddress() {
+        if (!canEditCompanion()) return
+        exportLink = null
+        exportName = null
+        preparedCompanion = null
+        proposalMessage = null
+        dismissCompanion()
+        dismissAddressPicker()
+        addressPicker = CompanionAddressState(session = addressRequest)
     }
     LaunchedEffect(tripResult, guidanceResult) {
         tripNow = System.currentTimeMillis()
@@ -929,7 +942,28 @@ internal fun ModuHomeApp(
         tripResult = tripResult, tripNow = tripNow, roadComparisonAvailable = roadComparisonAvailable, planning = planning,
         guidanceResult = guidanceResult, guidanceRefreshing = guidanceRefreshing,
     )
-    if (isVehicle && sharedMode) {
+    if (!isVehicle) {
+        CompanionHomeScreen(
+            connected = relayState.sender != null,
+            pendingProposalCount = inbox.entries.count { it.status == ProposalReviewStatus.PENDING },
+            busy = relayState.busy || readingQr || relayState.candidate != null || !editingAllowed,
+            message = relayState.message,
+            onReadQr = {
+                if (canOpenCompanion() && !readingQr) {
+                    proposalPanelOpen = true
+                    qrPicker.launch("image/*")
+                }
+            },
+            onCreateErrand = {
+                if (canOpenCompanion()) {
+                    proposalPanelOpen = true
+                    openCompanionAddress()
+                }
+            },
+            onOpenProposals = { if (canOpenCompanion()) proposalPanelOpen = true },
+            modifier = Modifier.fillMaxSize(),
+        )
+    } else if (sharedMode) {
         SharedJourneyFlow(
             state = sharedState,
             onStateChange = ::updateShared,
@@ -1304,17 +1338,7 @@ internal fun ModuHomeApp(
                         proposalMessage = null
                     }
                 },
-                onCreateFromAddress = {
-                    if (canEditCompanion()) {
-                        exportLink = null
-                        exportName = null
-                        preparedCompanion = null
-                        proposalMessage = null
-                        dismissCompanion()
-                        dismissAddressPicker()
-                        addressPicker = CompanionAddressState(session = addressRequest)
-                    }
-                },
+                onCreateFromAddress = ::openCompanionAddress,
                 onEdit = { id, revision ->
                     if (canEditCompanion()) {
                         val source = inbox.entries.firstOrNull {

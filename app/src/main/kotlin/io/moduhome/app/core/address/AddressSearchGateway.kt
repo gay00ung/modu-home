@@ -78,36 +78,40 @@ internal class SingleFlightAddressSearchGateway(
         if (query.isBlank() || !validAddressText(query, 300)) {
             return AddressSearchResult.Failed("검색할 주소를 300자 이내로 입력해주세요")
         }
-        return withTimeoutOrNull(timeoutMillis) {
-            suspendCancellableCoroutine { continuation ->
-                val pending = Pending(continuation)
-                val acquired = synchronized(lock) {
-                    if (active != null) false else { active = pending; true }
-                }
-                if (!acquired) {
-                    continuation.resume(AddressSearchResult.Busy)
-                    return@suspendCancellableCoroutine
-                }
-                continuation.invokeOnCancellation {
-                    synchronized(lock) {
-                        pending.waiter = null
-                        if (!pending.started && active === pending) active = null
+        val pending = Pending()
+        val acquired = synchronized(lock) {
+            if (active != null) false else { active = pending; true }
+        }
+        if (!acquired) return AddressSearchResult.Busy
+        return try {
+            withTimeoutOrNull(timeoutMillis) {
+                suspendCancellableCoroutine<AddressSearchResult> { continuation ->
+                    continuation.invokeOnCancellation {
+                        synchronized(lock) {
+                            pending.waiter = null
+                            if (!pending.started && active === pending) active = null
+                        }
+                    }
+                    val start = synchronized(lock) {
+                        if (active !== pending || !continuation.isActive) false
+                        else { pending.waiter = continuation; pending.started = true; true }
+                    }
+                    if (!start) return@suspendCancellableCoroutine
+                    try {
+                        backend.request(query, MAX_ADDRESS_RESULTS) { finish(pending, it) }
+                    } catch (cancelled: CancellationException) {
+                        detach(pending)?.cancel(cancelled)
+                    } catch (_: Exception) {
+                        finish(pending, AddressSearchResult.Failed("주소 검색을 시작하지 못했어요. 다시 시도해주세요"))
                     }
                 }
-                val start = synchronized(lock) {
-                    if (active !== pending || !continuation.isActive) false
-                    else { pending.started = true; true }
-                }
-                if (!start) return@suspendCancellableCoroutine
-                try {
-                    backend.request(query, MAX_ADDRESS_RESULTS) { finish(pending, it) }
-                } catch (cancelled: CancellationException) {
-                    detach(pending)?.cancel(cancelled)
-                } catch (_: Exception) {
-                    finish(pending, AddressSearchResult.Failed("주소 검색을 시작하지 못했어요. 다시 시도해주세요"))
-                }
+            } ?: AddressSearchResult.TimedOut
+        } finally {
+            synchronized(lock) {
+                pending.waiter = null
+                if (!pending.started && active === pending) active = null
             }
-        } ?: AddressSearchResult.TimedOut
+        }
     }
 
     private fun finish(pending: Pending, result: AddressSearchResult) {
@@ -120,7 +124,7 @@ internal class SingleFlightAddressSearchGateway(
         pending.waiter.also { pending.waiter = null }
     }
 
-    private class Pending(var waiter: CancellableContinuation<AddressSearchResult>?) {
+    private class Pending(var waiter: CancellableContinuation<AddressSearchResult>? = null) {
         var started = false
     }
 }

@@ -7,7 +7,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -19,7 +19,6 @@ import org.junit.Test
 class AddressSearchGatewayTest {
     private val candidate = AddressCandidate.fromObservation("서울특별시 중구 세종대로 110", 37.5663, 126.9779)!!
 
-    // JUnit is the blocking boundary; existing dependencies have no coroutines-test module.
     @Test fun preservesAddressAndCoordinatesWithoutInventingPoiIdentity() {
         assertEquals(candidate.address, candidate.point.address)
         assertEquals(37.5663, candidate.point.latitude, 0.0)
@@ -51,7 +50,7 @@ class AddressSearchGatewayTest {
         ErrandProposal("address_test", 1, 1_000, 2_000, VisitKind.PICKUP, result.point, 10)
     }
 
-    @Test fun rejectsInvalidQueriesBeforeStartingAnyBackendWork() = runBlocking {
+    @Test fun rejectsInvalidQueriesBeforeStartingAnyBackendWork() = runTest {
         val backend = FakeBackend()
         val gateway = SingleFlightAddressSearchGateway(backend)
         for (query in listOf("", "  ", "가".repeat(301), "서울\t중구", "\uD800")) {
@@ -60,7 +59,7 @@ class AddressSearchGatewayTest {
         assertEquals(0, backend.requests.size)
     }
 
-    @Test fun requestsAtMostFiveResultsAndReturnsTheExactCandidates() = runBlocking {
+    @Test fun requestsAtMostFiveResultsAndReturnsTheExactCandidates() = runTest {
         val backend = FakeBackend()
         val gateway = SingleFlightAddressSearchGateway(backend)
         val first = async(start = CoroutineStart.UNDISPATCHED) { gateway.search("  서울시청  ") }
@@ -71,7 +70,7 @@ class AddressSearchGatewayTest {
         assertEquals(result, first.await())
     }
 
-    @Test fun anotherSearchIsBusyUntilTheBackendCompletes() = runBlocking {
+    @Test fun anotherSearchIsBusyUntilTheBackendCompletes() = runTest {
         val backend = FakeBackend()
         val gateway = SingleFlightAddressSearchGateway(backend)
         val first = async(start = CoroutineStart.UNDISPATCHED) { gateway.search("서울시청") }
@@ -84,7 +83,7 @@ class AddressSearchGatewayTest {
         assertEquals(AddressSearchResult.NoResults, retry.await())
     }
 
-    @Test fun timeoutDetachesTheWaiterButKeepsTheUnfinishedBackendSingleFlight() = runBlocking {
+    @Test fun timeoutDetachesTheWaiterButKeepsTheUnfinishedBackendSingleFlight() = runTest {
         val backend = FakeBackend()
         val gateway = SingleFlightAddressSearchGateway(backend, timeoutMillis = 20)
         assertEquals(AddressSearchResult.TimedOut, gateway.search("서울시청"))
@@ -96,7 +95,7 @@ class AddressSearchGatewayTest {
         assertEquals(AddressSearchResult.NoResults, next.await())
     }
 
-    @Test fun callerCancellationPropagatesAndLateCompletionOnlyReleasesItsLease() = runBlocking {
+    @Test fun callerCancellationPropagatesAndLateCompletionOnlyReleasesItsLease() = runTest {
         val backend = FakeBackend()
         val gateway = SingleFlightAddressSearchGateway(backend)
         val cancelled = async(start = CoroutineStart.UNDISPATCHED) { gateway.search("서울시청") }
@@ -110,7 +109,7 @@ class AddressSearchGatewayTest {
         assertEquals(AddressSearchResult.NoResults, next.await())
     }
 
-    @Test fun duplicateAndOldCallbacksCannotCompleteOrUnlockANewerRequest() = runBlocking {
+    @Test fun duplicateAndOldCallbacksCannotCompleteOrUnlockANewerRequest() = runTest {
         val backend = FakeBackend()
         val gateway = SingleFlightAddressSearchGateway(backend)
         val first = async(start = CoroutineStart.UNDISPATCHED) { gateway.search("첫 주소") }
@@ -125,7 +124,7 @@ class AddressSearchGatewayTest {
         assertEquals(AddressSearchResult.NoResults, next.await())
     }
 
-    @Test fun errorCallbackReleasesTheLeaseAndCanArriveOffTheCallingThread() = runBlocking {
+    @Test fun errorCallbackReleasesTheLeaseAndCanArriveOffTheCallingThread() = runTest {
         val backend = FakeBackend()
         val gateway = SingleFlightAddressSearchGateway(backend)
         val request = async(start = CoroutineStart.UNDISPATCHED) { gateway.search("서울시청") }
@@ -137,7 +136,7 @@ class AddressSearchGatewayTest {
         assertEquals(AddressSearchResult.NoResults, retry.await())
     }
 
-    @Test fun synchronousCallbacksAndStartExceptionsDoNotLeaveTheGatewayBusy() = runBlocking {
+    @Test fun synchronousCallbacksAndStartExceptionsDoNotLeaveTheGatewayBusy() = runTest {
         var attempts = 0
         val gateway = SingleFlightAddressSearchGateway(AddressSearchBackend { _, _, callback ->
             if (attempts++ == 0) throw IllegalStateException("provider unavailable")
@@ -148,14 +147,14 @@ class AddressSearchGatewayTest {
         assertEquals(2, attempts)
     }
 
-    @Test fun backendCancellationIsNotConvertedToAnOrdinaryFailure() = runBlocking {
+    @Test fun backendCancellationIsNotConvertedToAnOrdinaryFailure() = runTest {
         val gateway = SingleFlightAddressSearchGateway(AddressSearchBackend { _, _, _ -> throw CancellationException("cancel") })
         val request = async(start = CoroutineStart.UNDISPATCHED) { gateway.search("서울시청") }
         request.join()
         assertTrue(request.isCancelled)
     }
 
-    @Test fun anOuterOwnerTimeoutIsNotSwallowedAsTheGatewaysOwnTimeout() = runBlocking {
+    @Test fun anOuterOwnerTimeoutIsNotSwallowedAsTheGatewaysOwnTimeout() = runTest {
         val backend = FakeBackend()
         val gateway = SingleFlightAddressSearchGateway(backend)
         var cancelled = false

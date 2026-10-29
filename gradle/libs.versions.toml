@@ -24,6 +24,7 @@ junit = { module = "junit:junit", version.ref = "junit" }
 json = { module = "org.json:json", version.ref = "json" }
 pleos-navi-helper = { module = "ai.pleos.playground:NaviHelper", version.ref = "naviHelper" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose-android", version.ref = "lifecycle" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 pleos-speech = { module = "ai.pleos.playground:SpeechToText", version.ref = "pleosSpeech" }

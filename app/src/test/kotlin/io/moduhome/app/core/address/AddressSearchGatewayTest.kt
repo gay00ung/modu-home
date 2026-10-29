@@ -4,17 +4,18 @@ import io.moduhome.app.core.transfer.ErrandProposal
 import io.moduhome.app.core.planning.VisitKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class AddressSearchGatewayTest {
     private val candidate = AddressCandidate.fromObservation("서울특별시 중구 세종대로 110", 37.5663, 126.9779)!!
@@ -129,7 +130,18 @@ class AddressSearchGatewayTest {
         val gateway = SingleFlightAddressSearchGateway(backend)
         val request = async(start = CoroutineStart.UNDISPATCHED) { gateway.search("서울시청") }
         val error = AddressSearchResult.Failed("검색 실패")
-        withContext(Dispatchers.Default) { backend.complete(0, error) }
+        val callerThread = Thread.currentThread()
+        val callbacks = Executors.newSingleThreadExecutor()
+        try {
+            // Keep virtual time stationary while the owned real callback thread runs.
+            callbacks.submit {
+                assertNotSame(callerThread, Thread.currentThread())
+                backend.complete(0, error)
+            }.get(5, TimeUnit.SECONDS)
+        } finally {
+            callbacks.shutdownNow()
+            assertTrue(callbacks.awaitTermination(5, TimeUnit.SECONDS))
+        }
         assertEquals(error, request.await())
         val retry = async(start = CoroutineStart.UNDISPATCHED) { gateway.search("서울시청") }
         backend.complete(1, AddressSearchResult.NoResults)

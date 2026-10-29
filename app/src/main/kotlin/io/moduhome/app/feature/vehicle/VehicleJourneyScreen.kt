@@ -529,7 +529,11 @@ private fun VehicleFooter(state: HomeUiState, actions: JourneyActions, vehicle: 
     VehicleActionBar(
         caption = if (!canEdit && !vehicle.reading && !vehicle.sending && !vehicle.planning) "정차 후 사용할 수 있어요" else when (stage) {
             JourneyStage.INPUT -> "들를 곳만 고르면 돼요"
-            JourneyStage.COMPARE -> "집까지의 전체 이동을 비교했어요"
+            JourneyStage.COMPARE -> when {
+                plan != null -> "${if (plan.isValid) "선택" else "조건 확인"} · ${planTitle(plan)}"
+                anyValid -> "확인할 순서를 선택해주세요"
+                else -> "조건을 바꿔 다시 비교해주세요"
+            }
             JourneyStage.REVIEW -> "선택한 순서를 차량 내비로 전달해요"
             JourneyStage.ACTIVE -> "완료 확인은 정차 후에 해주세요"
             JourneyStage.COMPLETE -> "다음 귀가도 가는 김에"

@@ -36,6 +36,17 @@ fun VehicleComparisonLayoutPreview() {
     VehicleLayoutSample(JourneyStage.COMPARE)
 }
 
+@Preview(name = "가는김에 선택 전", widthDp = 628, heightDp = 855)
+@Composable
+fun VehicleUnselectedComparisonLayoutPreview() {
+    val sample = HomeUiState(JourneyDraft(
+        home = "예시 집", budget = 60,
+        pickup = VisitDraft(place = "예시 픽업 장소", stay = "10", ready = true),
+        groceries = VisitDraft(place = "예시 장보기 장소", stay = "20"),
+    ))
+    VehicleLayoutSample(sample.copy(progress = JourneyProgress(stage = JourneyStage.COMPARE)))
+}
+
 @Preview(name = "좁은 차량 확인 화면", widthDp = 628, heightDp = 855)
 @Composable
 fun VehicleReviewLayoutPreview() {
@@ -73,15 +84,20 @@ fun SharedComparisonLayoutPreview() {
 
 @Composable
 private fun VehicleLayoutSample(stage: JourneyStage, departure: String = "18:10") {
+    val sample = HomeUiState(JourneyDraft(
+        home = "예시 집", departure = departure, pickup = VisitDraft(place = "예시 픽업 장소", stay = "10"),
+        groceries = VisitDraft(place = "예시 장보기 장소", stay = "20"),
+    ))
+    VehicleLayoutSample(sample.copy(progress = JourneyProgress(stage = stage, selectedPlanId = sample.plans.firstOrNull()?.id)))
+}
+
+@Composable
+private fun VehicleLayoutSample(state: HomeUiState) {
     ModuHomeTheme(vehicle = true) {
         Column(Modifier.fillMaxSize()) {
             Text("화면 배치 예시 · 실제 조작 없음", fontSize = 18.sp, lineHeight = 26.sp)
-            val sample = HomeUiState(JourneyDraft(
-                home = "예시 집", departure = departure, pickup = VisitDraft(place = "예시 픽업 장소", stay = "10"),
-                groceries = VisitDraft(place = "예시 장보기 장소", stay = "20"),
-            ))
             VehicleJourneyScreen(
-                state = sample.copy(progress = JourneyProgress(stage = stage, selectedPlanId = sample.plans.firstOrNull()?.id)),
+                state = state,
                 actions = JourneyActions(), vehicle = VehicleNavigationUiState(),
                 editingAllowed = true, restrictionMessage = null,
                 onOpenDetails = {}, onOpenShared = {}, onOpenPhoneConnection = {}, onVoice = {},

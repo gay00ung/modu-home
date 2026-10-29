@@ -35,6 +35,12 @@ fun SharedNextPlansLayoutPreview() {
     SharedLayoutSample(sharedLayoutState(JourneyStage.COMPARE, page = 1))
 }
 
+@Preview(name = "함께 귀가 선택 전", widthDp = 628, heightDp = 855)
+@Composable
+fun SharedUnselectedPlansLayoutPreview() {
+    SharedLayoutSample(sharedLayoutState(JourneyStage.COMPARE).copy(selectedPlanId = null))
+}
+
 @Preview(name = "함께 귀가 긴 장소명 확인", widthDp = 628, heightDp = 855)
 @Composable
 fun SharedReviewLayoutPreview() {

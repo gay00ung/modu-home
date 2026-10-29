@@ -526,7 +526,11 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
     VehicleActionBar(
         caption = when (state.stage) {
             JourneyStage.INPUT -> "집 앞 하차 장소만 선택해주세요"
-            JourneyStage.COMPARE -> "선택한 전체 순서를 확인해요"
+            JourneyStage.COMPARE -> when {
+                plan != null -> "${if (plan.isValid) "선택" else "조건 확인"} · ${orderLabel(plan)}"
+                anyValid -> "확인할 순서를 선택해주세요"
+                else -> "조건을 바꿔 다시 비교해주세요"
+            }
             JourneyStage.REVIEW -> "운전자 집이 마지막 목적지예요"
             JourneyStage.ACTIVE -> "완료 확인은 정차한 뒤에"
             JourneyStage.COMPLETE -> "다음 귀가도 함께 편하게"

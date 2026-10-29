@@ -65,7 +65,7 @@ internal fun VehicleProposalDialog(
                         Text("입력 화면으로 돌아온 뒤 이번 계획에 추가할 수 있어요", fontSize = 28.sp, lineHeight = 38.sp)
                     }
                     if (pending.isEmpty()) {
-                        Text("아직 받은 제안이 없어요", fontSize = 30.sp, lineHeight = 40.sp, fontWeight = FontWeight.Medium)
+                        Text("지금 검토할 제안이 없어요", fontSize = 30.sp, lineHeight = 40.sp, fontWeight = FontWeight.Medium)
                     } else {
                         pending.forEach { entry ->
                             VehicleProposalCard(entry.proposal, state.canApply,

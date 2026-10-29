@@ -59,7 +59,6 @@ import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.transfer.ErrandProposalInbox
 import io.moduhome.app.core.transfer.ErrandProposal
 import io.moduhome.app.core.transfer.ProposalReviewStatus
-import io.moduhome.app.core.transfer.ProposalApprovalResult
 import io.moduhome.app.core.transfer.ProposalReceiveResult
 import io.moduhome.app.core.transfer.RelayDeliveryStatus
 import io.moduhome.app.core.transfer.RelayMessage
@@ -88,8 +87,9 @@ import io.moduhome.app.feature.vehicle.VehicleVoiceDialog
 import io.moduhome.app.feature.vehicle.RestrictedJourneyScreen
 import io.moduhome.app.data.transfer.*
 import io.moduhome.app.feature.transfer.*
-import io.moduhome.app.feature.home.ProposalDraftResult
-import io.moduhome.app.feature.home.withProposal
+import io.moduhome.app.feature.home.HomeProposalApplyResult
+import io.moduhome.app.feature.home.HomeProposalCommitter
+import io.moduhome.app.feature.home.HomeProposalCommitResult
 import io.moduhome.app.feature.home.proposal
 import io.moduhome.app.feature.home.loadRoutedJourney
 import io.moduhome.app.feature.home.RoutedJourneyLoadResult
@@ -329,14 +329,19 @@ internal fun ModuHomeApp(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    fun update(next: HomeUiState) {
+    fun update(next: HomeUiState): Boolean {
+        if (!preferences.save(next)) {
+            navigationMessage = "계획을 저장하지 못했어요. 다시 시도해주세요"
+            navigationError = true
+            return false
+        }
         if (next.draft != state.draft) {
             exportLink = null
             exportName = null
             proposalQr = null
         }
         state = next
-        preferences.save(next)
+        return true
     }
     fun clearNavigationRead() {
         navigationMessage = null
@@ -469,8 +474,8 @@ internal fun ModuHomeApp(
             }
         }
     }
-    LaunchedEffect(sharedState.session.acceptedProposals, inbox) {
-        val restored = sharedState.session.reconcileProposalInbox(inbox)
+    LaunchedEffect(sharedState.session.acceptedProposals, state.acceptedProposals, inbox) {
+        val restored = state.reconcileProposalInbox(sharedState.session.reconcileProposalInbox(inbox))
         if (restored != inbox) saveInbox(restored)
     }
     LaunchedEffect(sharedProposalPanelOpen, sharedMode, interaction, sharedState.session, inbox) {
@@ -659,9 +664,10 @@ internal fun ModuHomeApp(
                 if (state.draft == previous && state.progress.stage == JourneyStage.INPUT) {
                     when (result) {
                         is RoutedJourneyLoadResult.Success -> {
-                            val next = HomeUiState(draft = draft, routing = result.estimates)
-                            update(next.copy(progress = next.progress.compare(next.plans)))
-                            navigationMessage = "방문 순서별 도로 경로를 확인했어요"
+                            val next = state.copy(draft = draft, routing = result.estimates)
+                            if (update(next.copy(progress = next.progress.compare(next.plans)))) {
+                                navigationMessage = "방문 순서별 도로 경로를 확인했어요"
+                            }
                         }
                         is RoutedJourneyLoadResult.Failed -> {
                             navigationMessage = result.reason
@@ -709,7 +715,7 @@ internal fun ModuHomeApp(
         },
         onSelect = { id -> if (editingAllowed) update(state.copy(progress = state.progress.select(id, state.plans))) },
         onReview = { if (editingAllowed) update(state.copy(progress = state.progress.review(state.plans))) },
-        onStart = {
+        onStart = start@{
             val selected = state.selectedPlan
             if (editingAllowed && !sending && !reading && !estimating && !planning && state.progress.stage == JourneyStage.REVIEW && selected?.isValid == true) {
                 if (state.routing?.isFresh(System.currentTimeMillis()) == false) {
@@ -724,6 +730,7 @@ internal fun ModuHomeApp(
                         navigationMessage = "입력 화면에서 집과 들를 곳의 내비 장소를 선택해주세요"
                         navigationError = true
                     } else if (connection == NavigationConnection.Ready) {
+                        if (!update(state)) return@start
                         val draft = state.draft
                         val selectedId = selected.id
                         sending = true
@@ -736,8 +743,11 @@ internal fun ModuHomeApp(
                                     when (result) {
                                         is RouteRequestResult.Confirmed -> {
                                             navigationSnapshot = result.snapshot
-                                            navigationMessage = "경유 순서와 최종 목적지가 내비에 반영됐어요"
-                                            update(state.copy(progress = state.progress.start(state.plans, System.currentTimeMillis())))
+                                            if (update(state.copy(progress = state.progress.start(state.plans, System.currentTimeMillis())))) {
+                                                navigationMessage = "경유 순서와 최종 목적지가 내비에 반영됐어요"
+                                            } else {
+                                                navigationMessage = "내비에 순서는 반영됐지만 진행 기록을 저장하지 못했어요. 다시 확인해주세요"
+                                            }
                                         }
                                         RouteRequestResult.Unavailable -> {
                                             navigationMessage = "차량 내비 연결을 확인해주세요"
@@ -769,7 +779,7 @@ internal fun ModuHomeApp(
         onNewJourney = {
             if (editingAllowed) {
             clearNavigationRead()
-            update(HomeUiState(freshDraft(state.draft)))
+            update(HomeUiState(freshDraft(state.draft), acceptedProposals = state.acceptedProposals))
             }
         },
         onChooseNavigationPlace = ::loadPlaces,
@@ -1126,17 +1136,20 @@ internal fun ModuHomeApp(
                 onApprove = { id, revision ->
                     if (restrictions.state.value.editingAllowed && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
                         state.progress.stage == JourneyStage.INPUT && !sending && !reading && !estimating && !planning && !relayState.busy) {
-                        when (val approval = inbox.approve(id, revision, System.currentTimeMillis())) {
-                            is ProposalApprovalResult.Rejected -> proposalMessage = approval.reason
-                            is ProposalApprovalResult.Approved -> when (val applied = state.draft.withProposal(approval.proposal)) {
-                                is ProposalDraftResult.Invalid -> proposalMessage = applied.reason
-                                is ProposalDraftResult.Applied -> {
-                                    if (saveInbox(approval.inbox)) {
-                                        clearNavigationRead()
-                                        update(state.copy(draft = applied.draft, progress = JourneyProgress(), showErrors = false,
-                                            routing = state.routing?.takeIf { it.matches(applied.draft) }))
-                                        proposalMessage = "이번 계획에 반영했어요. 조건을 편집해 제안을 만들 수 있어요"
-                                    }
+                        when (val applied = state.approveProposal(inbox, id, revision, System.currentTimeMillis())) {
+                            is HomeProposalApplyResult.Rejected -> proposalMessage = applied.reason
+                            is HomeProposalApplyResult.AlreadyApplied -> {
+                                if (saveInbox(applied.inbox)) proposalMessage = "이미 반영한 제안의 수신함 상태를 정리했어요"
+                            }
+                            is HomeProposalApplyResult.Applied -> when (HomeProposalCommitter(::update, ::saveInbox).commit(applied)) {
+                                HomeProposalCommitResult.JOURNEY_FAILED -> proposalMessage = "계획을 저장하지 못했어요. 제안은 그대로 남아 있어요"
+                                HomeProposalCommitResult.INBOX_PENDING -> {
+                                    clearNavigationRead()
+                                    proposalMessage = "계획은 저장했어요. 수신함 저장은 다시 확인해주세요"
+                                }
+                                HomeProposalCommitResult.COMPLETE -> {
+                                    clearNavigationRead()
+                                    proposalMessage = "이번 계획에 반영했어요. 조건을 편집해 제안을 만들 수 있어요"
                                 }
                             }
                         }

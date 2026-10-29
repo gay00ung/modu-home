@@ -1,7 +1,7 @@
 package io.moduhome.app.data.transfer
 
 import android.content.Context
-import android.annotation.SuppressLint
+import io.moduhome.app.data.PreferenceStores
 import io.moduhome.app.core.transfer.ErrandProposalInbox
 import io.moduhome.app.core.transfer.ProposalInboxEntry
 import io.moduhome.app.core.transfer.ProposalReviewStatus
@@ -12,8 +12,8 @@ import org.json.JSONObject
 /** Retains review decisions across process restarts; it does not deliver proposals to another device. */
 internal class ProposalInboxPreferences(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences("proposal_inbox", Context.MODE_PRIVATE)
+    private val inbox = PreferenceStores.text(preferences, "inbox")
 
-    @SuppressLint("ApplySharedPref", "UseKtx") // The relay acknowledges only an observed durable write.
     fun save(inbox: ErrandProposalInbox): Boolean = try {
         val entries = JSONArray()
         inbox.entries.forEach { entry ->
@@ -22,13 +22,13 @@ internal class ProposalInboxPreferences(context: Context) {
                 .put("created", entry.proposal.createdAtMillis)
                 .put("status", entry.status.name))
         }
-        preferences.edit().putString("inbox", JSONObject().put("schema", 1).put("entries", entries).toString()).commit()
+        this.inbox.save(JSONObject().put("schema", 1).put("entries", entries).toString())
     } catch (_: Exception) { false }
 
     fun load(nowMillis: Long): ProposalInboxLoadResult {
         require(nowMillis >= 0)
         return try {
-            val raw = preferences.getString("inbox", null)
+            val raw = inbox.load()
                 ?: return ProposalInboxLoadResult.Loaded(ErrandProposalInbox.empty())
             if (raw.length > MAX_STORAGE_LENGTH) return invalidStoredInbox()
             val root = JSONObject(raw)

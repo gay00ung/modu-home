@@ -11,9 +11,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.moduhome.app.core.navigation.NavigationConnection
@@ -272,43 +275,65 @@ private fun VehicleComparison(state: HomeUiState, actions: JourneyActions, canEd
         return
     }
     val recommended = state.plans.firstOrNull { it.isValid }?.id
-    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-        state.plans.forEach { plan ->
-            val selected = state.progress.selectedPlanId == plan.id
-            Surface(
-                modifier = Modifier.weight(1f).fillMaxHeight().selectable(selected, enabled = canEdit,
-                    role = Role.RadioButton, onClick = { if (canEdit) actions.onSelect(plan.id) }),
-                color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(if (selected) 3.dp else 1.dp,
-                    if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
-            ) {
-                Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(if (selected) "✓" else "○", fontSize = 32.sp, color = MaterialTheme.colorScheme.primary)
-                        VehicleCaption(when {
-                            plan.id == recommended -> "도로망 기준 추천 · 교통 제외"
-                            plan.isValid -> "도로망 기준으로 조건에 맞아요"
-                            else -> "조건 확인 필요"
-                        })
-                    }
-                    Text(planTitle(plan), fontSize = 34.sp, lineHeight = 44.sp, fontWeight = FontWeight.Bold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                        VehicleMetric("교통 제외 도착", formatJourneyMinute(plan.homeArrivalMinute), Modifier.weight(1f))
-                        VehicleMetric("교통 제외 추가", "+${plan.additionalMinutes}분", Modifier.weight(1f))
-                    }
-                    HorizontalDivider()
-                    plan.visits.forEachIndexed { index, visit ->
-                        Text("${index + 1}. ${visit.visit.place}", fontSize = 30.sp, lineHeight = 40.sp,
-                            fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    }
-                    VehiclePlanIssues(plan)
-                    if (plan.isValid) VehicleCaption(if (selected) "선택한 계획" else "눌러서 이 순서 선택")
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (maxWidth >= 1000.dp && fontScale <= 1.1f && state.plans.size > 1) {
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                state.plans.forEach { plan ->
+                    VehicleComparisonCard(plan, state.progress.selectedPlanId == plan.id, plan.id == recommended, canEdit,
+                        onSelect = { actions.onSelect(plan.id) }, modifier = Modifier.weight(1f).fillMaxHeight())
+                }
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                state.plans.forEach { plan ->
+                    VehicleComparisonCard(plan, state.progress.selectedPlanId == plan.id, plan.id == recommended, canEdit,
+                        onSelect = { actions.onSelect(plan.id) }, modifier = Modifier.fillMaxWidth())
                 }
             }
         }
     }
     VehicleEstimateSource(state)
+}
+
+@Composable
+private fun VehicleComparisonCard(
+    plan: ErrandJourneyPlan,
+    selected: Boolean,
+    recommended: Boolean,
+    canEdit: Boolean,
+    onSelect: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.selectable(selected, enabled = canEdit,
+            role = Role.RadioButton, onClick = { if (canEdit) onSelect() }),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(if (selected) 3.dp else 1.dp,
+            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(if (selected) "✓" else "○", fontSize = 32.sp, color = MaterialTheme.colorScheme.primary)
+                VehicleCaption(when {
+                    recommended -> "도로망 기준 추천 · 교통 제외"
+                    plan.isValid -> "도로망 기준으로 조건에 맞아요"
+                    else -> "조건 확인 필요"
+                })
+            }
+            Text(planTitle(plan), fontSize = 34.sp, lineHeight = 44.sp, fontWeight = FontWeight.Bold)
+            VehicleMetrics(listOf("교통 제외 도착" to formatJourneyMinute(plan.homeArrivalMinute),
+                "교통 제외 추가" to "+${plan.additionalMinutes}분"))
+            HorizontalDivider()
+            plan.visits.forEachIndexed { index, visit ->
+                Text("${index + 1}. ${visit.visit.place}", fontSize = 30.sp, lineHeight = 40.sp,
+                    fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            VehiclePlanIssues(plan)
+            if (plan.isValid) VehicleCaption(if (selected) "선택한 계획" else "눌러서 이 순서 선택")
+        }
+    }
 }
 
 @Composable
@@ -320,11 +345,8 @@ private fun VehicleReview(state: HomeUiState) {
     }
     Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.fillMaxWidth().padding(32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(40.dp)) {
-                VehicleMetric("교통 제외 도착", formatJourneyMinute(plan.homeArrivalMinute), Modifier.weight(1f))
-                VehicleMetric("교통 제외 추가", "+${plan.additionalMinutes}분", Modifier.weight(1f))
-                VehicleMetric("들를 곳", "${plan.visits.size}곳", Modifier.weight(1f))
-            }
+            VehicleMetrics(listOf("교통 제외 도착" to formatJourneyMinute(plan.homeArrivalMinute),
+                "교통 제외 추가" to "+${plan.additionalMinutes}분", "들를 곳" to "${plan.visits.size}곳"), spacing = 40.dp)
             HorizontalDivider()
             plan.visits.forEachIndexed { index, scheduled ->
                 VehicleStopLine("${index + 1}", scheduled.visit.place, visitLabel(scheduled.visit.kind),
@@ -493,44 +515,40 @@ private fun VehicleFooter(state: HomeUiState, actions: JourneyActions, vehicle: 
             vehicle.connection == NavigationConnection.Unsupported)
         JourneyStage.ACTIVE, JourneyStage.COMPLETE -> true
     }
-    Surface(color = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.navigationBarsPadding()) {
-            HorizontalDivider()
-            Row(Modifier.fillMaxWidth().padding(horizontal = 40.dp, vertical = 24.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                when (stage) {
-                    JourneyStage.COMPARE, JourneyStage.REVIEW -> OutlinedButton(
-                        onClick = { if (canEdit) { if (stage == JourneyStage.COMPARE) actions.onEdit() else actions.onBack() } },
-                        enabled = canEdit, modifier = Modifier.heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp),
-                    ) { Text(if (stage == JourneyStage.COMPARE) "선택 바꾸기" else "다시 비교", fontSize = 28.sp) }
-                    JourneyStage.ACTIVE -> TextButton(onClick = { if (canEdit) actions.onCancel() }, enabled = canEdit,
-                        modifier = Modifier.heightIn(min = 88.dp)) { Text("계획 중단", fontSize = 28.sp) }
-                    JourneyStage.INPUT, JourneyStage.COMPLETE -> Unit
-                }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(if (!canEdit && !vehicle.reading && !vehicle.sending && !vehicle.planning) "정차 후 사용할 수 있어요" else when (stage) {
-                        JourneyStage.INPUT -> "들를 곳만 고르면 돼요"
-                        JourneyStage.COMPARE -> "집까지의 전체 이동을 비교했어요"
-                        JourneyStage.REVIEW -> "선택한 순서를 차량 내비로 전달해요"
-                        JourneyStage.ACTIVE -> "완료 확인은 정차 후에 해주세요"
-                        JourneyStage.COMPLETE -> "다음 귀가도 가는 김에"
-                    }, fontSize = 28.sp, lineHeight = 38.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Button(onClick = {
-                    if (enabled) when (stage) {
-                        JourneyStage.INPUT -> actions.onCompare()
-                        JourneyStage.COMPARE -> if (anyValid) actions.onReview() else actions.onEdit()
-                        JourneyStage.REVIEW -> if (needsPlaces) actions.onEdit() else actions.onStart()
-                        JourneyStage.ACTIVE -> if (next == null) actions.onFinish() else actions.onCompleteVisit(next.visit.kind)
-                        JourneyStage.COMPLETE -> actions.onNewJourney()
-                    }
-                }, enabled = enabled, modifier = Modifier.widthIn(min = 420.dp).heightIn(min = 96.dp),
-                    shape = RoundedCornerShape(20.dp), contentPadding = PaddingValues(horizontal = 32.dp, vertical = 20.dp)) {
-                    Text(title, fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
+    val secondaryAction: (@Composable () -> Unit)? = when (stage) {
+        JourneyStage.COMPARE, JourneyStage.REVIEW -> ({
+            OutlinedButton(
+                onClick = { if (canEdit) { if (stage == JourneyStage.COMPARE) actions.onEdit() else actions.onBack() } },
+                enabled = canEdit, modifier = Modifier.heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp),
+            ) { Text(if (stage == JourneyStage.COMPARE) "선택 바꾸기" else "다시 비교", fontSize = 28.sp) }
+        })
+        JourneyStage.ACTIVE -> ({
+            TextButton(onClick = { if (canEdit) actions.onCancel() }, enabled = canEdit,
+                modifier = Modifier.heightIn(min = 88.dp)) { Text("계획 중단", fontSize = 28.sp) }
+        })
+        JourneyStage.INPUT, JourneyStage.COMPLETE -> null
     }
+    VehicleActionBar(
+        caption = if (!canEdit && !vehicle.reading && !vehicle.sending && !vehicle.planning) "정차 후 사용할 수 있어요" else when (stage) {
+            JourneyStage.INPUT -> "들를 곳만 고르면 돼요"
+            JourneyStage.COMPARE -> "집까지의 전체 이동을 비교했어요"
+            JourneyStage.REVIEW -> "선택한 순서를 차량 내비로 전달해요"
+            JourneyStage.ACTIVE -> "완료 확인은 정차 후에 해주세요"
+            JourneyStage.COMPLETE -> "다음 귀가도 가는 김에"
+        },
+        actionLabel = title,
+        actionEnabled = enabled,
+        onAction = {
+            when (stage) {
+                JourneyStage.INPUT -> actions.onCompare()
+                JourneyStage.COMPARE -> if (anyValid) actions.onReview() else actions.onEdit()
+                JourneyStage.REVIEW -> if (needsPlaces) actions.onEdit() else actions.onStart()
+                JourneyStage.ACTIVE -> if (next == null) actions.onFinish() else actions.onCompleteVisit(next.visit.kind)
+                JourneyStage.COMPLETE -> actions.onNewJourney()
+            }
+        },
+        secondaryAction = secondaryAction,
+    )
 }
 
 @Composable
@@ -542,6 +560,21 @@ private fun VehicleChoice(label: String, selected: Boolean, enabled: Boolean, on
             containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 18.dp)) {
         Text(label, fontSize = 28.sp, lineHeight = 38.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun VehicleMetrics(metrics: List<Pair<String, String>>, modifier: Modifier = Modifier, spacing: Dp = 24.dp) {
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+    val valueStyle = LocalTextStyle.current.copy(fontSize = 52.sp, lineHeight = 64.sp, fontWeight = FontWeight.Bold)
+    FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(spacing), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        metrics.forEach { (label, value) ->
+            val textWidth = with(density) { textMeasurer.measure(value, valueStyle, softWrap = false).size.width.toDp() }
+            val minimumWidth = maxOf(200.dp * density.fontScale, textWidth)
+            // 날짜가 붙은 시각도 같은 줄에 들어갈 너비로 배분한다
+            VehicleMetric(label, value, Modifier.widthIn(min = minimumWidth).weight(minimumWidth.value))
+        }
     }
 }
 

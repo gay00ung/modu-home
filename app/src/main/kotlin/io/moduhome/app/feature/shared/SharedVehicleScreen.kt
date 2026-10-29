@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -52,6 +51,7 @@ import io.moduhome.app.core.shared.SharedScheduledStop
 import io.moduhome.app.core.shared.currentWindow
 import io.moduhome.app.core.vehicle.DrivingInteraction
 import io.moduhome.app.core.vehicle.restrictContent
+import io.moduhome.app.feature.vehicle.VehicleActionBar
 import io.moduhome.app.feature.vehicle.VehicleToolbar
 import io.moduhome.app.feature.home.VehicleNavigationUiState
 import java.time.Instant
@@ -509,44 +509,40 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
             (!state.navigationPending || state.terminalStopCompletionAvailable || state.completedStops == plan.stops.size)
         JourneyStage.COMPLETE -> true
     }
-    Surface(color = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.navigationBarsPadding()) {
-            HorizontalDivider()
-            Row(Modifier.fillMaxWidth().padding(horizontal = 40.dp, vertical = 24.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                when (state.stage) {
-                    JourneyStage.COMPARE, JourneyStage.REVIEW -> SharedAction(
-                        if (state.stage == JourneyStage.COMPARE) "선택 바꾸기" else "다시 비교", canEdit,
-                        onClick = { if (state.stage == JourneyStage.COMPARE) actions.onEdit() else actions.onBack() },
-                    )
-                    JourneyStage.ACTIVE -> TextButton(onClick = { if (canEdit) actions.onCancel() }, enabled = canEdit,
-                        modifier = Modifier.heightIn(min = 88.dp)) { Text("계획 중단", fontSize = 28.sp) }
-                    JourneyStage.INPUT, JourneyStage.COMPLETE -> Unit
-                }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(when (state.stage) {
-                        JourneyStage.INPUT -> "집 앞 하차 장소만 선택해주세요"
-                        JourneyStage.COMPARE -> "선택한 전체 순서를 확인해요"
-                        JourneyStage.REVIEW -> "운전자 집이 마지막 목적지예요"
-                        JourneyStage.ACTIVE -> "완료 확인은 정차한 뒤에"
-                        JourneyStage.COMPLETE -> "다음 귀가도 함께 편하게"
-                    }, fontSize = 28.sp, lineHeight = 38.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Button(onClick = {
-                    if (enabled) when (state.stage) {
-                        JourneyStage.INPUT -> actions.onCompare()
-                        JourneyStage.COMPARE -> if (anyValid) actions.onReview() else actions.onEdit()
-                        JourneyStage.REVIEW -> actions.onStart()
-                        JourneyStage.ACTIVE -> if (next == null) actions.onFinish() else actions.onCompleteNextStop()
-                        JourneyStage.COMPLETE -> actions.onNewJourney()
-                    }
-                }, enabled = enabled, modifier = Modifier.widthIn(min = 420.dp).heightIn(min = 96.dp),
-                    shape = RoundedCornerShape(20.dp), contentPadding = PaddingValues(horizontal = 28.dp, vertical = 20.dp)) {
-                    Text(label, fontSize = 28.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
+    val secondaryAction: (@Composable () -> Unit)? = when (state.stage) {
+        JourneyStage.COMPARE, JourneyStage.REVIEW -> ({
+            SharedAction(
+                if (state.stage == JourneyStage.COMPARE) "선택 바꾸기" else "다시 비교", canEdit,
+                onClick = { if (state.stage == JourneyStage.COMPARE) actions.onEdit() else actions.onBack() },
+            )
+        })
+        JourneyStage.ACTIVE -> ({
+            TextButton(onClick = { if (canEdit) actions.onCancel() }, enabled = canEdit,
+                modifier = Modifier.heightIn(min = 88.dp)) { Text("계획 중단", fontSize = 28.sp) }
+        })
+        JourneyStage.INPUT, JourneyStage.COMPLETE -> null
     }
+    VehicleActionBar(
+        caption = when (state.stage) {
+            JourneyStage.INPUT -> "집 앞 하차 장소만 선택해주세요"
+            JourneyStage.COMPARE -> "선택한 전체 순서를 확인해요"
+            JourneyStage.REVIEW -> "운전자 집이 마지막 목적지예요"
+            JourneyStage.ACTIVE -> "완료 확인은 정차한 뒤에"
+            JourneyStage.COMPLETE -> "다음 귀가도 함께 편하게"
+        },
+        actionLabel = label,
+        actionEnabled = enabled,
+        onAction = {
+            when (state.stage) {
+                JourneyStage.INPUT -> actions.onCompare()
+                JourneyStage.COMPARE -> if (anyValid) actions.onReview() else actions.onEdit()
+                JourneyStage.REVIEW -> actions.onStart()
+                JourneyStage.ACTIVE -> if (next == null) actions.onFinish() else actions.onCompleteNextStop()
+                JourneyStage.COMPLETE -> actions.onNewJourney()
+            }
+        },
+        secondaryAction = secondaryAction,
+    )
 }
 
 @Composable

@@ -7,6 +7,7 @@ import socket
 import threading
 import time
 import unittest
+from unittest.mock import patch
 import uuid
 
 from relay import (DEFAULT_PUBLIC_URL, MAX_BODY_BYTES, MAX_LINK_LENGTH, MAX_MESSAGES,
@@ -19,6 +20,49 @@ class Clock:
 
     def __call__(self):
         return self.value
+
+
+class RelayClientAccessTest(unittest.TestCase):
+    def test_network_listener_requires_explicit_clients_before_socket_creation(self):
+        with patch('relay.ThreadingHTTPServer.__init__') as bind:
+            for host in ('0.0.0.0', '192.168.0.10'):
+                with self.subTest(host=host), self.assertRaises(ValueError):
+                    RelayServer((host, 0), RelayStore())
+            bind.assert_not_called()
+
+    def test_wildcards_network_ranges_hostnames_and_public_clients_are_rejected(self):
+        with patch('relay.ThreadingHTTPServer.__init__') as bind:
+            for clients in ((), ('0.0.0.0',), ('192.168.0.0/24',), ('localhost',), ('8.8.8.8',), ('::1',)):
+                with self.subTest(clients=clients), self.assertRaises(ValueError):
+                    RelayServer(('127.0.0.1', 0), RelayStore(), clients)
+            bind.assert_not_called()
+
+    def test_only_declared_source_addresses_pass_the_policy(self):
+        with RelayServer(('127.0.0.1', 0), RelayStore(), ('127.0.0.1', '192.168.0.20')) as server:
+            self.assertTrue(server.verify_request(None, ('127.0.0.1', 1234)))
+            self.assertTrue(server.verify_request(None, ('192.168.0.20', 1234)))
+            for source in ('192.168.0.21', '10.0.0.20', '127.0.0.2', '0.0.0.0', 'invalid'):
+                self.assertFalse(server.verify_request(None, (source, 1234)))
+
+    def test_rejected_socket_cannot_read_headers_or_allocate_a_room(self):
+        store = RelayStore()
+        server = RelayServer(('127.0.0.1', 0), store, ('192.168.0.20',))
+        thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
+        thread.start()
+        try:
+            with patch.object(store, 'create_room', wraps=store.create_room) as create:
+                with socket.create_connection(('127.0.0.1', server.server_port), timeout=2) as client:
+                    client.sendall(b'POST /v1/rooms HTTP/1.1\r\nHost: localhost\r\nX-Forwarded-For: 192.168.0.20\r\nContent-Length: 2\r\n\r\n{}')
+                    try:
+                        received = client.recv(4096)
+                    except ConnectionResetError:
+                        received = b''
+                self.assertEqual(b'', received)
+                create.assert_not_called()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
 
 
 class RelayHTTPTest(unittest.TestCase):

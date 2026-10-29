@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, field
 import hmac
+import ipaddress
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import re
@@ -28,6 +29,19 @@ MAX_MESSAGES = 20
 _UUID = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 _ROOM_PATH = re.compile(rf"/v1/rooms/(?P<room>{_UUID})(?P<suffix>/messages(?:/(?P<message>{_UUID})(?P<ack>/ack)?)?)?")
 _ERRORS = {400: "invalid_request", 401: "unauthorized", 409: "conflict", 410: "gone", 429: "rate_limited", 500: "internal_error"}
+_PRIVATE_NETWORKS = tuple(ipaddress.ip_network(value) for value in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
+
+
+def _local_ipv4(value: str, *, listener: bool = False) -> ipaddress.IPv4Address:
+    try:
+        address = ipaddress.IPv4Address(value)
+    except ipaddress.AddressValueError:
+        raise ValueError("use an exact local IPv4 address, without hostnames or network ranges") from None
+    if address.is_loopback or any(address in network for network in _PRIVATE_NETWORKS):
+        return address
+    if listener and address.is_unspecified:
+        return address
+    raise ValueError("use a loopback or private IPv4 address")
 
 
 class RelayError(Exception):
@@ -200,9 +214,26 @@ class RelayServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, address: tuple[str, int], store: RelayStore):
+    def __init__(self, address: tuple[str, int], store: RelayStore, allowed_clients: tuple[str, ...] | None = None):
+        host = _local_ipv4("127.0.0.1" if address[0] == "localhost" else address[0], listener=True)
+        if allowed_clients is None:
+            if not host.is_loopback:
+                raise ValueError("a non-loopback listener requires explicit --allow-client addresses")
+            clients = frozenset((host,))
+        else:
+            clients = frozenset(_local_ipv4(value) for value in allowed_clients)
+            if not clients:
+                raise ValueError("at least one allowed client address is required")
         self.store = store
-        super().__init__(address, RelayHandler)
+        self.allowed_clients = clients
+        super().__init__((str(host), address[1]), RelayHandler)
+
+    def verify_request(self, request, client_address) -> bool:
+        # Reject before a handler can parse headers, read a body or allocate a room.
+        try:
+            return ipaddress.IPv4Address(client_address[0]) in self.allowed_clients
+        except ipaddress.AddressValueError:
+            return False
 
     def handle_error(self, request, client_address) -> None:
         # The default implementation prints tracebacks and client addresses.
@@ -357,14 +388,19 @@ def main() -> None:
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--public-url", default=DEFAULT_PUBLIC_URL)
+    parser.add_argument("--allow-client", action="append", default=None,
+                        help="exact loopback/private IPv4 client address; repeat for each test device")
     args = parser.parse_args()
     try:
         store = RelayStore(args.public_url)
     except ValueError:
         parser.error("public URL must be an HTTP(S) base URL without credentials, query or fragment")
     try:
-        listener = RelayServer((args.host, args.port), store)
-    except (OSError, OverflowError, ValueError):
+        listener = RelayServer((args.host, args.port), store,
+                               None if args.allow_client is None else tuple(args.allow_client))
+    except ValueError as error:
+        parser.error(str(error))
+    except (OSError, OverflowError):
         parser.error("could not open the relay listener")
     with listener as server:
         try:

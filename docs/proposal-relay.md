@@ -83,11 +83,17 @@ API 계약은 [Geocoder](https://developer.android.com/reference/android/locatio
 python3 tools/proposal-relay/relay.py --host 127.0.0.1 --public-url http://10.0.2.2:48680
 ```
 
-LAN의 휴대폰과 연결할 때는 아래 예시의 `192.168.0.10`을 개발 컴퓨터의 실제 사설 IP로 바꾼다
+LAN의 휴대폰과 연결할 때는 아래 예시의 `192.168.0.10`을 개발 컴퓨터의 사설 IP로, `192.168.0.20`을 연결할 휴대폰의 사설 IP로 바꾼다
 
 ```sh
-python3 tools/proposal-relay/relay.py --host 0.0.0.0 --public-url http://192.168.0.10:48680
+python3 tools/proposal-relay/relay.py --host 0.0.0.0 --public-url http://192.168.0.10:48680 --allow-client 127.0.0.1 --allow-client 192.168.0.20
 ```
+
+- LAN 리스너는 `--allow-client`로 접속할 기기의 IPv4 주소를 지정해야 시작
+- 위 예시는 로컬 AVD와 지정한 휴대폰만 허용하며 다른 소켓은 HTTP 처리 전에 종료
+- 호스트 이름·대역·전체 허용 주소는 접속 허용값으로 사용하지 않음
+- 휴대폰 IP가 바뀌면 서버를 다시 실행하고 새 QR로 연결
+- IP 제한과 기존 발신·수신 토큰 검증을 함께 사용
 
 차량 앱이 접속할 주소는 Gradle 속성 `proposalRelayBaseUrl`로 설정한다
 디버그 기본값은 `http://10.0.2.2:48680`, 릴리스 기본값은 빈 값이다

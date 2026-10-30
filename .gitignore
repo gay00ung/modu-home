@@ -12,8 +12,11 @@ captures/
 *.hprof
 *.jks
 *.keystore
+*.p12
+*.pfx
 keystore.properties
 .env
 .env.*
 !.env.example
 .hotswan/
+__pycache__/

@@ -5,6 +5,22 @@ Android SDK의 apksigner로 서명을 검증한 뒤 APK·인증서 해시와 빌
 
 ## 서명 설정
 
+새 앱의 배포 키는 다음 명령으로 생성한다
+이미 배포한 앱은 기존 키와 서명 설정을 사용한다
+
+```sh
+python3 tools/release/create-signing.py --java-home "$JAVA_HOME"
+```
+
+- `JAVA_HOME`은 사용하는 JDK 위치로 지정
+- macOS 기본 보관 위치: `~/Library/Application Support/modu-home/signing`
+- Linux 기본 보관 위치: `~/.local/share/modu-home/signing`
+- `--directory`로 저장소 밖의 다른 새 폴더 지정
+- RSA 4096비트·유효기간 10000일의 PKCS12 키와 keystore.properties 생성
+- 공개 인증서와 SHA-256·SHA-1 지문은 certificate.json·modu-home-release.cer에 보관
+- 폴더는 0700·파일은 0600 권한으로 생성하며 기존 폴더와 키는 덮어쓰지 않음
+- 생성된 서명 폴더는 별도 암호화 저장소에도 백업
+
 키 저장소와 UTF-8 `keystore.properties` 파일을 저장소 밖에 둔다
 
 ```properties

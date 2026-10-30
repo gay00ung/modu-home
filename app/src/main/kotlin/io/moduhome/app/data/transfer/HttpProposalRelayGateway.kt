@@ -195,7 +195,7 @@ internal class HttpProposalRelayGateway(
     private fun roomPath(roomId: String): String = "/v1/rooms/$roomId"
     private fun messagePath(roomId: String, messageId: String): String = roomPath(roomId) + "/messages/$messageId"
     private fun configurationFailure() = RelayResult.Failure(RelayFailure.CONFIGURATION, "차량 연결 주소를 확인해주세요")
-    private fun connectionFailure() = RelayResult.Failure(RelayFailure.CONNECTION, "연결이 닿지 않았어요. 같은 네트워크에서 다시 시도해주세요")
+    private fun connectionFailure() = RelayResult.Failure(RelayFailure.CONNECTION, "연결이 닿지 않았어요. 네트워크 상태를 확인한 뒤 다시 시도해주세요")
     private fun invalidResponse() = RelayResult.Failure(RelayFailure.INVALID_RESPONSE, "연결 응답을 확인하지 못했어요. 다시 연결해주세요")
     private fun httpFailure(status: Int): RelayResult.Failure = when (status) {
         401 -> RelayResult.Failure(RelayFailure.UNAUTHORIZED, "연결 권한을 확인하지 못했어요. QR로 다시 연결해주세요")

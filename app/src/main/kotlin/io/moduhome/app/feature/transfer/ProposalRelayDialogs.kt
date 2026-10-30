@@ -56,7 +56,7 @@ internal fun VehiclePhoneConnectionDialog(
                     if (receiver == null) {
                         Text("동승자가 보낸 볼일은 받은 볼일에 보관돼요. 운전자가 확인한 뒤 계획에 반영해요",
                             fontSize = 28.sp, lineHeight = 40.sp)
-                        Text("연결은 15분 동안 열려요. 같은 네트워크의 휴대폰에서 QR 링크를 열어주세요",
+                        Text("연결은 15분 동안 열려요. 휴대폰 앱에서 QR 코드를 스캔해주세요",
                             fontSize = 28.sp, lineHeight = 40.sp)
                         Text("연결 주소 · ${if (configuredBaseUrl.isBlank()) "현재 연결 사용 불가" else relayServerLabel(configuredBaseUrl)}",
                             fontSize = 28.sp, lineHeight = 40.sp)
@@ -72,14 +72,15 @@ internal fun VehiclePhoneConnectionDialog(
                             }
                             RelayLargeChoice("볼일 공유 없이 연결", state.selectedSeedKind == null, !state.busy,
                                 onClick = { actions.chooseSeed(null) })
-                            Text("선택한 한 곳의 장소와 볼일 조건만 공유해요", fontSize = 28.sp, lineHeight = 40.sp,
+                            Text(if (state.selectedSeedKind == null) "차량의 볼일을 공유하지 않고 휴대폰만 연결해요"
+                                else "선택한 한 곳의 장소와 볼일 조건만 공유해요", fontSize = 28.sp, lineHeight = 40.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
                             Text("함께 보낼 장소가 없어요. 연결 후 휴대폰에서 받은 실제 장소의 조건을 편집할 수 있어요",
                                 fontSize = 28.sp, lineHeight = 40.sp)
                         }
                     } else {
-                        Text("휴대폰에서 이 QR 링크를 열어 연결해주세요", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
+                        Text("휴대폰 앱에서 QR 코드를 스캔해주세요", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
                         state.qr?.let { qr ->
                             Surface(color = Color.White, shape = RoundedCornerShape(16.dp)) {
                                 Image(qr, "동승자 휴대폰 연결 QR", Modifier.padding(16.dp).size(336.dp))

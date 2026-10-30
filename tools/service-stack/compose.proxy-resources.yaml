@@ -1,0 +1,9 @@
+services:
+  relay:
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.5
+  routing:
+    restart: unless-stopped
+    mem_limit: 2g
+    cpus: 1.0

@@ -1,0 +1,41 @@
+include:
+  - path:
+      - compose.backends.yaml
+      - compose.proxy-resources.yaml
+
+services:
+  gateway:
+    image: nginx:stable-alpine@sha256:0e52bd054126cdc040b1276c0af347aeb02a41b9cfe305d6094767ac30e97949
+    entrypoint: [nginx, -g, "daemon off;"]
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.25
+    ports:
+      - "127.0.0.1:${HTTP_PORT:-48090}:8080"
+    volumes:
+      - type: bind
+        source: ./nginx-proxy.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./nginx-includes
+        target: /etc/nginx/modu-home
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      - relay
+      - routing
+    networks:
+      frontend: {}
+      backend:
+        ipv4_address: 172.29.248.2
+
+networks:
+  frontend:
+    ipam:
+      config:
+        - subnet: 172.29.247.0/28
+          gateway: 172.29.247.1

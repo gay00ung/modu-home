@@ -1,0 +1,11 @@
+modu-home.example {
+    log {
+        output discard
+    }
+    reverse_proxy 127.0.0.1:48090 {
+        header_up X-Forwarded-For {http.request.remote.host}
+    }
+    handle_errors {
+        respond "Service temporarily unavailable" 503
+    }
+}

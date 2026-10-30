@@ -1,23 +1,7 @@
-services:
-  prepare-routing:
-    image: ghcr.io/project-osrm/osrm-backend:v26.10.0-debian@sha256:55dbfd47d984c2cacd64e32901b4321c86b5ec761438e69aa053dc78698a786f
-    profiles: [prepare]
-    entrypoint: [sh, /opt/modu-home/prepare-routing.sh]
-    command: ["${ROUTING_DATASET:-south-korea-latest.osrm}"]
-    network_mode: none
-    volumes:
-      - type: bind
-        source: ${ROUTING_DATA_DIRECTORY:?ROUTING_DATA_DIRECTORY is required}
-        target: /data
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ./prepare-routing.sh
-        target: /opt/modu-home/prepare-routing.sh
-        read_only: true
-        bind:
-          create_host_path: false
+include:
+  - compose.backends.yaml
 
+services:
   gateway:
     image: nginx:stable-alpine@sha256:0e52bd054126cdc040b1276c0af347aeb02a41b9cfe305d6094767ac30e97949
     entrypoint: [nginx, -g, "daemon off;"]
@@ -42,6 +26,12 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ./nginx-includes
+        target: /etc/nginx/modu-home
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       - relay
       - routing
@@ -50,66 +40,5 @@ services:
       backend:
         ipv4_address: 172.29.248.2
 
-  relay:
-    build:
-      context: ../proposal-relay
-    command:
-      - --host
-      - 0.0.0.0
-      - --public-url
-      - ${PUBLIC_BASE_URL:?PUBLIC_BASE_URL is required}
-      - --require-https-url
-      - --allow-client
-      - 172.29.248.2
-    read_only: true
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    networks:
-      backend:
-        ipv4_address: 172.29.248.3
-
-  routing:
-    image: ghcr.io/project-osrm/osrm-backend:v26.10.0-debian@sha256:55dbfd47d984c2cacd64e32901b4321c86b5ec761438e69aa053dc78698a786f
-    command:
-      - osrm-routed
-      - --verbosity
-      - WARNING
-      - --algorithm
-      - MLD
-      - --ip
-      - 0.0.0.0
-      - --port
-      - "5000"
-      - --threads
-      - "2"
-      - --mmap
-      - --max-viaroute-size
-      - "8"
-      - --max-table-size
-      - "16"
-      - /data/${ROUTING_DATASET:-south-korea-latest.osrm}
-    volumes:
-      - type: bind
-        source: ${ROUTING_DATA_DIRECTORY:?ROUTING_DATA_DIRECTORY is required}
-        target: /data
-        read_only: true
-        bind:
-          create_host_path: false
-    read_only: true
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    networks:
-      backend:
-        ipv4_address: 172.29.248.4
-
 networks:
   frontend: {}
-  backend:
-    internal: true
-    ipam:
-      config:
-        - subnet: 172.29.248.0/28

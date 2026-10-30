@@ -2,16 +2,18 @@
 
 Nginx가 HTTPS 요청을 받아 OSRM 도로 경로 서버와 볼일 제안 중계로 전달한다
 차량의 경로 조회와 휴대폰 연결에 같은 서버 주소를 사용할 수 있다
+기존 Caddy가 HTTPS를 처리하는 서버에서는 [프록시 연결](proxy.md) 구성으로 실행한다
 
 | 경로 | 처리 |
 | --- | --- |
+| `/healthz` | gateway 연결 확인 |
 | `/route/v1/driving/…` | OSRM 자동차 경로 조회 |
 | `/v1/rooms` | 연결 생성 |
 | `/v1/rooms/…` | 제안 전송·수신·보관 확인·연결 종료 |
 
 ## 준비
 
-- Docker Engine과 Compose 사용
+- Docker Engine과 Compose 2.20.3 이상 사용
 - Linux용 OSRM 26.10.0으로 MLD 전처리한 지도 디렉터리 준비
 - 접속할 도메인에 맞는 인증서 체인과 개인키를 저장소 밖에 보관
 - Android 앱은 기본 인증서·호스트 이름 검증을 사용하므로 기기가 신뢰하는 CA의 인증서 사용

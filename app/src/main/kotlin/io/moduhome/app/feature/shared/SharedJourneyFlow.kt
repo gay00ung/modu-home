@@ -1,5 +1,6 @@
 package io.moduhome.app.feature.shared
 
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -25,6 +26,7 @@ import io.moduhome.app.core.navigation.RouteChangeApproval
 import io.moduhome.app.core.navigation.RouteRequestResult
 import io.moduhome.app.core.navigation.VehicleLocationResult
 import io.moduhome.app.core.navigation.remainingAfter
+import io.moduhome.app.core.navigation.guidanceReadbackDelayMillis
 import io.moduhome.app.core.planning.JourneyStage
 import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.routing.RouteEstimateGateway
@@ -652,6 +654,7 @@ internal fun SharedJourneyFlow(
             state.confirmation != null || state.passedStopConfirmation != null || state.terminalStopConfirmation != null || state.cancelRequested ||
             state.finishConfirmation != null) return@LaunchedEffect
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            val checkingStartedAt = SystemClock.elapsedRealtime()
             while (currentCoroutineContext().isActive) {
                 val before = runtime.latest
                 val canRead = !before.busy && !before.dialogOpen && runtime.operation?.isActive != true && runtime.mounted
@@ -695,7 +698,9 @@ internal fun SharedJourneyFlow(
                     }
                 }
                 // A replaced polling effect may still be finishing its cancellation cleanup.
-                delay(if (canRead) 30_000 else 250)
+                delay(if (canRead) guidanceReadbackDelayMillis(SystemClock.elapsedRealtime() - checkingStartedAt,
+                    hasConfirmedGuidance = runtime.latest.guidanceResult is GuidanceEstimateResult.Success &&
+                        !runtime.latest.session.progress.navigationPending) else 250)
             }
         }
     }

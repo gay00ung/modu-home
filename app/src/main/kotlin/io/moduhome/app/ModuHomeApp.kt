@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.Manifest
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -55,6 +56,7 @@ import io.moduhome.app.feature.vehicle.VehicleJourneyShortcutAction
 import io.moduhome.app.data.address.AndroidAddressSearchGateway
 import io.moduhome.app.core.transfer.CompanionErrandSource
 import io.moduhome.app.core.navigation.GuidanceEstimateResult
+import io.moduhome.app.core.navigation.guidanceReadbackDelayMillis
 import io.moduhome.app.core.navigation.RouteChangeApproval
 import io.moduhome.app.feature.home.NavigationResumeConfirmation
 import io.moduhome.app.feature.home.HomeVisitCompletionConfirmation
@@ -766,6 +768,7 @@ internal fun ModuHomeApp(
             return@LaunchedEffect
         }
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            val checkingStartedAt = SystemClock.elapsedRealtime()
             try {
                 navigationSnapshot = null
                 while (true) {
@@ -774,7 +777,8 @@ internal fun ModuHomeApp(
                     guidanceResult = result
                     navigationSnapshot = result.observedRoute
                     guidanceRefreshing = false
-                    delay(30_000)
+                    delay(guidanceReadbackDelayMillis(SystemClock.elapsedRealtime() - checkingStartedAt,
+                        hasConfirmedGuidance = result is GuidanceEstimateResult.Success))
                 }
             } finally {
                 guidanceRefreshing = false

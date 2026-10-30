@@ -126,6 +126,7 @@ app/src/main/kotlin/io/moduhome/app/
 - [차량 화면 기준](docs/vehicle-ux.md)
 - [도로 경로 서버](docs/routing.md)
 - [휴대폰과 차량 연결](docs/proposal-relay.md)
+- [경로·볼일 제안 HTTPS 서버](tools/service-stack/README.md)
 - [작업 규칙](AGENTS.md)
 - [공모전 개발 가이드](https://appdevchallenge.auto-hmg.io/guide/development)
 - [NaviHelper SDK](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/intro)

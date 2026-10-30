@@ -41,6 +41,8 @@ python3 tools/proposal-relay/relay.py \
 - LAN 접속은 기존 `--host`·`--allow-client` 규칙을 함께 적용
 
 별도 프록시에서 HTTPS를 처리할 때는 이 서버를 루프백 HTTP로 실행하고 `--public-url`에 프록시의 HTTPS 주소를 지정한다
+`--require-https-url`을 지정하면 HTTP 공개 주소를 리스너 생성 전에 거절한다
+경로 서버까지 같은 HTTPS 주소로 연결하는 구성은 [HTTPS 서버 실행](../service-stack/README.md) 참고
 
 ## 프로토콜
 

@@ -39,6 +39,10 @@ osrm-routed --algorithm MLD --ip 127.0.0.1 --port 5001 --threads 2 --mmap --max-
 위 도메인은 설정 형식을 보여주는 예시다
 서비스 서버의 실제 HTTPS 주소로 바꾼다
 
+Linux 서버에 배치할 때는 [HTTPS 서버 실행](../tools/service-stack/README.md)의 이미지 안에서 전처리한다
+OSRM 전처리 파일은 운영체제에 종속되므로 macOS에서 생성한 파일을 Linux에 복사해 사용하지 않는다
+새 디렉터리에 원본 PBF를 준비하고 추출·분할·가중치 계산을 마친 뒤 읽기 전용으로 연결한다
+
 ## 함께 귀가 경로 조합
 
 동승자 2명과 볼일 1건은 여섯 방문 순서를 만든다

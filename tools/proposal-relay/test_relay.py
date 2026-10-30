@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 import uuid
 
+import relay
 from relay import (DEFAULT_PUBLIC_URL, MAX_BODY_BYTES, MAX_LINK_LENGTH, MAX_MESSAGES,
                    MAX_ROOMS, ROOM_TTL_MILLIS, RelayError, RelayServer, RelayStore)
 
@@ -20,6 +21,19 @@ class Clock:
 
     def __call__(self):
         return self.value
+
+
+class RelayProxyConfigurationTest(unittest.TestCase):
+    def test_proxy_https_policy_rejects_http_before_opening_listener(self):
+        output = io.StringIO()
+        with patch('sys.argv', ['relay.py', '--require-https-url', '--public-url', 'http://relay.example']), \
+                patch('relay.RelayServer') as bind, contextlib.redirect_stderr(output):
+            with self.assertRaises(SystemExit) as result:
+                relay.main()
+        self.assertEqual(2, result.exception.code)
+        self.assertIn('HTTPS public URL is required', output.getvalue())
+        self.assertNotIn('http://relay.example', output.getvalue())
+        bind.assert_not_called()
 
 
 class RelayClientAccessTest(unittest.TestCase):

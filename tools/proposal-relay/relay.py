@@ -417,6 +417,8 @@ def main() -> None:
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--public-url", default=DEFAULT_PUBLIC_URL)
+    parser.add_argument("--require-https-url", action="store_true",
+                        help="require an HTTPS public URL when TLS is terminated by a proxy")
     parser.add_argument("--allow-client", action="append", default=None,
                         help="exact loopback/private IPv4 client address; repeat for each test device")
     parser.add_argument("--tls-cert", help="PEM certificate chain for the HTTPS listener")
@@ -426,6 +428,8 @@ def main() -> None:
         store = RelayStore(args.public_url)
     except ValueError:
         parser.error("public URL must be an HTTP(S) base URL without credentials, query or fragment")
+    if args.require_https_url and urlsplit(store.public_base_url).scheme != "https":
+        parser.error("HTTPS public URL is required for this configuration")
     try:
         tls_context = _tls_context(args.tls_cert, args.tls_key)
         listener = RelayServer((args.host, args.port), store,

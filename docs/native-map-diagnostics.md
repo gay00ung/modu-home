@@ -11,7 +11,7 @@ NaviHelper의 목적지·경유 순서·안내 상태와 기본 내비의 지도
 - 운영 HTTPS 비교와 선택한 방문 순서의 실제 내비 요청·완료 후 다음 구간 연결 확인
 - 기본 내비 3.3.2-rc5-hotfix.3에서도 경로선·위치·회전 안내와 빈 배경이 함께 표시
 - 기본 내비만 재실행한 새 관측에서 `Map onInitialized true` 1회, VNET 이미지 전송 로그 25회 확인
-- 같은 관측에서 GL `0x501` 16회 확인
+- 같은 관측에서 GL `0x501` 반복 확인
 - 공개 ARM64 시스템 이미지 피드와 설치된 SDK Manager 메타데이터의 revision은 2
 
 이미지 전송 로그는 실제 bitmap에 도로가 들어 있거나 수신측에서 디코드·합성을 마쳤다는 증거가 아니다
@@ -38,6 +38,47 @@ GL 오류 횟수만으로 지도 미표시 원인을 확정하지 않는다
 초기 스타일이 빈 지도인 이유를 환경별 선택 코드와 연결할 수 있게 됐다
 다만 인증된 실제 스타일 응답의 바이트와 최종 runtime source 목록까지 읽은 것은 아니다
 이후 전체 스타일 교체가 필요한 설계인지, 어떤 설정으로 다른 프로필을 사용하도록 의도했는지는 추가 확인 대상이다
+
+## 초기 환경 값의 출처
+
+기본 내비 APK의 `BuildConfig.APP_ENV`는 `PUBLIC STATIC FINAL` 문자열 `CORAL`이다
+`MainApplication.onCreate`는 이 값을 `Locale.ROOT` 기준 소문자로 바꾸고 `InitUseCase.setAppInfo`에 전달한다
+시작 코드의 실제 DEX에도 `CORAL` 문자열 상수와 소문자 변환 호출이 있다
+이 경로는 설정 저장소나 실행 Intent에서 환경 값을 읽지 않는다
+
+초기 스타일 선택은 다음 순서로 이어진다
+
+- `setAppInfo`가 받은 환경 값을 `InitUseCase.buildFlavor`에 저장
+- `MainViewModel.checkSSLCertification`의 coroutine이 `getBuildFlavor`와 국가 코드를 조회
+- `InitUseCase.checkSSLCertification`이 같은 buildFlavor를 `MapStyleRepository.getMapStyle`에 전달
+- repository의 coroutine이 이를 `MapStyleRemoteDataSource.getMapStyles` 첫 인수로 전달
+- `coral` 분기에서 만든 목록의 `connect_v2` 항목을 이름으로 선택하고 그 항목의 `connect_empty` URL 반환
+- 성공 여부와 URL을 `readySSLCertificationFlow`에 보관
+
+coroutine의 호출·인수 전달도 DEX로 대조했다
+함수 이름에 SSL이 들어 있지만 이 함수의 성공값만으로 실제 지도 타일의 TLS 연결이나 도로 표시가 검증됐다고 판단하지 않는다
+이 시작 경로의 환경 상수는 모두 집으로의 장소·경유지 입력과 별개다
+다른 네이티브 렌더링 경로가 도로를 추가하는지와 최종 runtime source 목록은 아직 확인하지 못했다
+
+## 공개 SDK로 변경할 수 있는 범위
+
+NaviHelper 3.0.5 source 17개와 navi-data 3.0.4 source 51개를 확인하고 공개 컴파일 인터페이스와 대조했다
+
+- NaviHelper 생성자는 `Context`, 초기화는 무인수 또는 연결 콜백을 받으며 환경·전체 스타일 URL 입력은 없음
+- `NavigationScreenRequest`의 13개 타입에 환경·스타일 설정 필드는 없음
+- `NavigationScreenRequest.Settings`는 인수가 없는 일반 설정 화면 요청이며 `NAVI_CUSTOM_MAP` 권한 필요
+- 서비스 연결 Intent도 고정 component·action을 사용하고 공개 설정 인수를 받지 않음
+- 숨겨진 `InternalApi`의 `updateOccupiedRegion`은 화면 점유 영역 전달이며 지도 프로필 제어가 아님
+
+generic String 요청을 받는 하위 AIDL이 있다는 이유로 임의의 미공개 설정 명령을 만들어 사용하지 않았다
+확인한 기본 내비 manifest와 MainActivity 시작·새 Intent 처리에도 외부에서 환경·스타일 URL을 지정하는 계약은 없었다
+이 결론은 조사한 공개 계약과 시작 경로의 범위이며 공급사 전용 설정이나 모든 동적 호출의 부재를 증명한 것은 아니다
+
+10월 31일 공개 ARM64 피드는 설치된 것과 같은 Android 34·revision 2·Pleos Connect v2.1.0을 제공했다
+같은 시점의 `raw-releases` 전체 목록은 시스템 이미지·피드와 Host Display Bridge의 다섯 항목이며 개별 내비 업데이트 APK는 없었다
+기본 내비 manifest의 `debuggable`도 false이므로 디버거로 내부 스타일을 강제 교체하는 검증은 하지 않았다
+
+[공식 NaviHelper 소개](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/intro) · [권한 선언](https://document.pleos.ai/en/api-reference/connect-sdk-pleos/NaviHelper/declaring-permissions)
 
 ## 화면 지도와 이미지 전송의 경계
 
@@ -73,7 +114,7 @@ SDK 내부의 전체 스타일 setter는 현재 map manager가 null이면 스타
 
 ## 추가 진단에 필요한 값
 
-- 기본 내비의 환경 값이 스타일 선택 함수에 전달되는 값과 최종 선택 URL
+- `CORAL` 초기 프로필에서 도로를 공급하는 정식 경로와 `connect_empty` 사용 의도
 - 도로 source가 포함된 전체 스타일로 교체하는 공식 설정 또는 초기화 경로
 - map-ready 전후 전체 스타일 교체 호출의 값·순서·실제 적용 결과
 - 중앙 화면의 최종 runtime style/source 목록과 도로 source 데이터 수신 결과
@@ -81,7 +122,7 @@ SDK 내부의 전체 스타일 setter는 현재 map manager가 null이면 스타
 
 현재 확인한 공개 NaviHelper API에서는 중앙 지도의 전체 스타일 URL이나 내부 source 목록을 바꾸거나 조회하는 경로를 찾지 못했다
 일부 Compose 메서드는 디컴파일 중 SSA·코드 생성 오류가 있어 해당 본문을 근거로 사용하지 않고 확인 가능한 메서드와 바이트코드 호출 관계를 구분했다
-공급사에 재현 자료를 전달할 때는 공식 AVD·기본 내비 버전, 발생 시각, 화면과 비식별화한 오류·단계 요약을 사용한다
+재현 자료에는 공식 AVD·기본 내비 버전, 발생 시각, 화면과 비식별화한 오류·단계 요약을 사용한다
 전체 네이티브 로그·인증값·타일 URL·사용자의 장소 데이터는 첨부하지 않는다
 
 ## 재검증 기준

@@ -303,6 +303,21 @@ internal fun rememberProposalRelayActions(
             }
         }
     }
+    LaunchedEffect(state.sender, state.delivery, state.action, state.candidate, lifecycleOwner) {
+        val sender = state.sender
+        if (isVehicle || sender == null || !state.canCheckSender(sender, System.currentTimeMillis())) return@LaunchedEffect
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (currentCoroutineContext().isActive && runtime.mounted &&
+                current().canCheckSender(sender, System.currentTimeMillis())) {
+                val generation = current().generation
+                val result = gateway(sender.baseUrl).join(sender)
+                if (runtime.mounted && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                    current().afterSenderCheck(sender, generation, System.currentTimeMillis(), result)?.let(::update)
+                }
+                delay(10_000L)
+            }
+        }
+    }
     LaunchedEffect(state.sender, state.outgoing, state.delivery, state.action, state.candidate, lifecycleOwner) {
         val sender = state.sender
         val outgoing = state.outgoing

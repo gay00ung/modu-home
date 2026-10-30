@@ -5,8 +5,11 @@ import io.moduhome.app.core.navigation.NavigationPoint
 import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.transfer.ErrandProposal
 import io.moduhome.app.core.transfer.RelayDeliveryStatus
+import io.moduhome.app.core.transfer.RelayFailure
 import io.moduhome.app.core.transfer.RelayMessage
 import io.moduhome.app.core.transfer.RelayReceiverSession
+import io.moduhome.app.core.transfer.RelayResult
+import io.moduhome.app.core.transfer.RelayRoomWelcome
 import io.moduhome.app.core.transfer.RelaySenderSession
 import io.moduhome.app.core.vehicle.DrivingInteraction
 import java.util.UUID
@@ -48,6 +51,34 @@ internal data class ProposalRelayState(
     val message: String? = null,
 ) {
     val busy: Boolean get() = action != null
+
+    /** Queued delivery already has its own observer; manual actions own their result. */
+    fun canCheckSender(target: RelaySenderSession, nowMillis: Long): Boolean =
+        sender === target && !busy && candidate == null && delivery != RelayDeliveryStatus.QUEUED &&
+            nowMillis in 0 until target.expiresAtMillis
+
+    fun afterSenderCheck(
+        target: RelaySenderSession,
+        observedGeneration: Long,
+        nowMillis: Long,
+        result: RelayResult<RelayRoomWelcome>,
+    ): ProposalRelayState? {
+        if (generation != observedGeneration || !canCheckSender(target, nowMillis)) return null
+        return when (result) {
+            is RelayResult.Success -> null // A liveness read never imports the shared seed again.
+            is RelayResult.Failure -> when (result.code) {
+                RelayFailure.CLOSED, RelayFailure.UNAUTHORIZED -> copy(
+                    sender = null, outgoing = null, delivery = null, generation = generation + 1,
+                    message = if (delivery == RelayDeliveryStatus.STORED)
+                        "차량 연결이 종료됐어요. 이미 보관한 제안은 차량에 남아 있어요"
+                    else "차량 연결이 종료됐어요. 새 QR로 다시 연결해주세요. 만든 제안은 그대로 남아 있어요",
+                )
+                RelayFailure.CONFIGURATION, RelayFailure.CONNECTION, RelayFailure.FULL,
+                RelayFailure.CONFLICT, RelayFailure.INVALID_RESPONSE -> null
+            }
+        }
+    }
+
     override fun toString(): String = "ProposalRelayState(receiver=${receiver != null}, sender=${sender != null}, action=$action, delivery=$delivery)"
 }
 

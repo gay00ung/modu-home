@@ -80,6 +80,26 @@ generic String 요청을 받는 하위 AIDL이 있다는 이유로 임의의 미
 
 [공식 NaviHelper 소개](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/intro) · [권한 선언](https://document.pleos.ai/en/api-reference/connect-sdk-pleos/NaviHelper/declaring-permissions)
 
+## 지형·위성 모드와 차량 설정
+
+10월 31일 기본 내비의 지형·위성 전환 경로를 확인하기 위해 배포 이미지 코드와 원본에서 분리한 읽기 전용 AVD를 대조했다
+
+- `MdViewModel.setMapStyle`은 기본·지형·위성 enum을 받아 `setTerrain`·`setSatellite`로 전달
+- 최종 렌더 호출은 기존 `basemap` import의 `showHillshadeObjects`·`showSatelliteObjects` 속성을 바꾸는 `setStyleImportConfigProperty`
+- 이 경로에는 새 source·layer·import 추가나 전체 스타일 URL 교체가 없으며 Mapbox 반환값도 확인하지 않음
+- 따라서 `basemap` import가 없는 스타일에 누락된 도로·위성 데이터를 추가하는 기능으로 사용할 수 없음
+
+톱니 버튼의 선택 분기는 canonical DEX의 문자열 `coral`과 대조했다
+환경이 `coral`과 다르고 한국인 경우에만 내부 지도 설정 팝업을 열며, 나머지는 차량 설정으로 이동한다
+현재 AVD의 톱니 버튼도 `ai.umos.vehiclecontrol/.VehicleControlActivity`로 이동했다
+이 화면의 내비게이션 목록을 상단부터 끝까지 확인했으며 충전소·경로·사운드·버전 정보·데이터 관리 외에 지도 유형·프로필 항목은 없었다
+버튼을 길게 누르는 경로는 시뮬레이션 설정이며 지도 유형 전환 경로로 사용하지 않았다
+
+같은 실행의 기본 내비 버전은 `3.3.2-rc5-hotfix.3`, 로그 환경은 `coral`·`CORAL`, 스타일 URI는 다시 `connect_empty`였다
+설치 APK의 직접 읽기는 파일 권한으로 차단돼 설치 바이너리 해시는 검증하지 못했고, 정적 근거는 배포 이미지에서 추출한 APK와 DEX다
+현재 정상 설정 경로에서 지형·위성을 선택하지 못했으므로 모드별 렌더 결과나 Mapbox 설정 성공을 확인한 것으로 기록하지 않는다
+최종 runtime import 목록도 직접 읽지 못했으며, 공개 응답의 `imports`가 0이라는 근거와 구분한다
+
 ## 화면 지도와 이미지 전송의 경계
 
 중앙 지도는 `Navi42MapView` → `Map42View` → Mapbox `MapView`로 연결된다

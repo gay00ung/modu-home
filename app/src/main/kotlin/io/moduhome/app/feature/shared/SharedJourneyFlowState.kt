@@ -1,6 +1,7 @@
 package io.moduhome.app.feature.shared
 
 import io.moduhome.app.core.navigation.NavigationPlan
+import io.moduhome.app.core.navigation.GuidanceEstimateResult
 import io.moduhome.app.core.navigation.NavigationSnapshot
 import io.moduhome.app.core.navigation.RouteChangeApproval
 import io.moduhome.app.core.shared.SharedJourneyPlan
@@ -27,6 +28,8 @@ internal data class SharedJourneyFlowState(
     val operationRevision: Long = 0,
     val snapshot: NavigationSnapshot? = null,
     val observedRouteRevision: Long? = null,
+    val guidanceResult: GuidanceEstimateResult? = null,
+    val guidanceNowMillis: Long = 0L,
     val errors: List<String> = emptyList(),
 ) {
     val busy: Boolean get() = planning || sending || reading || polling

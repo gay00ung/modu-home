@@ -15,6 +15,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import io.moduhome.app.core.navigation.NavigationConnection
+import io.moduhome.app.core.navigation.GuidanceEstimateResult
 import io.moduhome.app.core.navigation.NavigationGateway
 import io.moduhome.app.core.navigation.NavigationPlan
 import io.moduhome.app.core.navigation.NavigationPoint
@@ -30,6 +31,7 @@ import io.moduhome.app.core.routing.RouteEstimateGateway
 import io.moduhome.app.core.shared.AccessCheck
 import io.moduhome.app.core.shared.DropoffVerification
 import io.moduhome.app.core.shared.SharedJourneyPlan
+import io.moduhome.app.core.shared.SharedGuidanceArrival
 import io.moduhome.app.core.shared.SharedJourneyProgress
 import io.moduhome.app.core.shared.SharedScheduledStop
 import io.moduhome.app.core.shared.currentWindow
@@ -87,6 +89,7 @@ internal fun SharedJourneyFlow(
         // A failed durable update must leave the previous session authoritative.
         val fallback = runtime.latest.copy(
             planning = false, sending = false, reading = false, polling = false,
+            guidanceResult = null,
             picker = null, confirmation = null, passedStopConfirmation = null, terminalStopConfirmation = null,
             cancelRequested = false, finishConfirmation = null,
             operationRevision = runtime.latest.operationRevision + 1,
@@ -119,6 +122,7 @@ internal fun SharedJourneyFlow(
         val current = runtime.latest
         publish(current.copy(
             planning = false, sending = false, reading = false, polling = false,
+            guidanceResult = null,
             picker = null, confirmation = null, passedStopConfirmation = null, terminalStopConfirmation = null,
             cancelRequested = false, finishConfirmation = null,
             operationRevision = current.operationRevision + 1,
@@ -131,7 +135,7 @@ internal fun SharedJourneyFlow(
     fun launchOperation(next: SharedJourneyFlowState, block: suspend (Long) -> Unit) {
         if (runtime.operation?.isActive == true) return
         val token = runtime.latest.operationRevision + 1
-        if (!publish(next.copy(operationRevision = token))) return
+        if (!publish(next.copy(operationRevision = token, guidanceResult = null))) return
         val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 block(token)
@@ -597,6 +601,7 @@ internal fun SharedJourneyFlow(
             lifecycleOwner.lifecycle.removeObserver(observer)
             val current = runtime.latest
             val next = current.copy(planning = false, sending = false, reading = false, polling = false,
+                guidanceResult = null,
                 picker = null, confirmation = null, passedStopConfirmation = null, terminalStopConfirmation = null,
                 cancelRequested = false, finishConfirmation = null,
                 operationRevision = current.operationRevision + 1)
@@ -641,7 +646,8 @@ internal fun SharedJourneyFlow(
     LaunchedEffect(runtime, connection, routeRevision, interaction.editingAllowed, state.session.progress.stage,
         state.session.progress.completedStopCount, state.planning, state.sending, state.reading,
         state.confirmation, state.passedStopConfirmation, state.terminalStopConfirmation, state.cancelRequested, state.finishConfirmation, lifecycleOwner) {
-        if (connection != NavigationConnection.Ready || !interaction.editingAllowed ||
+        publish(runtime.latest.copy(guidanceResult = null))
+        if (connection != NavigationConnection.Ready ||
             state.session.progress.stage != JourneyStage.ACTIVE || state.planning || state.sending || state.reading ||
             state.confirmation != null || state.passedStopConfirmation != null || state.terminalStopConfirmation != null || state.cancelRequested ||
             state.finishConfirmation != null) return@LaunchedEffect
@@ -655,11 +661,18 @@ internal fun SharedJourneyFlow(
                     if (!publish(before.copy(polling = true))) return@repeatOnLifecycle
                     try {
                         val revisionBefore = gateway.routeRevision.value
-                        val snapshot = gateway.currentRoute()
+                        val selected = session.selectedPlan() ?: return@repeatOnLifecycle
+                        val home = session.progress.driverHome ?: return@repeatOnLifecycle
+                        val guidance = gateway.currentGuidance(selected.currentWindow(home, session.progress.completedStopCount))
+                        val snapshot = when (guidance) {
+                            is GuidanceEstimateResult.Success -> guidance.estimate.observedRoute
+                            is GuidanceEstimateResult.Failed -> guidance.observedRoute ?: gateway.currentRoute()
+                            GuidanceEstimateResult.Unsupported -> gateway.currentRoute()
+                        }
                         val revisionAfter = gateway.routeRevision.value
                         val stable = revisionBefore == revisionAfter
                         if (runtime.mounted && runtime.latest.operationRevision == token && runtime.latest.session == session &&
-                            currentInteraction.editingAllowed && stable) {
+                            stable) {
                             val observed = session.observeRoute(snapshot)
                             val pending = observed.progress.navigationPending
                             val terminal = observed.selectedPlan()?.let { observed.progress.canConfirmTerminalStop(it, snapshot) } == true
@@ -672,6 +685,7 @@ internal fun SharedJourneyFlow(
                                 else -> "차량 내비가 계획의 남은 순서를 안내하고 있어요"
                             }
                             publish(runtime.latest.copy(session = observed, snapshot = snapshot,
+                                guidanceResult = guidance, guidanceNowMillis = System.currentTimeMillis(),
                                 observedRouteRevision = revisionAfter, message = message, error = pending && !terminal))
                         }
                     } catch (cancelled: CancellationException) {
@@ -686,8 +700,26 @@ internal fun SharedJourneyFlow(
         }
     }
 
+    LaunchedEffect(runtime, state.session.progress.stage, lifecycleOwner) {
+        if (state.session.progress.stage != JourneyStage.ACTIVE) return@LaunchedEffect
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (currentCoroutineContext().isActive) {
+                publish(runtime.latest.copy(guidanceNowMillis = System.currentTimeMillis()))
+                delay(1_000)
+            }
+        }
+    }
+
     BackHandler { back() }
     val plans = state.session.plans()
+    val routing = state.session.routing
+    val guidanceArrival = if (connection == NavigationConnection.Ready && state.observedRouteRevision == routeRevision) {
+        val estimate = (state.guidanceResult as? GuidanceEstimateResult.Success)?.estimate
+        val selected = state.session.selectedPlan()
+        if (routing != null && selected != null && estimate != null) SharedGuidanceArrival.fromObservation(
+            selected, state.session.progress, estimate, routing.departureAtMillis, routing.zoneId, state.guidanceNowMillis,
+        ) else null
+    } else null
     val ui = SharedVehicleUiState(
         draft = state.session.draft, stage = state.session.progress.stage, plans = plans,
         selectedPlanId = state.session.progress.selectedPlanId, completedStops = state.session.progress.completedStopCount,
@@ -698,6 +730,8 @@ internal fun SharedJourneyFlow(
         terminalStopCompletionAvailable = connection == NavigationConnection.Ready && state.canConfirmTerminalStop(routeRevision),
         estimateLabel = state.session.routing?.source, directHomeMinutes = state.session.routing?.directHomeMinutes,
         pendingProposalCount = pendingProposalCount,
+        guidanceArrival = guidanceArrival, guidanceNowMillis = state.guidanceNowMillis,
+        guidanceZoneId = routing?.zoneId ?: java.time.ZoneId.systemDefault(),
     )
     SharedVehicleScreen(ui, actions, VehicleNavigationUiState(
         connection = connection, sending = state.sending, reading = state.reading || state.polling,

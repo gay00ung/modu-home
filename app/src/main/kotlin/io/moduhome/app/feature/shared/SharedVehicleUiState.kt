@@ -3,6 +3,8 @@ package io.moduhome.app.feature.shared
 import io.moduhome.app.core.planning.JourneyStage
 import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.shared.SharedJourneyPlan
+import io.moduhome.app.core.shared.SharedGuidanceArrival
+import java.time.ZoneId
 
 /** The app owns this state, including paging and the vehicle's pending guidance update. */
 internal data class SharedVehicleUiState(
@@ -20,6 +22,9 @@ internal data class SharedVehicleUiState(
     val estimateLabel: String? = null,
     val directHomeMinutes: Int? = null,
     val pendingProposalCount: Int = 0,
+    val guidanceArrival: SharedGuidanceArrival? = null,
+    val guidanceNowMillis: Long = 0L,
+    val guidanceZoneId: ZoneId = ZoneId.systemDefault(),
 ) {
     val selectedPlan: SharedJourneyPlan? get() = plans.firstOrNull { it.id == selectedPlanId }
     val canConfirmPassedStop: Boolean get() = passedStopCount in 1..2

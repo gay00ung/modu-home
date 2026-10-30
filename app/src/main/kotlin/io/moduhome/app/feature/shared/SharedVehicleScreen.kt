@@ -60,6 +60,7 @@ import io.moduhome.app.feature.home.VehicleNavigationUiState
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 
 /** Pure vehicle presentation. Place lookup, user confirmations, routing and persistence belong to the app. */
 @Composable
@@ -400,15 +401,32 @@ private fun SharedActive(
         Row(Modifier.fillMaxWidth().padding(36.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(40.dp)) {
             Column(Modifier.weight(1.6f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                SharedCaption(if (next == null) "중간 정차를 마쳤어요 · 이제 운전자 집으로" else "계획상 다음 정차")
+                SharedCaption(if (next == null) "중간 정차를 마쳤어요 · 이제 운전자 집으로"
+                    else "다음 정차 · 완료 ${state.completedStops}/${plan.stops.size}곳")
                 Text(next?.place?.point?.name ?: state.draft.driverHome?.name ?: "운전자 집 확인 필요",
                     fontSize = 48.sp, lineHeight = 62.sp, fontWeight = FontWeight.Bold,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                 next?.let { Text(stopLabel(it), fontSize = 30.sp, lineHeight = 40.sp) }
             }
-            VehicleMetric("정차 완료", "${state.completedStops}/${plan.stops.size}곳", Modifier.weight(1f))
+            val arrival = state.guidanceArrival
+            if (arrival != null) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SharedCaption("차량 내비 기준")
+                    VehicleMetric(state.arrivalLabel(), state.arrivalClock(arrival.readyAtMillis))
+                    SharedCaption("남은 주행 ${arrival.remainingDrivingMinutes(state.guidanceNowMillis)}분")
+                }
+            } else VehicleMetric("정차 완료", "${state.completedStops}/${plan.stops.size}곳", Modifier.weight(1f))
         }
     }
+    state.arrivalWarning()?.let { SharedError(it) }
+    if (state.guidanceArrival != null) {
+        when (next) {
+            is SharedScheduledStop.Dropoff -> SharedCaption("하차 ${next.candidate.stopMinutes}분" +
+                (if (next.candidate.onward.totalMinutes > 0) " · 하차 후 이동 ${next.candidate.onward.totalMinutes}분" else "") + " 포함")
+            is SharedScheduledStop.Errand -> SharedCaption("가게까지 편도 도보 ${next.errand.visit.walkingMinutesOneWay}분 · 체류 ${next.errand.visit.stayMinutes}분 포함")
+            null -> Unit
+        }
+    } else if (!state.navigationPending) SharedCaption("현재 도착 예상은 차량 내비에서 확인해주세요")
     if (state.navigationPending && next != null) {
         if (state.terminalStopCompletionAvailable) {
             SharedCaption("현재 길안내가 없어요. 이 장소에서 실제 정차를 마쳤다면 아래에서 완료를 확인해주세요")
@@ -604,7 +622,13 @@ private fun SharedNavigationStatus(
 private fun SharedRestrictedScreen(state: SharedVehicleUiState, interaction: DrivingInteraction, modifier: Modifier) {
     val next = state.selectedPlan?.stops?.getOrNull(state.completedStops)?.place?.point?.name ?: state.draft.driverHome?.name
     val messages = if (interaction is DrivingInteraction.Unknown) listOf(interaction.reason) else if (state.stage == JourneyStage.ACTIVE) {
-        listOfNotNull("차량 내비를 따라가세요", next, "계획 변경과 완료 확인은 정차 후에")
+        val arrival = state.guidanceArrival
+        val time = arrival?.let { "${state.arrivalLabel()} ${state.arrivalClock(it.readyAtMillis)}" }
+        val warning = arrival?.lateMinutes?.takeIf { it > 0 }?.let {
+            if (state.selectedPlan?.stops?.getOrNull(state.completedStops) is SharedScheduledStop.Errand)
+                " · 마감 ${it}분 초과 예상" else " · 희망보다 ${it}분 지연 예상"
+        }
+        listOfNotNull(time?.plus(warning.orEmpty()) ?: "차량 내비를 따라가세요", next, "계획 변경과 완료 확인은 정차 후에")
     } else listOf("정차 후 함께 귀가 계획을 선택해주세요", "선택한 장소와 계획은 보관하고 있어요")
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().systemBarsPadding().padding(56.dp), verticalArrangement = Arrangement.Center) {
@@ -614,6 +638,30 @@ private fun SharedRestrictedScreen(state: SharedVehicleUiState, interaction: Dri
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
+    }
+}
+
+private fun SharedVehicleUiState.arrivalLabel(): String = when (selectedPlan?.stops?.getOrNull(completedStops)) {
+    is SharedScheduledStop.Dropoff -> "동승자 도착 예상"
+    is SharedScheduledStop.Errand -> "볼일 완료 예상"
+    null -> "집 도착 예상"
+}
+
+private fun SharedVehicleUiState.arrivalClock(atMillis: Long): String {
+    val measured = Instant.ofEpochMilli(atMillis).atZone(guidanceZoneId)
+    val time = if (measured.second != 0 || measured.nano != 0) measured.truncatedTo(ChronoUnit.MINUTES).plusMinutes(1) else measured
+    val today = Instant.ofEpochMilli(guidanceNowMillis).atZone(guidanceZoneId).toLocalDate()
+    return time.format(DateTimeFormatter.ofPattern(if (time.toLocalDate() == today) "HH:mm" else "M/d HH:mm"))
+}
+
+private fun SharedVehicleUiState.arrivalWarning(): String? {
+    val arrival = guidanceArrival ?: return null
+    val deadline = arrival.deadlineAtMillis
+    return when {
+        arrival.lateMinutes > 0 && deadline != null ->
+            "${if (selectedPlan?.stops?.getOrNull(completedStops) is SharedScheduledStop.Errand) "마감" else "도착 희망"} ${arrivalClock(deadline)}보다 ${arrival.lateMinutes}분 늦을 예상이에요"
+        arrival.planDelayMinutes >= 5 -> "계획보다 ${arrival.planDelayMinutes}분 더 걸릴 예상이에요"
+        else -> null
     }
 }
 

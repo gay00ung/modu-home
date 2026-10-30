@@ -2,7 +2,7 @@ package io.moduhome.app.data.transfer
 
 import android.content.Context
 import io.moduhome.app.data.PreferenceStores
-import io.moduhome.app.core.transfer.ErrandProposalInbox
+import io.moduhome.app.core.transfer.JourneyProposalInbox
 import io.moduhome.app.core.transfer.ProposalInboxEntry
 import io.moduhome.app.core.transfer.ProposalReviewStatus
 import org.json.JSONArray
@@ -14,7 +14,7 @@ internal class ProposalInboxPreferences(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences("proposal_inbox", Context.MODE_PRIVATE)
     private val inbox = PreferenceStores.text(preferences, "inbox")
 
-    fun save(inbox: ErrandProposalInbox): Boolean = try {
+    fun save(inbox: JourneyProposalInbox): Boolean = try {
         val entries = JSONArray()
         inbox.entries.forEach { entry ->
             entries.put(JSONObject()
@@ -29,12 +29,12 @@ internal class ProposalInboxPreferences(context: Context) {
         require(nowMillis >= 0)
         return try {
             val raw = inbox.load()
-                ?: return ProposalInboxLoadResult.Loaded(ErrandProposalInbox.empty())
+                ?: return ProposalInboxLoadResult.Loaded(JourneyProposalInbox.empty())
             if (raw.length > MAX_STORAGE_LENGTH) return invalidStoredInbox()
             val root = JSONObject(raw)
             if (root.getInt("schema") != 1) return invalidStoredInbox()
             val stored = root.getJSONArray("entries")
-            if (stored.length() > ErrandProposalInbox.MAX_ENTRIES) return invalidStoredInbox()
+            if (stored.length() > JourneyProposalInbox.MAX_ENTRIES) return invalidStoredInbox()
             val entries = buildList {
                 for (index in 0 until stored.length()) {
                     val item = stored.getJSONObject(index)
@@ -54,7 +54,7 @@ internal class ProposalInboxPreferences(context: Context) {
                     }
                 }
             }
-            ProposalInboxLoadResult.Loaded(ErrandProposalInbox.restore(entries))
+            ProposalInboxLoadResult.Loaded(JourneyProposalInbox.restore(entries))
         } catch (_: JSONException) {
             invalidStoredInbox()
         } catch (_: IllegalArgumentException) {
@@ -68,11 +68,11 @@ internal class ProposalInboxPreferences(context: Context) {
         ProposalInboxLoadResult.Failed("저장된 제안을 읽지 못했어요. 제안 링크를 다시 받아주세요")
 
     companion object {
-        private const val MAX_STORAGE_LENGTH = (ProposalLinkCodec.MAX_LINK_LENGTH + 100) * ErrandProposalInbox.MAX_ENTRIES + 100
+        private const val MAX_STORAGE_LENGTH = (ProposalLinkCodec.MAX_LINK_LENGTH + 100) * JourneyProposalInbox.MAX_ENTRIES + 100
     }
 }
 
 internal sealed interface ProposalInboxLoadResult {
-    data class Loaded(val inbox: ErrandProposalInbox) : ProposalInboxLoadResult
+    data class Loaded(val inbox: JourneyProposalInbox) : ProposalInboxLoadResult
     data class Failed(val reason: String) : ProposalInboxLoadResult
 }

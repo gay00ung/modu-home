@@ -5,7 +5,7 @@ import io.moduhome.app.core.navigation.NavigationPlan
 import io.moduhome.app.core.planning.JourneyStage
 import io.moduhome.app.core.shared.SharedJourneyProgress
 import io.moduhome.app.core.shared.currentWindow
-import io.moduhome.app.core.transfer.ErrandProposalInbox
+import io.moduhome.app.core.transfer.JourneyProposalInbox
 import io.moduhome.app.core.transfer.ProposalReviewStatus
 import java.time.ZoneId
 
@@ -19,7 +19,7 @@ internal data class SharedJourneySession(
         copy(draft = draft, progress = SharedJourneyProgress(), routing = null)
 
     fun reviewProposal(
-        inbox: ErrandProposalInbox,
+        inbox: JourneyProposalInbox,
         id: String,
         revision: Int,
         nowMillis: Long,
@@ -28,20 +28,20 @@ internal data class SharedJourneySession(
 
     fun approveProposal(
         review: SharedProposalReview,
-        inbox: ErrandProposalInbox,
+        inbox: JourneyProposalInbox,
         nowMillis: Long,
         zoneId: ZoneId = ZoneId.systemDefault(),
     ): SharedProposalApplyResult = review.approve(this, inbox, nowMillis, zoneId)
 
     /** Repairs a delayed inbox write from a durable acceptance, without accepting any new value. */
-    fun reconcileProposalInbox(inbox: ErrandProposalInbox): ErrandProposalInbox {
+    fun reconcileProposalInbox(inbox: JourneyProposalInbox): JourneyProposalInbox {
         if (!validSharedProposalHistory(acceptedProposals)) return inbox
         val entries = inbox.entries.map { entry ->
             if (entry.status == ProposalReviewStatus.PENDING && acceptedProposals.any { it.proposal == entry.proposal }) {
                 entry.copy(status = ProposalReviewStatus.APPROVED)
             } else entry
         }
-        return if (entries == inbox.entries) inbox else ErrandProposalInbox.restore(entries)
+        return if (entries == inbox.entries) inbox else JourneyProposalInbox.restore(entries)
     }
 
     companion object {

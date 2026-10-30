@@ -15,11 +15,11 @@ class RelayProposalReceiverTest {
     )
     private fun message(proposal: ErrandProposal = proposal()) = RelayMessage(messageId, ProposalLinkCodec.encode(proposal))
     private fun inbox(proposal: ErrandProposal = proposal()) =
-        (ErrandProposalInbox.empty().receive(proposal, now) as ProposalReceiveResult.Pending).inbox
+        (JourneyProposalInbox.empty().receive(proposal, now) as ProposalReceiveResult.Pending).inbox
 
     @Test fun onlyDurablySavedPendingProposalGetsStoredReceipt() {
-        val initial = ErrandProposalInbox.empty()
-        var saved: ErrandProposalInbox? = null
+        val initial = JourneyProposalInbox.empty()
+        var saved: JourneyProposalInbox? = null
         val result = receiveRelayProposal(initial, message(), now) { saved = it; true }
         assertEquals(RelayDeliveryStatus.STORED, result.acknowledgement)
         assertEquals(saved, result.inbox)
@@ -30,7 +30,7 @@ class RelayProposalReceiverTest {
     }
 
     @Test fun failedStorageKeepsOriginalStateAndLeavesMessageQueued() {
-        val initial = ErrandProposalInbox.empty()
+        val initial = JourneyProposalInbox.empty()
         val result = receiveRelayProposal(initial, message(), now) { false }
         assertSame(initial, result.inbox)
         assertNull(result.acknowledgement)
@@ -74,7 +74,7 @@ class RelayProposalReceiverTest {
     }
 
     @Test fun fullUnreadInboxNeverDropsAProposalOrAcknowledgesTheNewOne() {
-        val initial = ErrandProposalInbox.restore((0 until 20).map { ProposalInboxEntry(proposal("proposal-$it")) })
+        val initial = JourneyProposalInbox.restore((0 until 20).map { ProposalInboxEntry(proposal("proposal-$it")) })
         val result = receiveRelayProposal(initial, message(proposal("new-proposal")), now) { fail("Unexpected write"); false }
         assertNull(result.acknowledgement)
         assertSame(initial, result.inbox)
@@ -82,7 +82,7 @@ class RelayProposalReceiverTest {
     }
 
     @Test fun reviewingOneEntryAllowsDeliveryWithoutDiscardingUnreadProposals() {
-        val full = ErrandProposalInbox.restore((0 until 20).map { ProposalInboxEntry(proposal("proposal-$it")) })
+        val full = JourneyProposalInbox.restore((0 until 20).map { ProposalInboxEntry(proposal("proposal-$it")) })
         val initial = full.decline("proposal-0", 1)
         val result = receiveRelayProposal(initial, message(proposal("new-proposal")), now) { true }
         assertEquals(RelayDeliveryStatus.STORED, result.acknowledgement)

@@ -7,14 +7,14 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class ErrandProposalInboxTest {
+class JourneyProposalInboxTest {
     private val now = 1_800_000_000_000L
     private fun proposal(id: String = "proposal-001", revision: Int = 1) = ErrandProposal(
         id, revision, now, now + 60 * 60 * 1000, VisitKind.PICKUP,
         NavigationPoint("픽업 매장", 37.5, 127.0), 5, ready = true,
     )
 
-    private fun receive(inbox: ErrandProposalInbox = ErrandProposalInbox.empty(), proposal: ErrandProposal = proposal()):
+    private fun receive(inbox: JourneyProposalInbox = JourneyProposalInbox.empty(), proposal: ErrandProposal = proposal()):
         ProposalReceiveResult.Pending {
         val result = inbox.receive(proposal, now)
         assertTrue(result is ProposalReceiveResult.Pending)
@@ -22,7 +22,7 @@ class ErrandProposalInboxTest {
     }
 
     @Test fun receivingAProposalOnlyStagesItForReview() {
-        val original = ErrandProposalInbox.empty()
+        val original = JourneyProposalInbox.empty()
         val pending = receive(original)
         assertTrue(original.entries.isEmpty())
         assertEquals(ProposalReviewStatus.PENDING, pending.entry.status)
@@ -38,7 +38,7 @@ class ErrandProposalInboxTest {
     @Test fun conflictingContentAtTheSameRevisionIsRejected() {
         val pending = receive()
         assertTrue(pending.inbox.receive(proposal().copy(stayMinutes = 15), now) is ProposalReceiveResult.Rejected)
-        assertEquals(5, pending.inbox.entries.single().proposal.stayMinutes)
+        assertEquals(5, (pending.inbox.entries.single().proposal as ErrandProposal).stayMinutes)
     }
 
     @Test fun olderRevisionCannotReplaceTheLatestSuggestion() {
@@ -52,7 +52,7 @@ class ErrandProposalInboxTest {
         val next = receive(approved.inbox, proposal(revision = 2).copy(ready = false))
         assertEquals(1, next.inbox.entries.size)
         assertEquals(ProposalReviewStatus.PENDING, next.entry.status)
-        assertFalse(next.entry.proposal.ready)
+        assertFalse((next.entry.proposal as ErrandProposal).ready)
     }
 
     @Test fun anOutdatedReviewCannotApproveARevisedSuggestion() {
@@ -73,7 +73,7 @@ class ErrandProposalInboxTest {
     @Test fun restoredReviewDecisionsStillPreventDuplicateApproval() {
         val pending = receive()
         val approved = pending.inbox.approve("proposal-001", 1, now) as ProposalApprovalResult.Approved
-        val restored = ErrandProposalInbox.restore(approved.inbox.entries)
+        val restored = JourneyProposalInbox.restore(approved.inbox.entries)
         assertEquals(approved.inbox, restored)
         assertEquals(ProposalReceiveResult.Duplicate, restored.receive(proposal(), now))
         assertTrue(restored.approve("proposal-001", 1, now) is ProposalApprovalResult.Rejected)
@@ -81,7 +81,7 @@ class ErrandProposalInboxTest {
 
     @Test(expected = IllegalArgumentException::class)
     fun restoredInboxCannotContainTwoRevisionsOfTheSameProposal() {
-        ErrandProposalInbox.restore(listOf(ProposalInboxEntry(proposal()), ProposalInboxEntry(proposal(revision = 2))))
+        JourneyProposalInbox.restore(listOf(ProposalInboxEntry(proposal()), ProposalInboxEntry(proposal(revision = 2))))
     }
 
     @Test fun aProposalThatExpiresWhileReviewingCannotBeApproved() {
@@ -104,8 +104,8 @@ class ErrandProposalInboxTest {
     }
 
     @Test fun pendingInboxIsBoundedAndExpiredEntriesAreReleasedOnReceive() {
-        var inbox = ErrandProposalInbox.empty()
-        repeat(ErrandProposalInbox.MAX_ENTRIES) { index ->
+        var inbox = JourneyProposalInbox.empty()
+        repeat(JourneyProposalInbox.MAX_ENTRIES) { index ->
             inbox = receive(inbox, proposal(id = "proposal-${index.toString().padStart(3, '0')}" )).inbox
         }
         assertTrue(inbox.receive(proposal("proposal-extra"), now) is ProposalReceiveResult.Rejected)
@@ -116,8 +116,8 @@ class ErrandProposalInboxTest {
 
     @Test fun aClockDifferenceOfFiveMinutesIsAllowedButMoreIsRejected() {
         val allowed = proposal().copy(createdAtMillis = now + 300_000)
-        assertTrue(ErrandProposalInbox.empty().receive(allowed, now) is ProposalReceiveResult.Pending)
-        assertTrue(ErrandProposalInbox.empty().receive(allowed.copy(createdAtMillis = now + 300_001), now)
+        assertTrue(JourneyProposalInbox.empty().receive(allowed, now) is ProposalReceiveResult.Pending)
+        assertTrue(JourneyProposalInbox.empty().receive(allowed.copy(createdAtMillis = now + 300_001), now)
             is ProposalReceiveResult.Rejected)
     }
 

@@ -9,6 +9,8 @@ import io.moduhome.app.core.transfer.CompanionDeadlineChoice
 import io.moduhome.app.core.transfer.CompanionErrandDraft
 import io.moduhome.app.core.transfer.CompanionErrandSource
 import io.moduhome.app.core.transfer.ErrandProposal
+import io.moduhome.app.core.transfer.DropoffProposal
+import io.moduhome.app.core.transfer.CompanionDropoffDraft
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -98,6 +100,7 @@ internal val CompanionAddressStateSaver: Saver<CompanionAddressState?, Any> = ma
             "version" to 1,
             "query" to state.query,
             "kind" to state.kind.name,
+            "purpose" to state.purpose.name,
             "loading" to state.loading,
             "resultQuery" to state.resultQuery.orEmpty(),
             "selected" to state.candidates.indexOf(state.selected),
@@ -116,6 +119,7 @@ internal val CompanionAddressStateSaver: Saver<CompanionAddressState?, Any> = ma
             val loading = fields.getValue("loading") as Boolean
             val resultQuery = (fields.getValue("resultQuery") as String).takeIf(String::isNotEmpty)
             val state = CompanionAddressState(
+                purpose = (fields["purpose"] as? String)?.let(CompanionAddressPurpose::valueOf) ?: CompanionAddressPurpose.ERRAND,
                 query = query,
                 kind = VisitKind.valueOf(fields.getValue("kind") as String),
                 candidates = candidates,
@@ -129,4 +133,41 @@ internal val CompanionAddressStateSaver: Saver<CompanionAddressState?, Any> = ma
             }
         }.getOrNull()
     },
+)
+
+internal fun companionDropoffDraftSaver(
+    received: (String, Int) -> DropoffProposal?,
+    nowMillis: () -> Long = System::currentTimeMillis,
+): Saver<CompanionDropoffDraft?, Any> = mapSaver(
+    save = { draft ->
+        if (draft == null) emptyMap() else buildMap {
+            put("version", 1); put("opened", draft.openedAtMillis); put("date", draft.baseDate.toEpochDay())
+            put("zone", draft.zoneId.id); put("name", draft.passengerName)
+            put("deadline", draft.deadline.name); put("time", draft.deadlineTime)
+            put("place", arrayListOf(draft.place.name, draft.place.address, draft.place.latitude, draft.place.longitude,
+                draft.place.placeId, draft.place.subId, draft.place.provider))
+            draft.source?.let { put("sourceId", it.id); put("sourceRevision", it.revision) }
+        }
+    },
+    restore = { fields -> runCatching {
+        require(fields["version"] == 1)
+        val opened = fields.getValue("opened") as Long
+        val now = nowMillis()
+        require(opened >= 0 && now >= opened && now - opened < ErrandProposal.MAX_LIFETIME_MILLIS)
+        val zone = ZoneId.of(fields.getValue("zone") as String)
+        val date = LocalDate.ofEpochDay(fields.getValue("date") as Long)
+        require(date == Instant.ofEpochMilli(opened).atZone(zone).toLocalDate())
+        val point = fields.getValue("place") as List<*>
+        require(point.size == 7)
+        val source = (fields["sourceId"] as? String)?.let { id ->
+            val revision = fields.getValue("sourceRevision") as Int
+            requireNotNull(received(id, revision)).also {
+                require(it.id == id && it.revision == revision && it.unavailableReason(now) == null)
+            }
+        }
+        CompanionDropoffDraft(NavigationPoint(name = point[0] as String, latitude = point[2] as Double, longitude = point[3] as Double,
+            address = point[1] as String, placeId = point[4] as String, subId = point[5] as String, provider = point[6] as String),
+            opened, date, zone, fields.getValue("name") as String,
+            CompanionDeadlineChoice.valueOf(fields.getValue("deadline") as String), fields.getValue("time") as String, source)
+    }.getOrNull() },
 )

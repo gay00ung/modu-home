@@ -15,8 +15,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.moduhome.app.core.planning.VisitKind
-import io.moduhome.app.core.transfer.ErrandProposalInbox
+import io.moduhome.app.core.transfer.JourneyProposalInbox
 import io.moduhome.app.core.transfer.ErrandProposal
+import io.moduhome.app.core.transfer.JourneyProposal
+import io.moduhome.app.core.transfer.DropoffProposal
 import io.moduhome.app.core.transfer.RelayDeliveryStatus
 import io.moduhome.app.core.transfer.ProposalReviewStatus
 import java.time.Instant
@@ -24,7 +26,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 internal data class ProposalUiState(
-    val inbox: ErrandProposalInbox,
+    val inbox: JourneyProposalInbox,
     val input: String = "",
     val message: String? = null,
     val canApply: Boolean = false,
@@ -38,7 +40,7 @@ internal data class ProposalUiState(
     val relayMessage: String? = null,
     val relayBusy: Boolean = false,
     val delivery: RelayDeliveryStatus? = null,
-    val exportedProposal: ErrandProposal? = null,
+    val exportedProposal: JourneyProposal? = null,
     val canSendToVehicle: Boolean = false,
     val canEdit: Boolean = false,
     val canEditPrepared: Boolean = false,
@@ -61,6 +63,7 @@ internal data class ProposalActions(
     val onEditPrepared: () -> Unit = {},
     val onBackToProposals: () -> Unit = {},
     val onCreateFromAddress: () -> Unit = {},
+    val onReviewDropoff: (String, Int) -> Unit = { _, _ -> },
 )
 
 @Composable
@@ -110,10 +113,12 @@ private fun ProposalListContent(state: ProposalUiState, actions: ProposalActions
             val proposal = entry.proposal
             OutlinedCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("${if (proposal.kind == VisitKind.PICKUP) "픽업" else "장보기"} · ${proposal.place.name}", fontWeight = FontWeight.Bold)
+                    Text("${proposalLabel(proposal)} · ${proposal.place.name}", fontWeight = FontWeight.Bold)
                     if (proposal.place.address.isNotBlank() && proposal.place.address != proposal.place.name) Text(proposal.place.address)
-                    Text("체류 ${proposal.stayMinutes}분 · 편도 도보 ${proposal.walkingMinutesOneWay}분")
-                    if (proposal.kind == VisitKind.PICKUP) Text(if (proposal.ready) "제안에 수령 준비됨으로 표시" else "수령 준비 확인 필요")
+                    if (proposal is ErrandProposal) {
+                        Text("체류 ${proposal.stayMinutes}분 · 편도 도보 ${proposal.walkingMinutesOneWay}분")
+                        if (proposal.kind == VisitKind.PICKUP) Text(if (proposal.ready) "제안에 수령 준비됨으로 표시" else "수령 준비 확인 필요")
+                    }
                     proposal.deadlineAtMillis?.let { deadline ->
                         Text("완료 마감 · " + DateTimeFormatter.ofPattern("M월 d일 HH:mm").format(Instant.ofEpochMilli(deadline).atZone(ZoneId.systemDefault())))
                     }
@@ -143,11 +148,11 @@ private fun ProposalListContent(state: ProposalUiState, actions: ProposalActions
 }
 
 @Composable
-private fun PreparedProposalContent(state: ProposalUiState, proposal: ErrandProposal, actions: ProposalActions) {
+private fun PreparedProposalContent(state: ProposalUiState, proposal: JourneyProposal, actions: ProposalActions) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("보낼 볼일 확인", modifier = Modifier.weight(1f), fontSize = 24.sp, lineHeight = 32.sp,
+            Text(if (proposal is DropoffProposal) "보낼 하차지 확인" else "보낼 볼일 확인", modifier = Modifier.weight(1f), fontSize = 24.sp, lineHeight = 32.sp,
                 fontWeight = FontWeight.Bold)
             TextButton(onClick = actions.onDismiss, modifier = Modifier.heightIn(min = 56.dp)) {
                 Text("닫기", fontSize = 16.sp)
@@ -156,17 +161,19 @@ private fun PreparedProposalContent(state: ProposalUiState, proposal: ErrandProp
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(if (proposal.kind == VisitKind.PICKUP) "픽업" else "장보기",
+                Text(proposalLabel(proposal),
                     fontSize = 16.sp, lineHeight = 24.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(proposal.place.name, fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold)
                 if (proposal.place.address.isNotBlank() && proposal.place.address != proposal.place.name) Text(proposal.place.address, fontSize = 16.sp, lineHeight = 24.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("체류 ${proposal.stayMinutes}분 · 편도 도보 ${proposal.walkingMinutesOneWay}분", fontSize = 16.sp, lineHeight = 24.sp)
-                if (proposal.kind == VisitKind.PICKUP) Text(if (proposal.ready) "제안에 수령 준비됨으로 표시" else "수령 준비 확인 필요",
-                    fontSize = 16.sp, lineHeight = 24.sp)
-                Text("완료 마감 · " + (proposal.deadlineAtMillis?.let { deadline ->
+                if (proposal is ErrandProposal) {
+                    Text("체류 ${proposal.stayMinutes}분 · 편도 도보 ${proposal.walkingMinutesOneWay}분", fontSize = 16.sp, lineHeight = 24.sp)
+                    if (proposal.kind == VisitKind.PICKUP) Text(if (proposal.ready) "제안에 수령 준비됨으로 표시" else "수령 준비 확인 필요",
+                        fontSize = 16.sp, lineHeight = 24.sp)
+                }
+                Text((if (proposal is DropoffProposal) "도착 희망 · " else "완료 마감 · ") + (proposal.deadlineAtMillis?.let { deadline ->
                     DateTimeFormatter.ofPattern("M월 d일 HH:mm").format(Instant.ofEpochMilli(deadline).atZone(ZoneId.systemDefault()))
-                } ?: "마감 없음"), fontSize = 16.sp, lineHeight = 24.sp)
+                } ?: "시간 제한 없음"), fontSize = 16.sp, lineHeight = 24.sp)
             }
             HorizontalDivider()
             if (state.connectedVehicle != null) {
@@ -204,7 +211,7 @@ private fun PreparedProposalContent(state: ProposalUiState, proposal: ErrandProp
                 }
                 TextButton(onClick = actions.onBackToProposals, enabled = !state.relayBusy,
                     modifier = Modifier.weight(1f).heightIn(min = 56.dp)) {
-                    Text("다른 볼일", fontSize = 16.sp)
+                    Text("다른 제안", fontSize = 16.sp)
                 }
             }
         }
@@ -224,4 +231,9 @@ private fun ProposalQrAndShare(state: ProposalUiState, actions: ProposalActions)
         }
         Text("링크에 장소와 좌표가 포함돼요. 함께 이동할 사람에게 전달하세요", fontSize = 16.sp, lineHeight = 24.sp)
     }
+}
+
+internal fun proposalLabel(proposal: JourneyProposal): String = when (proposal) {
+    is ErrandProposal -> if (proposal.kind == VisitKind.PICKUP) "픽업" else "장보기"
+    is DropoffProposal -> "하차지 · ${proposal.passengerName}"
 }

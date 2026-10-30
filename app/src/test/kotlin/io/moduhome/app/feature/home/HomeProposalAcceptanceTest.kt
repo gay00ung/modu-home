@@ -22,9 +22,9 @@ class HomeProposalAcceptanceTest {
         .chooseNavigationPlace(NavigationPlaceRole.HOME, home))
 
     private fun inbox(value: ErrandProposal = proposal, status: ProposalReviewStatus = ProposalReviewStatus.PENDING) =
-        ErrandProposalInbox.restore(listOf(ProposalInboxEntry(value, status)))
+        JourneyProposalInbox.restore(listOf(ProposalInboxEntry(value, status)))
 
-    private fun approve(state: HomeUiState = initial, source: ErrandProposalInbox = inbox(), at: Long = now): HomeProposalApplyResult =
+    private fun approve(state: HomeUiState = initial, source: JourneyProposalInbox = inbox(), at: Long = now): HomeProposalApplyResult =
         state.approveProposal(source, proposal.id, proposal.revision, at, zone)
 
     private fun applied() = approve() as HomeProposalApplyResult.Applied
@@ -98,7 +98,7 @@ class HomeProposalAcceptanceTest {
 
     @Test fun successfulCommitStoresTheSameDraftBeforeItsApprovalReceipt() {
         var durable: HomeUiState? = null
-        var acknowledged: ErrandProposalInbox? = null
+        var acknowledged: JourneyProposalInbox? = null
         val change = applied()
         val result = HomeProposalCommitter({ durable = it; true }, {
             assertEquals(change.state, durable)
@@ -132,14 +132,14 @@ class HomeProposalAcceptanceTest {
     }
 
     @Test fun acceptingPrunesOnlyExpiredHistoryAndRefusesToDropLiveReceiptsAtCapacity() {
-        val all = (0 until ErrandProposalInbox.MAX_ENTRIES).map { index ->
+        val all = (0 until JourneyProposalInbox.MAX_ENTRIES).map { index ->
             HomeProposalAcceptance(proposal.copy(id = "history-$index"), now)
         }
         assertTrue(approve(initial.copy(acceptedProposals = all)) is HomeProposalApplyResult.Rejected)
         val expired = HomeProposalAcceptance(proposal.copy(id = "old-record", createdAtMillis = now - 10_000,
             expiresAtMillis = now - 1, deadlineAtMillis = null), now - 5000)
         val result = approve(initial.copy(acceptedProposals = all.dropLast(1) + expired)) as HomeProposalApplyResult.Applied
-        assertEquals(ErrandProposalInbox.MAX_ENTRIES, result.state.acceptedProposals.size)
+        assertEquals(JourneyProposalInbox.MAX_ENTRIES, result.state.acceptedProposals.size)
         assertFalse(result.state.acceptedProposals.any { it.proposal.id == expired.proposal.id })
     }
 

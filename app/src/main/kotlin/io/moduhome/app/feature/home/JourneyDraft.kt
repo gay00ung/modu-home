@@ -10,7 +10,8 @@ import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.navigation.NavigationPlan
 import io.moduhome.app.core.navigation.NavigationPoint
 import io.moduhome.app.core.navigation.verifiableNavigationWindow
-import io.moduhome.app.core.transfer.ErrandProposalInbox
+import io.moduhome.app.core.transfer.ErrandProposal
+import io.moduhome.app.core.transfer.JourneyProposalInbox
 import io.moduhome.app.core.transfer.ProposalApprovalResult
 import io.moduhome.app.core.transfer.ProposalReviewStatus
 import java.time.ZoneId
@@ -170,7 +171,7 @@ internal data class HomeUiState(
     val acceptedProposals: List<HomeProposalAcceptance> = emptyList(),
 ) {
     fun approveProposal(
-        inbox: ErrandProposalInbox,
+        inbox: JourneyProposalInbox,
         id: String,
         revision: Int,
         nowMillis: Long,
@@ -182,6 +183,7 @@ internal data class HomeUiState(
         if (progress != JourneyProgress()) return HomeProposalApplyResult.Rejected("입력 화면에서 제안을 반영해주세요")
         val entry = inbox.entries.firstOrNull { it.proposal.id == id && it.proposal.revision == revision }
             ?: return HomeProposalApplyResult.Rejected("제안이 바뀌었어요. 최신 내용을 다시 확인해주세요")
+        if (entry.proposal !is ErrandProposal) return HomeProposalApplyResult.Rejected("하차지 제안은 함께 귀가에서 확인해주세요")
         if (acceptedProposals.any { it.proposal == entry.proposal }) {
             return HomeProposalApplyResult.AlreadyApplied(reconcileProposalInbox(inbox))
         }
@@ -189,16 +191,16 @@ internal data class HomeUiState(
             return HomeProposalApplyResult.Rejected("이미 같은 버전이나 더 최신 제안을 반영했어요")
         }
         val retained = acceptedProposals.filter { it.proposal.id != id && it.proposal.expiresAtMillis > nowMillis }
-        if (retained.size >= ErrandProposalInbox.MAX_ENTRIES) {
+        if (retained.size >= JourneyProposalInbox.MAX_ENTRIES) {
             return HomeProposalApplyResult.Rejected("수락한 제안이 많아요. 유효시간이 지난 뒤 다시 시도해주세요")
         }
         return when (val approval = inbox.approve(id, revision, nowMillis)) {
             is ProposalApprovalResult.Rejected -> HomeProposalApplyResult.Rejected(approval.reason)
-            is ProposalApprovalResult.Approved -> when (val mapped = draft.withProposal(approval.proposal, zoneId)) {
+            is ProposalApprovalResult.Approved -> when (val mapped = draft.withProposal(entry.proposal, zoneId)) {
                 is ProposalDraftResult.Invalid -> HomeProposalApplyResult.Rejected(mapped.reason)
                 is ProposalDraftResult.Applied -> HomeProposalApplyResult.Applied(
                     copy(draft = mapped.draft, progress = JourneyProgress(), showErrors = false, routing = null,
-                        acceptedProposals = Collections.unmodifiableList(retained + HomeProposalAcceptance(approval.proposal, nowMillis))),
+                        acceptedProposals = Collections.unmodifiableList(retained + HomeProposalAcceptance(entry.proposal, nowMillis))),
                     approval.inbox,
                 )
             }
@@ -206,14 +208,14 @@ internal data class HomeUiState(
     }
 
     /** A durable receipt only repairs the exact pending version; it never reapplies its draft. */
-    fun reconcileProposalInbox(inbox: ErrandProposalInbox): ErrandProposalInbox {
+    fun reconcileProposalInbox(inbox: JourneyProposalInbox): JourneyProposalInbox {
         if (!validHomeProposalHistory(acceptedProposals)) return inbox
         val entries = inbox.entries.map { entry ->
             if (entry.status == ProposalReviewStatus.PENDING && acceptedProposals.any { it.proposal == entry.proposal }) {
                 entry.copy(status = ProposalReviewStatus.APPROVED)
             } else entry
         }
-        return if (entries == inbox.entries) inbox else ErrandProposalInbox.restore(entries)
+        return if (entries == inbox.entries) inbox else JourneyProposalInbox.restore(entries)
     }
 
     val routingMatchesDraft: Boolean get() = routing?.matches(draft) == true

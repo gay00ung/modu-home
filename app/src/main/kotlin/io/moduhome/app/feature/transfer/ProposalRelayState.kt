@@ -72,7 +72,7 @@ internal fun ProposalRelayState.expire(nowMillis: Long): ProposalRelayState? {
         operationInteraction = null,
         generation = generation + 1,
         message = if (nowMillis < 0) "기기 시각을 확인한 뒤 다시 연결해주세요"
-            else "연결 유효시간이 지났어요. 이미 받은 볼일은 보관돼요",
+            else "연결 유효시간이 지났어요. 이미 받은 제안은 보관돼요",
     )
 }
 

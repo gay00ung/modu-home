@@ -9,7 +9,8 @@ import io.moduhome.app.feature.home.VisitDraft
 import io.moduhome.app.feature.home.NavigationPlaces
 import io.moduhome.app.feature.home.RoutedJourneyEstimates
 import io.moduhome.app.core.navigation.NavigationPoint
-import io.moduhome.app.core.transfer.ErrandProposalInbox
+import io.moduhome.app.core.transfer.ErrandProposal
+import io.moduhome.app.core.transfer.JourneyProposalInbox
 import io.moduhome.app.data.transfer.ProposalDecodeResult
 import io.moduhome.app.data.transfer.ProposalLinkCodec
 import io.moduhome.app.feature.home.HomeProposalAcceptance
@@ -103,13 +104,13 @@ internal object JourneyJson {
     private fun readAccepted(json: JSONObject, nowMillis: Long): List<HomeProposalAcceptance> {
         if (!json.has("acceptedProposals")) return emptyList()
         val history = json.getJSONArray("acceptedProposals")
-        require(history.length() <= ErrandProposalInbox.MAX_ENTRIES)
+        require(history.length() <= JourneyProposalInbox.MAX_ENTRIES)
         return (0 until history.length()).map { index ->
             val item = history.getJSONObject(index)
             val created = exactLong(item, "createdAt")
             require(created >= 0)
             val decoded = ProposalLinkCodec.decode(item.getString("link"), created)
-            require(decoded is ProposalDecodeResult.Valid && decoded.proposal.createdAtMillis == created)
+            require(decoded is ProposalDecodeResult.Valid && decoded.proposal is ErrandProposal && decoded.proposal.createdAtMillis == created)
             val appliedAt = exactLong(item, "appliedAt")
             require(appliedAt <= nowMillis)
             HomeProposalAcceptance(decoded.proposal, appliedAt)

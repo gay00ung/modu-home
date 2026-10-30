@@ -18,7 +18,7 @@ import io.moduhome.app.core.shared.SharedJourneyProgress
 import io.moduhome.app.core.shared.SharedScheduledStop
 import io.moduhome.app.core.shared.currentWindow
 import io.moduhome.app.core.transfer.ErrandProposal
-import io.moduhome.app.core.transfer.ErrandProposalInbox
+import io.moduhome.app.core.transfer.JourneyProposalInbox
 import io.moduhome.app.core.transfer.ProposalInboxEntry
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -371,7 +371,7 @@ class SharedJourneySessionTest {
     @Test fun acceptingAProposalInvalidatesCachedRoutingAndRetainsPassengerConfirmations() {
         val proposal = ErrandProposal("proposal-001", 1, now, now + 3_600_000,
             VisitKind.GROCERIES, NavigationPoint("받은 장보기", 37.55, 127.05), 12, 2, false, now + 1_800_123)
-        val inbox = ErrandProposalInbox.restore(listOf(ProposalInboxEntry(proposal)))
+        val inbox = JourneyProposalInbox.restore(listOf(ProposalInboxEntry(proposal)))
         val input = SharedJourneySession(draft, routing = routing)
         val review = (input.reviewProposal(inbox, proposal.id, proposal.revision, now, zone) as SharedProposalReviewResult.Ready).review
         val applied = input.approveProposal(review, inbox, now + 1, zone) as SharedProposalApplyResult.Applied

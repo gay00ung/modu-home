@@ -263,7 +263,7 @@ class CompanionErrandDraftTest {
     }
 
     @Test fun aLocalDraftCreatesAPreviewWithoutAnInboxProposalAndPreservesTheSelectedPoint() {
-        val emptyInbox = ErrandProposalInbox.empty()
+        val emptyInbox = JourneyProposalInbox.empty()
         val draft = localDraft().copy(stayMinutes = "17", walkingMinutesOneWay = "4", ready = true,
             deadline = CompanionDeadlineChoice.TODAY, deadlineTime = "18:10")
         val issuedAt = now + 12_345

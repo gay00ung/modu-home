@@ -56,6 +56,7 @@ internal fun CompanionAddressPicker(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     editingAllowed: Boolean = true,
+    purpose: CompanionAddressPurpose = CompanionAddressPurpose.ERRAND,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val visibleCandidates = candidates.take(5)
@@ -71,7 +72,7 @@ internal fun CompanionAddressPicker(
         Column(Modifier.fillMaxSize().imePadding()) {
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("주소로 새 볼일", modifier = Modifier.weight(1f), fontSize = 24.sp, lineHeight = 32.sp,
+                Text(if (purpose == CompanionAddressPurpose.DROPOFF) "내 하차지 선택" else "주소로 새 볼일", modifier = Modifier.weight(1f), fontSize = 24.sp, lineHeight = 32.sp,
                     fontWeight = FontWeight.Bold)
                 TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 56.dp)) {
                     Text("닫기", fontSize = 16.sp)
@@ -112,7 +113,7 @@ internal fun CompanionAddressPicker(
             HorizontalDivider()
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (selectionValid) {
+                if (selectionValid && purpose == CompanionAddressPurpose.ERRAND) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(selected = kind == VisitKind.PICKUP, onClick = { onKind(VisitKind.PICKUP) },
                             enabled = editingAllowed && !loading,

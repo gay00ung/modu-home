@@ -30,6 +30,7 @@ internal fun CompanionHomeScreen(
     message: String?,
     onReadQr: () -> Unit,
     onCreateErrand: () -> Unit,
+    onCreateDropoff: () -> Unit,
     onOpenProposals: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -44,9 +45,9 @@ internal fun CompanionHomeScreen(
         ) {
             Text("모두 집으로 · 동승자", fontSize = 20.sp, lineHeight = 28.sp,
                 fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-            Text("들를 곳을\n차량으로 보내요", fontSize = 36.sp, lineHeight = 44.sp,
+            Text("내릴 곳과 볼일을\n함께 보내요", fontSize = 36.sp, lineHeight = 44.sp,
                 fontWeight = FontWeight.Bold)
-            Text("주소와 머무를 시간을 정하면 운전자가 귀가 계획에 함께 넣을 수 있어요",
+            Text("내 하차지나 들를 곳을 보내면 운전자가 모두의 귀가 순서를 함께 정해요",
                 fontSize = 18.sp, lineHeight = 28.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             HorizontalDivider()
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -60,6 +61,10 @@ internal fun CompanionHomeScreen(
                 Text(it, fontSize = 16.sp, lineHeight = 24.sp, color = MaterialTheme.colorScheme.primary)
             }
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = onCreateDropoff, enabled = !busy,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
+                    Text("내 하차지 보내기", fontSize = 18.sp, lineHeight = 26.sp)
+                }
                 Button(
                     onClick = if (connected) onCreateErrand else onReadQr,
                     enabled = !busy,

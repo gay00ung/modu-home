@@ -91,7 +91,7 @@ class JourneyJsonTest {
     @Test fun expiredAcceptanceRemainsHistoricalEvidence() {
         val restored = JourneyJson.decode(encoded(), fallback, proposal.expiresAtMillis + 1)
         assertEquals(listOf(receipt), restored.acceptedProposals)
-        val originalInbox = ErrandProposalInbox.restore(listOf(ProposalInboxEntry(proposal)))
+        val originalInbox = JourneyProposalInbox.restore(listOf(ProposalInboxEntry(proposal)))
         assertEquals(ProposalReviewStatus.APPROVED, restored.reconcileProposalInbox(originalInbox).entries.single().status)
     }
 
@@ -101,7 +101,7 @@ class JourneyJsonTest {
         val repeated = raw.getJSONArray("acceptedProposals").getJSONObject(0)
         raw.getJSONArray("acceptedProposals").put(repeated)
         assertTrue(decoded(raw).acceptedProposals.isEmpty())
-        val tooMany = state.copy(acceptedProposals = (0..ErrandProposalInbox.MAX_ENTRIES).map {
+        val tooMany = state.copy(acceptedProposals = (0..JourneyProposalInbox.MAX_ENTRIES).map {
             HomeProposalAcceptance(proposal.copy(id = "receipt-$it"), now)
         })
         assertNull(JourneyJson.encode(tooMany))

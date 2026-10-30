@@ -5,6 +5,7 @@ import io.moduhome.app.core.planning.VisitKind
 
 internal data class CompanionAddressState(
     val session: Long = 0L,
+    val purpose: CompanionAddressPurpose = CompanionAddressPurpose.ERRAND,
     val query: String = "",
     val candidates: List<AddressCandidate> = emptyList(),
     val selected: AddressCandidate? = null,
@@ -21,3 +22,5 @@ internal data class CompanionAddressState(
 
     override fun toString(): String = "CompanionAddressState(loading=$loading, address=redacted)"
 }
+
+internal enum class CompanionAddressPurpose { ERRAND, DROPOFF }

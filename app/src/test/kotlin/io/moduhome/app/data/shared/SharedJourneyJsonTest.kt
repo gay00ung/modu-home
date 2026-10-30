@@ -14,7 +14,7 @@ import io.moduhome.app.core.shared.DropoffVerification
 import io.moduhome.app.core.shared.SharedJourneyProgress
 import io.moduhome.app.core.shared.currentWindow
 import io.moduhome.app.core.transfer.ErrandProposal
-import io.moduhome.app.core.transfer.ErrandProposalInbox
+import io.moduhome.app.core.transfer.JourneyProposalInbox
 import io.moduhome.app.core.transfer.ProposalInboxEntry
 import io.moduhome.app.core.transfer.ProposalReviewStatus
 import io.moduhome.app.feature.shared.*
@@ -123,10 +123,10 @@ class SharedJourneyJsonTest {
         assertEquals(JourneyStage.INPUT, restored.progress.stage)
         assertEquals(listOf(receipt), restored.acceptedProposals)
         val other = proposal.copy(id = "proposal-002")
-        val pendingOther = ErrandProposalInbox.restore(listOf(ProposalInboxEntry(other)))
+        val pendingOther = JourneyProposalInbox.restore(listOf(ProposalInboxEntry(other)))
         val blocked = restored.reviewProposal(pendingOther, other.id, other.revision, now - 60_000, zone)
         assertTrue(blocked is SharedProposalReviewResult.Rejected)
-        val pendingOriginal = ErrandProposalInbox.restore(listOf(ProposalInboxEntry(proposal)))
+        val pendingOriginal = JourneyProposalInbox.restore(listOf(ProposalInboxEntry(proposal)))
         assertEquals(ProposalReviewStatus.APPROVED, restored.reconcileProposalInbox(pendingOriginal).entries.single().status)
         assertTrue(restored.reviewProposal(pendingOriginal, proposal.id, proposal.revision, now + 1, zone) is SharedProposalReviewResult.Rejected)
     }
@@ -190,7 +190,7 @@ class SharedJourneyJsonTest {
     @Test fun duplicateIdsAndOversizedHistoryAreRejectedOnWritingAndReading() {
         val duplicate = session.copy(acceptedProposals = listOf(receipt, receipt.copy(proposal = proposal.copy(revision = 3))))
         assertNull(SharedJourneyJson.encode(duplicate))
-        val history = List(ErrandProposalInbox.MAX_ENTRIES) { index ->
+        val history = List(JourneyProposalInbox.MAX_ENTRIES) { index ->
             receipt.copy(proposal = proposal.copy(id = "proposal-${index.toString().padStart(3, '0')}"))
         }
         val full = session.copy(acceptedProposals = history)

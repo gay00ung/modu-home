@@ -66,8 +66,16 @@ import io.moduhome.app.core.navigation.VehicleLocationResult
 import io.moduhome.app.core.vehicle.DrivingInteraction
 import io.moduhome.app.core.voice.*
 import io.moduhome.app.core.planning.VisitKind
-import io.moduhome.app.core.transfer.ErrandProposalInbox
+import io.moduhome.app.core.transfer.JourneyProposalInbox
 import io.moduhome.app.core.transfer.ErrandProposal
+import io.moduhome.app.core.transfer.JourneyProposal
+import io.moduhome.app.core.transfer.DropoffProposal
+import io.moduhome.app.core.transfer.CompanionDropoffDraft
+import io.moduhome.app.core.transfer.CompanionDropoffField
+import io.moduhome.app.core.transfer.CompanionDropoffResult
+import io.moduhome.app.feature.transfer.CompanionAddressPurpose
+import io.moduhome.app.feature.transfer.CompanionDropoffEditor
+import io.moduhome.app.feature.transfer.companionDropoffDraftSaver
 import io.moduhome.app.core.transfer.ProposalReviewStatus
 import io.moduhome.app.core.transfer.ProposalReceiveResult
 import io.moduhome.app.core.transfer.RelayDeliveryStatus
@@ -347,7 +355,7 @@ internal fun ModuHomeApp(
     var newJourneyConfirmation by remember { mutableStateOf<NewJourneyConfirmation?>(null) }
     val proposalPreferences = remember(context) { ProposalInboxPreferences(context) }
     val restoredProposals = remember(proposalPreferences) { proposalPreferences.load(System.currentTimeMillis()) }
-    var inbox by remember { mutableStateOf((restoredProposals as? ProposalInboxLoadResult.Loaded)?.inbox ?: ErrandProposalInbox.empty()) }
+    var inbox by remember { mutableStateOf((restoredProposals as? ProposalInboxLoadResult.Loaded)?.inbox ?: JourneyProposalInbox.empty()) }
     var proposalPanelOpen by rememberSaveable { mutableStateOf(false) }
     var proposalInput by remember { mutableStateOf("") }
     var proposalMessage by remember { mutableStateOf((restoredProposals as? ProposalInboxLoadResult.Failed)?.reason) }
@@ -357,7 +365,7 @@ internal fun ModuHomeApp(
     var generatingQr by remember { mutableStateOf(false) }
     var readingQr by remember { mutableStateOf(false) }
     var sharedProposalPanelOpen by remember { mutableStateOf(false) }
-    var selectedSharedProposal by remember { mutableStateOf<ErrandProposal?>(null) }
+    var selectedSharedProposal by remember { mutableStateOf<JourneyProposal?>(null) }
     var sharedProposalReview by remember { mutableStateOf<SharedProposalReview?>(null) }
     var sharedProposalInteraction by remember { mutableStateOf<DrivingInteraction?>(null) }
     var sharedProposalMessage by remember { mutableStateOf<String?>(null) }
@@ -370,11 +378,20 @@ internal fun ModuHomeApp(
     val draftSaver = remember {
         companionDraftSaver(received = { id, revision ->
             inbox.entries.firstOrNull { it.proposal.id == id && it.proposal.revision == revision &&
-                it.status == ProposalReviewStatus.PENDING }?.proposal
+                it.status == ProposalReviewStatus.PENDING }?.proposal as? ErrandProposal
         })
     }
     var companionDraft by rememberSaveable(stateSaver = draftSaver) { mutableStateOf<CompanionErrandDraft?>(null) }
     var preparedCompanion by rememberSaveable(stateSaver = draftSaver) { mutableStateOf<CompanionErrandDraft?>(null) }
+    val dropoffSaver = remember {
+        companionDropoffDraftSaver(received = { id, revision ->
+            inbox.entries.firstOrNull { it.proposal.id == id && it.proposal.revision == revision &&
+                it.status == ProposalReviewStatus.PENDING }?.proposal as? DropoffProposal
+        })
+    }
+    var dropoffDraft by rememberSaveable(stateSaver = dropoffSaver) { mutableStateOf<CompanionDropoffDraft?>(null) }
+    var preparedDropoff by rememberSaveable(stateSaver = dropoffSaver) { mutableStateOf<CompanionDropoffDraft?>(null) }
+    var dropoffErrors by remember { mutableStateOf<Map<CompanionDropoffField, String>>(emptyMap()) }
     var companionErrors by remember { mutableStateOf<Map<CompanionErrandField, String>>(emptyMap()) }
     var companionMessage by remember { mutableStateOf<String?>(null) }
     fun canOpenCompanion(): Boolean = !isVehicle && restrictions.state.value.editingAllowed &&
@@ -432,6 +449,8 @@ internal fun ModuHomeApp(
         }
     }
     fun dismissCompanion() {
+        dropoffDraft = null
+        dropoffErrors = emptyMap()
         companionDraft = null
         companionErrors = emptyMap()
         companionMessage = null
@@ -503,9 +522,9 @@ internal fun ModuHomeApp(
         resumeConfirmation = null
         visitCompletionConfirmation = null
     }
-    fun saveInbox(next: ErrandProposalInbox): Boolean {
+    fun saveInbox(next: JourneyProposalInbox): Boolean {
         if (!proposalPreferences.save(next)) {
-            proposalMessage = "받은 볼일을 저장하지 못했어요. 다시 시도해주세요"
+            proposalMessage = "받은 제안을 저장하지 못했어요. 다시 시도해주세요"
             sharedProposalMessage = proposalMessage
             if (sharedMode) sharedState = sharedState.copy(message = proposalMessage, error = true)
             return false
@@ -528,8 +547,8 @@ internal fun ModuHomeApp(
                     proposalMessage = "제안을 받았어요. 장소와 시간을 확인해주세요"
                     if (sharedMode) sharedState = sharedState.copy(
                         message = if (sharedState.session.progress.stage == JourneyStage.INPUT)
-                            "볼일 제안을 받았어요. 받은 볼일에서 확인해주세요"
-                        else "볼일 제안을 보관했어요. 다음 계획에서 확인할 수 있어요", error = false,
+                            "제안을 받았어요. 받은 제안에서 확인해주세요"
+                        else "제안을 보관했어요. 다음 계획에서 확인할 수 있어요", error = false,
                     )
                     true
                 }
@@ -575,8 +594,8 @@ internal fun ModuHomeApp(
         onMessageReceived = { message: RelayMessage ->
             val receipt = receiveRelayProposal(inbox, message, System.currentTimeMillis(), ::saveInbox)
             if (receipt.newProposal) {
-                val text = if (sharedState.session.progress.stage == JourneyStage.INPUT) "볼일 제안을 받았어요. 받은 볼일에서 확인해주세요"
-                    else "볼일 제안을 보관했어요. 다음 계획에서 확인할 수 있어요"
+                val text = if (sharedState.session.progress.stage == JourneyStage.INPUT) "제안을 받았어요. 받은 제안에서 확인해주세요"
+                    else "제안을 보관했어요. 다음 계획에서 확인할 수 있어요"
                 if (sharedMode) sharedState = sharedState.copy(message = text, error = false)
                 else navigationMessage = text
             }
@@ -685,15 +704,16 @@ internal fun ModuHomeApp(
             }
         }
     }
-    fun openCompanionAddress() {
+    fun openCompanionAddress(purpose: CompanionAddressPurpose = CompanionAddressPurpose.ERRAND) {
         if (!canEditCompanion()) return
         exportLink = null
         exportName = null
         preparedCompanion = null
+        preparedDropoff = null
         proposalMessage = null
         dismissCompanion()
         dismissAddressPicker()
-        addressPicker = CompanionAddressState(session = addressRequest)
+        addressPicker = CompanionAddressState(session = addressRequest, purpose = purpose)
     }
     LaunchedEffect(tripResult, guidanceResult) {
         tripNow = System.currentTimeMillis()
@@ -1144,6 +1164,12 @@ internal fun ModuHomeApp(
                     openCompanionAddress()
                 }
             },
+            onCreateDropoff = {
+                if (canOpenCompanion()) {
+                    proposalPanelOpen = true
+                    openCompanionAddress(CompanionAddressPurpose.DROPOFF)
+                }
+            },
             onOpenProposals = { if (canOpenCompanion()) proposalPanelOpen = true },
             modifier = Modifier.fillMaxSize(),
         )
@@ -1261,7 +1287,7 @@ internal fun ModuHomeApp(
                             val saved = updateShared(SharedJourneyFlowState(
                                 session = applied.session,
                                 operationRevision = sharedState.operationRevision + 1,
-                                message = "받은 볼일을 반영했어요. 계획을 비교해 순서를 골라주세요",
+                                message = "받은 제안을 반영했어요. 계획을 비교해 순서를 골라주세요",
                             ))
                             if (saved) {
                                 saveInbox(applied.inbox)
@@ -1280,6 +1306,16 @@ internal fun ModuHomeApp(
                         val next = inbox.entries.firstOrNull { it.status == ProposalReviewStatus.PENDING }
                         if (next != null) selectSharedProposal(next.proposal.id, next.proposal.revision)
                     }
+                }
+            },
+            onChoosePassenger = { id ->
+                if (canReviewSharedProposal() && sharedProposalReview == visibleReview && visibleInteraction == restrictions.state.value) {
+                    sharedProposalReview = visibleReview?.forPassenger(id)
+                }
+            },
+            onConfirmDoorstep = { confirmed ->
+                if (canReviewSharedProposal() && sharedProposalReview == visibleReview && visibleInteraction == restrictions.state.value) {
+                    sharedProposalReview = visibleReview?.confirmDoorstep(confirmed)
                 }
             },
             onDismiss = ::dismissSharedProposals,
@@ -1361,11 +1397,15 @@ internal fun ModuHomeApp(
                         addressPicker = addressPicker?.copy(kind = kind)
                     }
                 },
+                purpose = currentAddressPicker.purpose,
                 onConfirm = {
                     val current = addressPicker
                     val candidate = current?.confirmedCandidate
                     if (canEditCompanion() && current != null && current.session == currentAddressPicker.session && candidate != null) {
-                        companionDraft = CompanionErrandDraft.forAddress(candidate.point, current.kind,
+                        if (current.purpose == CompanionAddressPurpose.DROPOFF) {
+                            dropoffDraft = CompanionDropoffDraft.forAddress(candidate.point, System.currentTimeMillis(), ZoneId.systemDefault())
+                            dropoffErrors = emptyMap()
+                        } else companionDraft = CompanionErrandDraft.forAddress(candidate.point, current.kind,
                             System.currentTimeMillis(), ZoneId.systemDefault())
                         companionErrors = emptyMap()
                         companionMessage = null
@@ -1398,12 +1438,13 @@ internal fun ModuHomeApp(
                         val received = (editedCompanion.source as? CompanionErrandSource.Received)?.proposal
                         val current = received?.let { source -> inbox.entries.firstOrNull { it.proposal.id == source.id } }
                         if (received != null && (current?.proposal != received || current.status != ProposalReviewStatus.PENDING)) {
-                            companionMessage = "받은 볼일이 바뀌었어요. 닫고 최신 내용을 다시 선택해주세요"
+                            companionMessage = "받은 제안이 바뀌었어요. 닫고 최신 내용을 다시 선택해주세요"
                         } else when (val result = editedCompanion.createProposal(System.currentTimeMillis(), ZoneId.systemDefault())) {
                             is CompanionErrandResult.Invalid -> companionErrors = result.errors
                             is CompanionErrandResult.Created -> {
                                 exportName = result.proposal.place.name
                                 exportLink = ProposalLinkCodec.encode(result.proposal)
+                                preparedDropoff = null
                                 preparedCompanion = editedCompanion
                                 proposalMessage = "보낼 조건을 확인해주세요. 아직 차량으로 보내지 않았어요"
                                 dismissCompanion()
@@ -1416,7 +1457,42 @@ internal fun ModuHomeApp(
             )
         }
     }
-    if (!sharedMode && proposalPanelOpen && editingAllowed && companionDraft == null && addressPicker == null) {
+    val editedDropoff = dropoffDraft
+    if (!isVehicle && editedDropoff != null && proposalPanelOpen && editingAllowed && relayState.candidate == null) {
+        val maximumHeight = LocalWindowInfo.current.containerDpSize.height * 0.90f
+        Dialog(onDismissRequest = ::dismissCompanion, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            CompanionDropoffEditor(editedDropoff, dropoffErrors, !relayState.busy,
+                onDraftChange = { next ->
+                    if (canEditCompanion() && dropoffDraft == editedDropoff && next.place == editedDropoff.place && next.source == editedDropoff.source) {
+                        dropoffDraft = next
+                        dropoffErrors = emptyMap()
+                    }
+                },
+                onPrepare = {
+                    if (canEditCompanion() && dropoffDraft == editedDropoff) {
+                        val source = editedDropoff.source
+                        val current = source?.let { value -> inbox.entries.firstOrNull { it.proposal.id == value.id } }
+                        if (source != null && (current?.proposal != source || current.status != ProposalReviewStatus.PENDING)) {
+                            dropoffErrors = mapOf(CompanionDropoffField.PLACE to "받은 하차지가 바뀌었어요. 최신 내용을 다시 선택해주세요")
+                        } else when (val result = editedDropoff.createProposal(System.currentTimeMillis(), ZoneId.systemDefault())) {
+                            is CompanionDropoffResult.Invalid -> dropoffErrors = result.errors
+                            is CompanionDropoffResult.Created -> {
+                                preparedCompanion = null
+                                preparedDropoff = editedDropoff
+                                exportName = result.proposal.place.name
+                                exportLink = ProposalLinkCodec.encode(result.proposal)
+                                proposalMessage = "보낼 하차지와 시간을 확인해주세요. 아직 차량으로 보내지 않았어요"
+                                dismissCompanion()
+                            }
+                        }
+                    }
+                },
+                onDismiss = ::dismissCompanion,
+                modifier = Modifier.widthIn(max = 620.dp).fillMaxWidth(0.92f).heightIn(max = maximumHeight),
+            )
+        }
+    }
+    if (!sharedMode && proposalPanelOpen && editingAllowed && companionDraft == null && dropoffDraft == null && addressPicker == null) {
         val exportedProposal = exportLink?.let { link ->
             (ProposalLinkCodec.decode(link, System.currentTimeMillis()) as? ProposalDecodeResult.Valid)?.proposal
         }
@@ -1440,7 +1516,7 @@ internal fun ModuHomeApp(
                     exportedProposal != null && relayState.delivery != RelayDeliveryStatus.QUEUED &&
                     (!sameRelayPayload || relayDelivery == null),
                 canEdit = !isVehicle && !relayState.busy && relayState.candidate == null,
-                canEditPrepared = !isVehicle && preparedCompanion != null && !relayState.busy && relayState.candidate == null)
+                canEditPrepared = !isVehicle && (preparedCompanion != null || preparedDropoff != null) && !relayState.busy && relayState.candidate == null)
         val proposalActions = ProposalActions(
                 onInput = { proposalInput = it.take(ProposalLinkCodec.MAX_LINK_LENGTH + 1) },
                 onReceive = { receiveAppLink(proposalInput) },
@@ -1479,6 +1555,7 @@ internal fun ModuHomeApp(
                         if (proposal == null) proposalMessage = "연결된 장소와 체류·도보·마감 시간을 확인해주세요"
                         else {
                             preparedCompanion = null
+                            preparedDropoff = null
                             exportName = proposal.place.name
                             exportLink = ProposalLinkCodec.encode(proposal)
                             proposalMessage = "제안을 만들었어요. 차량으로 보내거나 QR과 링크로 전달할 수 있어요"
@@ -1509,6 +1586,10 @@ internal fun ModuHomeApp(
                 onDisconnectVehicle = relayActions.disconnectSender,
                 onEditPrepared = {
                     if (canEditCompanion()) {
+                        preparedDropoff?.let { previous ->
+                            dropoffDraft = previous
+                            dropoffErrors = emptyMap()
+                        }
                         preparedCompanion?.let { previous ->
                             companionDraft = previous
                             companionErrors = emptyMap()
@@ -1521,10 +1602,27 @@ internal fun ModuHomeApp(
                         exportLink = null
                         exportName = null
                         preparedCompanion = null
+                        preparedDropoff = null
                         proposalMessage = null
                     }
                 },
-                onCreateFromAddress = ::openCompanionAddress,
+                onCreateFromAddress = { openCompanionAddress() },
+                onReviewDropoff = { id, revision ->
+                    if (isVehicle && restrictions.state.value.editingAllowed && !sending && !reading && !estimating && !planning &&
+                        state.progress.stage in setOf(JourneyStage.INPUT, JourneyStage.COMPLETE)) {
+                        if (sharedState.session.progress.stage != JourneyStage.INPUT) {
+                            proposalMessage = "진행 중인 함께 귀가를 마친 뒤 하차지를 반영해주세요"
+                        } else if (sharedPreferences.selectMode(true)) {
+                            dismissPicker()
+                            dismissVoice()
+                            proposalPanelOpen = false
+                            detailsOpen = false
+                            sharedMode = true
+                            openSharedProposals()
+                            selectSharedProposal(id, revision)
+                        } else proposalMessage = "화면 선택을 저장하지 못했어요"
+                    }
+                },
                 onEdit = { id, revision ->
                     if (canEditCompanion()) {
                         val source = inbox.entries.firstOrNull {
@@ -1532,10 +1630,16 @@ internal fun ModuHomeApp(
                         }?.proposal
                         val now = System.currentTimeMillis()
                         val unavailable = if (now < 0) "기기의 날짜와 시간을 확인해주세요" else source?.unavailableReason(now)
-                        if (source == null) proposalMessage = "받은 볼일이 바뀌었어요. 최신 내용을 다시 선택해주세요"
+                        if (source == null) proposalMessage = "받은 제안이 바뀌었어요. 최신 내용을 다시 선택해주세요"
                         else if (unavailable != null) proposalMessage = unavailable
                         else {
-                            companionDraft = CompanionErrandDraft.from(source, now, ZoneId.systemDefault())
+                            when (source) {
+                                is ErrandProposal -> companionDraft = CompanionErrandDraft.from(source, now, ZoneId.systemDefault())
+                                is DropoffProposal -> {
+                                    dropoffDraft = CompanionDropoffDraft.from(source, now, ZoneId.systemDefault())
+                                    dropoffErrors = emptyMap()
+                                }
+                            }
                             companionErrors = emptyMap()
                             companionMessage = null
                         }

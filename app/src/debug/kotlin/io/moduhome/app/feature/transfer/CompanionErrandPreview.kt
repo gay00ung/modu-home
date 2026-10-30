@@ -23,7 +23,7 @@ import io.moduhome.app.core.transfer.CompanionErrandDraft
 import io.moduhome.app.core.transfer.CompanionErrandField
 import io.moduhome.app.core.transfer.CompanionErrandResult
 import io.moduhome.app.core.transfer.ErrandProposal
-import io.moduhome.app.core.transfer.ErrandProposalInbox
+import io.moduhome.app.core.transfer.JourneyProposalInbox
 import io.moduhome.app.data.transfer.ProposalLinkCodec
 import io.moduhome.app.ui.theme.ModuHomeTheme
 import java.time.ZoneId
@@ -67,7 +67,7 @@ fun CompanionErrandEditorPreview() {
         exported?.let { proposal ->
             ProposalContent(
                 state = ProposalUiState(
-                    inbox = ErrandProposalInbox.empty(),
+                    inbox = JourneyProposalInbox.empty(),
                     message = "화면 확인용 예시예요. 실제 전송은 하지 않아요",
                     exportLink = ProposalLinkCodec.encode(proposal),
                     exportName = proposal.place.name,

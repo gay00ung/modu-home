@@ -12,7 +12,8 @@ import io.moduhome.app.core.shared.AccessCheck
 import io.moduhome.app.core.shared.DropoffVerification
 import io.moduhome.app.core.shared.SharedJourneyProgress
 import io.moduhome.app.core.transfer.ErrandProposal
-import io.moduhome.app.core.transfer.ErrandProposalInbox
+import io.moduhome.app.core.transfer.DropoffProposal
+import io.moduhome.app.core.transfer.JourneyProposalInbox
 import io.moduhome.app.feature.shared.SharedErrandDraft
 import io.moduhome.app.feature.shared.SharedGuidanceWindowEstimate
 import io.moduhome.app.feature.shared.SharedJourneyDraft
@@ -57,28 +58,41 @@ internal object SharedJourneyJson {
         val accepted = JSONArray()
         history.forEach { record ->
             val proposal = record.proposal
-            accepted.put(JSONObject().put("appliedAt", record.appliedAtMillis).put("proposal", JSONObject()
-                .put("id", proposal.id).put("revision", proposal.revision).put("createdAt", proposal.createdAtMillis)
-                .put("expiresAt", proposal.expiresAtMillis).put("kind", proposal.kind.name).put("place", writePoint(proposal.place))
-                .put("stay", proposal.stayMinutes).put("walking", proposal.walkingMinutesOneWay).put("ready", proposal.ready)
-                .put("deadline", proposal.deadlineAtMillis)))
+            val value = JSONObject().put("id", proposal.id).put("revision", proposal.revision)
+                .put("createdAt", proposal.createdAtMillis).put("expiresAt", proposal.expiresAtMillis)
+                .put("place", writePoint(proposal.place)).put("deadline", proposal.deadlineAtMillis)
+            when (proposal) {
+                is ErrandProposal -> value.put("kind", proposal.kind.name).put("stay", proposal.stayMinutes)
+                    .put("walking", proposal.walkingMinutesOneWay).put("ready", proposal.ready)
+                is DropoffProposal -> value.put("kind", "DROPOFF").put("passenger", proposal.passengerName)
+            }
+            accepted.put(JSONObject().put("appliedAt", record.appliedAtMillis).put("proposal", value)
+                .apply { record.passengerId?.let { put("passengerId", it) } })
         }
         return accepted
     }
 
     private fun readAccepted(json: JSONObject): List<SharedProposalAcceptance> {
         if (!json.has("acceptedProposals")) return emptyList()
-        val accepted = array(json, "acceptedProposals", 0..ErrandProposalInbox.MAX_ENTRIES)
+        val accepted = array(json, "acceptedProposals", 0..JourneyProposalInbox.MAX_ENTRIES)
         return (0 until accepted.length()).map { index ->
             val record = accepted.getJSONObject(index)
             val proposal = record.getJSONObject("proposal")
-            SharedProposalAcceptance(ErrandProposal(
+            val kind = text(proposal, "kind", 32)
+            val value = if (kind == "DROPOFF") DropoffProposal(
                 id = text(proposal, "id", 64), revision = integer(proposal, "revision"),
                 createdAtMillis = long(proposal, "createdAt"), expiresAtMillis = long(proposal, "expiresAt"),
-                kind = VisitKind.valueOf(text(proposal, "kind", 32)), place = readPoint(proposal.getJSONObject("place")),
+                place = readPoint(proposal.getJSONObject("place")), passengerName = text(proposal, "passenger", 32),
+                deadlineAtMillis = optionalLong(proposal, "deadline"),
+            ) else ErrandProposal(
+                id = text(proposal, "id", 64), revision = integer(proposal, "revision"),
+                createdAtMillis = long(proposal, "createdAt"), expiresAtMillis = long(proposal, "expiresAt"),
+                kind = VisitKind.valueOf(kind), place = readPoint(proposal.getJSONObject("place")),
                 stayMinutes = integer(proposal, "stay"), walkingMinutesOneWay = integer(proposal, "walking"),
                 ready = boolean(proposal, "ready"), deadlineAtMillis = optionalLong(proposal, "deadline"),
-            ), long(record, "appliedAt"))
+            )
+            SharedProposalAcceptance(value, long(record, "appliedAt"),
+                if (record.has("passengerId")) text(record, "passengerId", 64) else null)
         }.also { require(validSharedProposalHistory(it)) }
     }
 

@@ -7,7 +7,7 @@ import io.moduhome.app.core.shared.AccessCheck
 import io.moduhome.app.core.shared.DropoffVerification
 import io.moduhome.app.core.shared.SharedJourneyProgress
 import io.moduhome.app.core.transfer.ErrandProposal
-import io.moduhome.app.core.transfer.ErrandProposalInbox
+import io.moduhome.app.core.transfer.JourneyProposalInbox
 import io.moduhome.app.core.transfer.ProposalInboxEntry
 import io.moduhome.app.core.transfer.ProposalReviewStatus
 import org.junit.Assert.*
@@ -32,7 +32,7 @@ class SharedProposalMappingTest {
     )
     private val session get() = SharedJourneySession(draft)
     private fun inbox(value: ErrandProposal = proposal, status: ProposalReviewStatus = ProposalReviewStatus.PENDING) =
-        ErrandProposalInbox.restore(listOf(ProposalInboxEntry(value, status)))
+        JourneyProposalInbox.restore(listOf(ProposalInboxEntry(value, status)))
     private fun review(current: SharedJourneySession = session, value: ErrandProposal = proposal, at: Long = now): SharedProposalReview =
         (current.reviewProposal(inbox(value), value.id, value.revision, at, zone) as SharedProposalReviewResult.Ready).review
 
@@ -69,7 +69,7 @@ class SharedProposalMappingTest {
             assertTrue(session.reviewProposal(inbox(status = status), proposal.id, proposal.revision, now, zone) is SharedProposalReviewResult.Rejected)
         }
         assertTrue(session.reviewProposal(inbox(), proposal.id, 1, now, zone) is SharedProposalReviewResult.Rejected)
-        assertTrue(session.reviewProposal(ErrandProposalInbox.empty(), proposal.id, 2, now, zone) is SharedProposalReviewResult.Rejected)
+        assertTrue(session.reviewProposal(JourneyProposalInbox.empty(), proposal.id, 2, now, zone) is SharedProposalReviewResult.Rejected)
     }
 
     @Test fun approvalRejectsChangedInputActiveStageAndAChangedOriginalProposal() {
@@ -85,7 +85,7 @@ class SharedProposalMappingTest {
             assertTrue(initial.approveProposal(preview, inbox(different), now + 1, zone) is SharedProposalApplyResult.Rejected)
         }
         assertTrue(initial.approveProposal(preview, inbox(status = ProposalReviewStatus.APPROVED), now + 1, zone) is SharedProposalApplyResult.Rejected)
-        assertTrue(initial.approveProposal(preview, ErrandProposalInbox.empty(), now + 1, zone) is SharedProposalApplyResult.Rejected)
+        assertTrue(initial.approveProposal(preview, JourneyProposalInbox.empty(), now + 1, zone) is SharedProposalApplyResult.Rejected)
     }
 
     @Test fun reviewsDefensivelyCopyListsSoLaterMutationCannotChangeTheApprovedInput() {
@@ -155,12 +155,12 @@ class SharedProposalMappingTest {
     }
 
     @Test fun historyCapacityNeverEvictsUnexpiredReceiptsAndStillAllowsALaterRevision() {
-        val history = List(ErrandProposalInbox.MAX_ENTRIES) { index ->
+        val history = List(JourneyProposalInbox.MAX_ENTRIES) { index ->
             SharedProposalAcceptance(proposal.copy(id = "accepted-${index.toString().padStart(3, '0')}"), now)
         }
         val current = session.copy(acceptedProposals = history)
         assertTrue(current.reviewProposal(inbox(), proposal.id, proposal.revision, now, zone) is SharedProposalReviewResult.Rejected)
-        val replacement = history.first().proposal.copy(revision = 3)
+        val replacement = (history.first().proposal as ErrandProposal).copy(revision = 3)
         val applied = current.approveProposal(review(current, replacement), inbox(replacement), now + 1, zone) as SharedProposalApplyResult.Applied
         assertEquals(20, applied.session.acceptedProposals.size)
         assertEquals(1, applied.session.acceptedProposals.count { it.proposal.id == replacement.id })

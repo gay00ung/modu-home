@@ -10,6 +10,7 @@ import com.google.zxing.ReaderException
 import com.google.zxing.WriterException
 import com.google.zxing.common.BitMatrix
 import com.google.zxing.common.HybridBinarizer
+import com.google.zxing.multi.qrcode.QRCodeMultiReader
 import com.google.zxing.qrcode.QRCodeReader
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
@@ -82,15 +83,26 @@ internal object ProposalQrPayload {
         } else pixels
         val source = RGBLuminanceSource(width, height, opaque)
         val hints = mapOf(DecodeHintType.TRY_HARDER to true, DecodeHintType.CHARACTER_SET to Charsets.UTF_8.name())
+        val decoded = linkedSetOf<String>()
         for (candidate in listOf(source, source.invert())) {
-            try {
-                val text = QRCodeReader().decode(BinaryBitmap(HybridBinarizer(candidate)), hints).text
-                if (text.isNotBlank() && text.length <= ProposalLinkCodec.MAX_LINK_LENGTH) return text
+            val bitmap = BinaryBitmap(HybridBinarizer(candidate))
+            val results = try {
+                QRCodeMultiReader().decodeMultiple(bitmap, hints).toList()
             } catch (_: ReaderException) {
-                // A QR can be light on dark. Try the inverse after a normal decode fails.
+                emptyList()
+            }
+            val texts = if (results.isNotEmpty()) results.map { it.text } else {
+                // Preserve single-code recognition when the multi-code detector cannot locate it.
+                try { listOf(QRCodeReader().decode(bitmap, hints).text) }
+                catch (_: ReaderException) { emptyList() }
+            }
+            for (text in texts) {
+                if (text.isNotBlank() && text.length <= ProposalLinkCodec.MAX_LINK_LENGTH) decoded += text
+                if (decoded.size > 1) return null
             }
         }
-        return null
+        // More than one distinct payload must never silently select another car or proposal.
+        return decoded.singleOrNull()
     }
 
     private fun compositeOnWhite(color: Int): Int {

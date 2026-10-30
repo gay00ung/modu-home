@@ -1,5 +1,10 @@
 package io.moduhome.app.data.transfer
 
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.common.BitMatrix
+import com.google.zxing.qrcode.QRCodeWriter
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import io.moduhome.app.core.navigation.NavigationPoint
 import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.transfer.ErrandProposal
@@ -66,6 +71,49 @@ class ProposalQrPayloadTest {
         val decoded = ProposalQrPayload.decode(ProposalQrPayload.pixels(qr), qr.width, qr.height)
         assertNotNull(decoded)
         assertTrue(ProposalLinkCodec.decode(checkNotNull(decoded), now) is ProposalDecodeResult.Invalid)
+    }
+
+    @Test fun aSmallQrInsideDecorativeFinderPatternsStillDecodes() {
+        val link = "https://example.invalid/qr?value=" + "abcdef".repeat(80)
+        val qr = QRCodeWriter().encode(link, BarcodeFormat.QR_CODE, 256, 256, mapOf(
+            EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M, EncodeHintType.MARGIN to 4,
+        ))
+        val width = 2_048
+        val pixels = IntArray(width * 1_152) { -1 }
+        draw(qr, pixels, width, 1_150, 200)
+        for ((left, top) in listOf(100 to 100, 900 to 100, 100 to 900)) {
+            for (y in 0 until 28) for (x in 0 until 28) {
+                val u = x / 4
+                val v = y / 4
+                val black = u == 0 || u == 6 || v == 0 || v == 6 || (u in 2..4 && v in 2..4)
+                pixels[(top + y) * width + left + x] = if (black) -0x1000000 else -1
+            }
+        }
+        assertEquals(link, ProposalQrPayload.decode(pixels, width, 1_152))
+    }
+
+    @Test fun differentQrPayloadsInOneImageRequireTheUserToChooseAnotherImage() {
+        val first = checkNotNull(ProposalQrPayload.encode("https://example.invalid/first"))
+        val second = checkNotNull(ProposalQrPayload.encode("https://example.invalid/second"))
+        val pixels = IntArray(1_600 * 800) { -1 }
+        draw(first, pixels, 1_600, 16, 16)
+        draw(second, pixels, 1_600, 816, 16)
+        assertNull(ProposalQrPayload.decode(pixels, 1_600, 800))
+    }
+
+    @Test fun duplicateCopiesOfTheSameQrRemainUnambiguous() {
+        val link = "https://example.invalid/same"
+        val qr = checkNotNull(ProposalQrPayload.encode(link))
+        val pixels = IntArray(1_600 * 800) { -1 }
+        draw(qr, pixels, 1_600, 16, 16)
+        draw(qr, pixels, 1_600, 816, 16)
+        assertEquals(link, ProposalQrPayload.decode(pixels, 1_600, 800))
+    }
+
+    private fun draw(qr: BitMatrix, pixels: IntArray, width: Int, left: Int, top: Int) {
+        for (y in 0 until qr.height) for (x in 0 until qr.width) {
+            pixels[(top + y) * width + left + x] = if (qr[x, y]) -0x1000000 else -1
+        }
     }
 
     @Test fun invalidImageSizesAndPixelBuffersAreRejectedBeforeAllocation() {

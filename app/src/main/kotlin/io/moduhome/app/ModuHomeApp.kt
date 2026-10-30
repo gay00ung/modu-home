@@ -698,7 +698,7 @@ internal fun ModuHomeApp(
             scope.launch {
                 try {
                     val link = readProposalQr(context.contentResolver, uri)
-                    if (link == null) proposalMessage = "이미지에서 QR을 읽지 못했어요. 제안 링크를 붙여넣어주세요"
+                    if (link == null) proposalMessage = "QR 하나가 선명하게 보이도록 잘라 다시 선택해주세요"
                     else receiveAppLink(link)
                 } finally { readingQr = false }
             }
@@ -1155,6 +1155,7 @@ internal fun ModuHomeApp(
             onReadQr = {
                 if (canOpenCompanion() && !readingQr) {
                     proposalPanelOpen = true
+                    proposalMessage = null
                     qrPicker.launch("image/*")
                 }
             },
@@ -1525,7 +1526,7 @@ internal fun ModuHomeApp(
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     proposalInput = clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty().take(ProposalLinkCodec.MAX_LINK_LENGTH + 1)
                 },
-                onReadQr = { qrPicker.launch("image/*") },
+                onReadQr = { proposalMessage = null; qrPicker.launch("image/*") },
                 onApprove = { id, revision ->
                     if (restrictions.state.value.editingAllowed && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
                         state.progress.stage == JourneyStage.INPUT && !sending && !reading && !estimating && !planning && !relayState.busy) {

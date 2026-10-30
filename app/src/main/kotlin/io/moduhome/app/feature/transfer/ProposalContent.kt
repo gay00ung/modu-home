@@ -6,6 +6,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
@@ -82,7 +83,11 @@ internal fun ProposalContent(state: ProposalUiState, actions: ProposalActions, m
 
 @Composable
 private fun ProposalListContent(state: ProposalUiState, actions: ProposalActions) {
-    Column(Modifier.padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    val scroll = rememberScrollState()
+    LaunchedEffect(state.message) {
+        if (state.message != null) scroll.animateScrollTo(0)
+    }
+    Column(Modifier.padding(24.dp).verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("함께 정하는 볼일", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             TextButton(onClick = actions.onDismiss) { Text("닫기") }

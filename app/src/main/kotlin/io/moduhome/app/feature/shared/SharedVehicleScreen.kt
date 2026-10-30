@@ -413,7 +413,7 @@ private fun SharedActive(
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     SharedCaption("차량 내비 기준")
                     VehicleMetric(state.arrivalLabel(), state.arrivalClock(arrival.readyAtMillis))
-                    SharedCaption("남은 주행 ${arrival.remainingDrivingMinutes(state.guidanceNowMillis)}분")
+                    SharedCaption("내비 주행 ${arrival.drivingMinutes}분")
                 }
             } else VehicleMetric("정차 완료", "${state.completedStops}/${plan.stops.size}곳", Modifier.weight(1f))
         }

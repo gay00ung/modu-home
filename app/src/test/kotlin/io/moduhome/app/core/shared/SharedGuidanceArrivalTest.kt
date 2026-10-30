@@ -32,7 +32,7 @@ class SharedGuidanceArrivalTest {
         assertEquals(at("2026-10-30T20:06:00"), value.readyAtMillis)
         assertEquals(21L, value.lateMinutes)
         assertEquals(27L, value.planDelayMinutes)
-        assertEquals(47L, value.remainingDrivingMinutes(departure + 60_000))
+        assertEquals(48L, value.drivingMinutes)
     }
 
     @Test fun selectsTheFirstWaypointWithoutAddingCumulativeMetricsTogether() {
@@ -144,7 +144,7 @@ class SharedGuidanceArrivalTest {
         assertEquals(at("2026-10-30T19:47:20"), first.readyAtMillis)
         assertEquals(1L, first.lateMinutes)
         assertEquals(first.readyAtMillis, later.readyAtMillis)
-        assertEquals(29L, later.remainingDrivingMinutes(departure + 40_000))
+        assertEquals(30L, later.drivingMinutes)
     }
 
     private fun plan(stops: List<SharedScheduledStop>, plannedArrival: Int = 1_179) = SharedJourneyPlan(

@@ -20,10 +20,7 @@ internal class SharedGuidanceArrival private constructor(
     val lateMinutes: Long get() = deadlineAtMillis?.let { minutesAbove(readyAtMillis, it) } ?: 0
     val planDelayMinutes: Long get() = plannedReadyAtMillis?.let { minutesAbove(readyAtMillis, it) } ?: 0
 
-    fun remainingDrivingMinutes(nowMillis: Long): Long {
-        require(nowMillis >= 0)
-        return minutesAbove(drivingArrivalAtMillis, nowMillis)
-    }
+    val drivingMinutes: Long get() = minutesAbove(drivingArrivalAtMillis, observedAtMillis)
 
     companion object {
         fun fromObservation(

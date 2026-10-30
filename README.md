@@ -84,6 +84,8 @@
 
 APK 경로: `app/build/outputs/apk/debug/app-debug.apk`
 
+출품용 release APK는 서버 주소와 외부 서명 설정을 지정해 [APK 생성](docs/release-package.md) 절차로 내보낸다
+
 ```sh
 ./gradlew :app:testDebugUnitTest :app:lintDebug
 ```
@@ -127,6 +129,7 @@ app/src/main/kotlin/io/moduhome/app/
 - [도로 경로 서버](docs/routing.md)
 - [휴대폰과 차량 연결](docs/proposal-relay.md)
 - [경로·볼일 제안 HTTPS 서버](tools/service-stack/README.md)
+- [출품 APK 생성](docs/release-package.md)
 - [작업 규칙](AGENTS.md)
 - [공모전 개발 가이드](https://appdevchallenge.auto-hmg.io/guide/development)
 - [NaviHelper SDK](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/intro)

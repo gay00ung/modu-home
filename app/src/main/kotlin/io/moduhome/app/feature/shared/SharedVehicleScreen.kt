@@ -628,7 +628,9 @@ private fun SharedRestrictedScreen(state: SharedVehicleUiState, interaction: Dri
             if (state.selectedPlan?.stops?.getOrNull(state.completedStops) is SharedScheduledStop.Errand)
                 " · 마감 ${it}분 초과 예상" else " · 희망보다 ${it}분 지연 예상"
         }
-        listOfNotNull(time?.plus(warning.orEmpty()) ?: "차량 내비를 따라가세요", next, "계획 변경과 완료 확인은 정차 후에")
+        val headline = time?.plus(warning.orEmpty()) ?: if (state.navigationPending)
+            "정차 후 내비 안내를 확인해주세요" else "도착 예상은 차량 내비에서 확인해주세요"
+        listOfNotNull(headline, next, "계획 변경과 완료 확인은 정차 후에")
     } else listOf("정차 후 함께 귀가 계획을 선택해주세요", "선택한 장소와 계획은 보관하고 있어요")
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().systemBarsPadding().padding(56.dp), verticalArrangement = Arrangement.Center) {

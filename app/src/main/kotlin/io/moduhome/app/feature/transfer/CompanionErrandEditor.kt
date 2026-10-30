@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.transfer.CompanionDeadlineChoice
+import io.moduhome.app.core.transfer.CompanionErrandEdit
 import io.moduhome.app.core.transfer.CompanionErrandDraft
 import io.moduhome.app.core.transfer.CompanionErrandField
 import io.moduhome.app.core.transfer.CompanionErrandSource
@@ -45,7 +46,7 @@ import java.time.format.DateTimeFormatter
 internal fun CompanionErrandEditor(
     draft: CompanionErrandDraft,
     editingAllowed: Boolean,
-    onDraftChange: (CompanionErrandDraft) -> Unit,
+    onEdit: (CompanionErrandEdit) -> Unit,
     onPrepare: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -80,15 +81,15 @@ internal fun CompanionErrandEditor(
                     errors[field]?.let { Text(it, fontSize = 16.sp, lineHeight = 24.sp, color = MaterialTheme.colorScheme.error) }
                 }
                 CompanionMinutesField("머무는 시간", draft.stayMinutes, editingAllowed,
-                    errors[CompanionErrandField.STAY], { onDraftChange(draft.copy(stayMinutes = it)) })
+                    errors[CompanionErrandField.STAY], { onEdit(CompanionErrandEdit.Stay(it)) })
                 CompanionMinutesField("차에서 장소까지 편도 도보", draft.walkingMinutesOneWay, editingAllowed,
-                    errors[CompanionErrandField.WALKING], { onDraftChange(draft.copy(walkingMinutesOneWay = it)) })
+                    errors[CompanionErrandField.WALKING], { onEdit(CompanionErrandEdit.Walking(it)) })
                 Text("왕복 도보와 머무는 시간을 함께 비교해요", fontSize = 16.sp, lineHeight = 24.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (draft.kind == VisitKind.PICKUP) {
                     Row(Modifier.fillMaxWidth().heightIn(min = 64.dp)
                         .toggleable(value = draft.ready, enabled = editingAllowed, role = Role.Switch,
-                            onValueChange = { onDraftChange(draft.copy(ready = it)) }),
+                            onValueChange = { onEdit(CompanionErrandEdit.Ready(it)) }),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Column(Modifier.weight(1f).padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("수령 준비됐어요", fontSize = 20.sp, lineHeight = 28.sp)
@@ -111,15 +112,15 @@ internal fun CompanionErrandEditor(
                     val dateFormat = DateTimeFormatter.ofPattern("M월 d일")
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         if (canKeepOriginalDeadline) CompanionDeadlineOption("기존 마감 유지",
-                            CompanionDeadlineChoice.KEEP_ORIGINAL, draft, editingAllowed, onDraftChange)
-                        CompanionDeadlineOption("마감 없음", CompanionDeadlineChoice.NONE, draft, editingAllowed, onDraftChange)
-                        CompanionDeadlineOption(dateFormat.format(draft.baseDate), CompanionDeadlineChoice.TODAY, draft, editingAllowed, onDraftChange)
-                        CompanionDeadlineOption(dateFormat.format(draft.baseDate.plusDays(1)), CompanionDeadlineChoice.TOMORROW, draft, editingAllowed, onDraftChange)
+                            CompanionDeadlineChoice.KEEP_ORIGINAL, draft, editingAllowed, onEdit)
+                        CompanionDeadlineOption("마감 없음", CompanionDeadlineChoice.NONE, draft, editingAllowed, onEdit)
+                        CompanionDeadlineOption(dateFormat.format(draft.baseDate), CompanionDeadlineChoice.TODAY, draft, editingAllowed, onEdit)
+                        CompanionDeadlineOption(dateFormat.format(draft.baseDate.plusDays(1)), CompanionDeadlineChoice.TOMORROW, draft, editingAllowed, onEdit)
                     }
                     if (draft.deadline == CompanionDeadlineChoice.TODAY || draft.deadline == CompanionDeadlineChoice.TOMORROW) {
                         OutlinedTextField(
                             value = draft.deadlineTime,
-                            onValueChange = { onDraftChange(draft.copy(deadlineTime = it)) },
+                            onValueChange = { onEdit(CompanionErrandEdit.Time(it)) },
                             label = { Text("완료 시각 (HH:mm)", fontSize = 16.sp) },
                             placeholder = { Text("18:30", fontSize = 20.sp) },
                             textStyle = TextStyle(fontSize = 20.sp, lineHeight = 28.sp),
@@ -175,9 +176,9 @@ private fun CompanionDeadlineOption(
     choice: CompanionDeadlineChoice,
     draft: CompanionErrandDraft,
     enabled: Boolean,
-    onDraftChange: (CompanionErrandDraft) -> Unit,
+    onEdit: (CompanionErrandEdit) -> Unit,
 ) {
-    FilterChip(selected = draft.deadline == choice, onClick = { onDraftChange(draft.copy(deadline = choice)) },
+    FilterChip(selected = draft.deadline == choice, onClick = { onEdit(CompanionErrandEdit.Deadline(choice)) },
         label = { Text(label, fontSize = 16.sp, lineHeight = 24.sp) }, enabled = enabled,
         modifier = Modifier.heightIn(min = 56.dp))
 }

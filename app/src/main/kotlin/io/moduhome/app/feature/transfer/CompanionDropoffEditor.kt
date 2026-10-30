@@ -10,6 +10,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.moduhome.app.core.transfer.CompanionDeadlineChoice
+import io.moduhome.app.core.transfer.CompanionDropoffEdit
 import io.moduhome.app.core.transfer.CompanionDropoffDraft
 import io.moduhome.app.core.transfer.CompanionDropoffField
 import java.time.Instant
@@ -20,7 +21,7 @@ internal fun CompanionDropoffEditor(
     draft: CompanionDropoffDraft,
     errors: Map<CompanionDropoffField, String>,
     editingAllowed: Boolean,
-    onDraftChange: (CompanionDropoffDraft) -> Unit,
+    onEdit: (CompanionDropoffEdit) -> Unit,
     onPrepare: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -32,7 +33,7 @@ internal fun CompanionDropoffEditor(
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(draft.place.name, fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold)
                 if (draft.place.address != draft.place.name) Text(draft.place.address, fontSize = 18.sp, lineHeight = 26.sp)
-                OutlinedTextField(draft.passengerName, { onDraftChange(draft.copy(passengerName = it.take(32))) },
+                OutlinedTextField(draft.passengerName, { onEdit(CompanionDropoffEdit.Name(it.take(32))) },
                     label = { Text("이름 · 선택") }, singleLine = true, enabled = editingAllowed,
                     supportingText = { Text("운전자가 누구의 하차지인지 구분할 때 사용해요") },
                     isError = CompanionDropoffField.NAME in errors, modifier = Modifier.fillMaxWidth())
@@ -48,12 +49,12 @@ internal fun CompanionDropoffEditor(
                         add(CompanionDeadlineChoice.TOMORROW to "${tomorrow.monthValue}/${tomorrow.dayOfMonth}")
                     }
                     choices.forEach { (choice, label) ->
-                        FilterChip(draft.deadline == choice, { onDraftChange(draft.copy(deadline = choice)) },
+                        FilterChip(draft.deadline == choice, { onEdit(CompanionDropoffEdit.Deadline(choice)) },
                             enabled = editingAllowed, label = { Text(label, fontSize = 16.sp) }, modifier = Modifier.heightIn(min = 56.dp))
                     }
                 }
                 if (draft.deadline == CompanionDeadlineChoice.TODAY || draft.deadline == CompanionDeadlineChoice.TOMORROW) {
-                    OutlinedTextField(draft.deadlineTime, { onDraftChange(draft.copy(deadlineTime = it.take(5))) },
+                    OutlinedTextField(draft.deadlineTime, { onEdit(CompanionDropoffEdit.Time(it.take(5))) },
                         label = { Text("도착 희망 시각 · 21:30") }, singleLine = true, enabled = editingAllowed,
                         isError = CompanionDropoffField.ARRIVAL in errors, modifier = Modifier.fillMaxWidth())
                 } else if (draft.deadline == CompanionDeadlineChoice.KEEP_ORIGINAL) {

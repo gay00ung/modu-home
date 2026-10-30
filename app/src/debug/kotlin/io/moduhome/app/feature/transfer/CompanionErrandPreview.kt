@@ -50,7 +50,7 @@ fun CompanionErrandEditorPreview() {
             if (editorOpen) {
                 CompanionErrandEditor(
                     draft = draft, errors = errors, editingAllowed = true,
-                    onDraftChange = { draft = it; errors = emptyMap() },
+                    onEdit = { draft = draft.applyEdit(draft, it) ?: draft; errors = emptyMap() },
                     onPrepare = {
                         when (val result = draft.createProposal(System.currentTimeMillis(), ZoneId.systemDefault())) {
                             is CompanionErrandResult.Invalid -> errors = result.errors

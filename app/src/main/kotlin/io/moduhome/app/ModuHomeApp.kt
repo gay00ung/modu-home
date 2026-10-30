@@ -1427,9 +1427,9 @@ internal fun ModuHomeApp(
                 errors = companionErrors,
                 editingAllowed = !relayState.busy,
                 message = companionMessage,
-                onDraftChange = { next ->
-                    if (canEditCompanion() && companionDraft == editedCompanion && next.source == editedCompanion.source) {
-                        companionDraft = next
+                onEdit = { edit ->
+                    if (canEditCompanion()) companionDraft?.applyEdit(editedCompanion, edit)?.let { merged ->
+                        companionDraft = merged
                         companionErrors = emptyMap()
                         companionMessage = null
                     }
@@ -1463,9 +1463,9 @@ internal fun ModuHomeApp(
         val maximumHeight = LocalWindowInfo.current.containerDpSize.height * 0.90f
         Dialog(onDismissRequest = ::dismissCompanion, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             CompanionDropoffEditor(editedDropoff, dropoffErrors, !relayState.busy,
-                onDraftChange = { next ->
-                    if (canEditCompanion() && dropoffDraft == editedDropoff && next.place == editedDropoff.place && next.source == editedDropoff.source) {
-                        dropoffDraft = next
+                onEdit = { edit ->
+                    if (canEditCompanion()) dropoffDraft?.applyEdit(editedDropoff, edit)?.let { merged ->
+                        dropoffDraft = merged
                         dropoffErrors = emptyMap()
                     }
                 },

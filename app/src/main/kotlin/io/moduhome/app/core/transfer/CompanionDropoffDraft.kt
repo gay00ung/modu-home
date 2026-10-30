@@ -63,6 +63,18 @@ internal data class CompanionDropoffDraft(
         return CompanionDropoffResult.Created(proposal)
     }
 
+    /** An edit targets one field, so a stale screen frame cannot revert another field. */
+    fun applyEdit(rendered: CompanionDropoffDraft, edit: CompanionDropoffEdit): CompanionDropoffDraft? {
+        if (rendered.place != place || rendered.source != source || rendered.openedAtMillis != openedAtMillis ||
+            rendered.baseDate != baseDate || rendered.zoneId != zoneId ||
+            rendered.issuedId != issuedId || rendered.issuedRevision != issuedRevision) return null
+        return when (edit) {
+            is CompanionDropoffEdit.Name -> copy(passengerName = edit.value)
+            is CompanionDropoffEdit.Deadline -> copy(deadline = edit.value)
+            is CompanionDropoffEdit.Time -> copy(deadlineTime = edit.value)
+        }
+    }
+
     fun withIssuedProposal(proposal: DropoffProposal): CompanionDropoffDraft {
         require(proposal.place == place)
         require(issuedId == null || (issuedId == proposal.id && proposal.revision >= issuedRevision))
@@ -89,4 +101,10 @@ internal enum class CompanionDropoffField { NAME, ARRIVAL, CLOCK, PLACE }
 internal sealed interface CompanionDropoffResult {
     data class Created(val proposal: DropoffProposal) : CompanionDropoffResult
     data class Invalid(val errors: Map<CompanionDropoffField, String>) : CompanionDropoffResult
+}
+
+internal sealed interface CompanionDropoffEdit {
+    data class Name(val value: String) : CompanionDropoffEdit
+    data class Deadline(val value: CompanionDeadlineChoice) : CompanionDropoffEdit
+    data class Time(val value: String) : CompanionDropoffEdit
 }

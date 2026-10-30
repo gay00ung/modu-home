@@ -107,6 +107,18 @@ internal data class CompanionErrandDraft(
         return CompanionErrandResult.Created(proposal)
     }
 
+    fun applyEdit(rendered: CompanionErrandDraft, edit: CompanionErrandEdit): CompanionErrandDraft? {
+        if (rendered.source != source || rendered.baseDate != baseDate || rendered.zoneId != zoneId ||
+            rendered.openedAtMillis != openedAtMillis) return null
+        return when (edit) {
+            is CompanionErrandEdit.Stay -> copy(stayMinutes = edit.value)
+            is CompanionErrandEdit.Walking -> copy(walkingMinutesOneWay = edit.value)
+            is CompanionErrandEdit.Ready -> copy(ready = edit.value)
+            is CompanionErrandEdit.Deadline -> copy(deadline = edit.value)
+            is CompanionErrandEdit.Time -> copy(deadlineTime = edit.value)
+        }
+    }
+
     private fun resolveDeadline(nowMillis: Long): DeadlineResolution {
         val atMillis = when (deadline) {
             CompanionDeadlineChoice.KEEP_ORIGINAL -> originalDeadlineAtMillis
@@ -205,4 +217,12 @@ internal sealed interface CompanionErrandResult {
 private sealed interface DeadlineResolution {
     data class Value(val atMillis: Long?) : DeadlineResolution
     data class Invalid(val field: CompanionErrandField, val reason: String) : DeadlineResolution
+}
+
+internal sealed interface CompanionErrandEdit {
+    data class Stay(val value: String) : CompanionErrandEdit
+    data class Walking(val value: String) : CompanionErrandEdit
+    data class Ready(val value: Boolean) : CompanionErrandEdit
+    data class Deadline(val value: CompanionDeadlineChoice) : CompanionErrandEdit
+    data class Time(val value: String) : CompanionErrandEdit
 }

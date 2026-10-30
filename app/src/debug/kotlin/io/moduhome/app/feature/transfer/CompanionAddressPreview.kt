@@ -43,7 +43,7 @@ fun CompanionAddressPickerPreview() {
             val current = draft
             if (current != null) {
                 CompanionErrandEditor(current, editingAllowed = true,
-                    onDraftChange = { draft = it; errors = emptyMap(); message = null },
+                    onEdit = { draft = draft?.applyEdit(current, it); errors = emptyMap(); message = null },
                     onPrepare = {
                         when (val result = current.createProposal(System.currentTimeMillis(), ZoneId.systemDefault())) {
                             is CompanionErrandResult.Invalid -> errors = result.errors

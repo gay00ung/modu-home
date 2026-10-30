@@ -864,7 +864,8 @@ internal fun ModuHomeApp(
             reading = false
             sending = true
             guidanceResult = null
-            navigationMessage = "완료를 기록했어요. 다음 안내를 확인하고 있어요"
+            navigationError = false
+            navigationMessage = "완료를 저장했어요. 남은 방문 순서는 유지돼요"
             val result = gateway.requestRoute(remaining, completion.approval)
             if (homeNavigationMatches(request, completion.state, limits)) showHomeRouteResult(result, remaining.destination.name)
         }

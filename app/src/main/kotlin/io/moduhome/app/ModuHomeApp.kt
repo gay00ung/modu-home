@@ -1275,7 +1275,8 @@ internal fun ModuHomeApp(
             inbox = inbox,
             selectedProposal = selected,
             review = visibleReview,
-            message = unavailable ?: sharedProposalMessage,
+            message = if (selected != null && currentEntry?.proposal != selected)
+                "제안이 수정됐어요. 다음을 눌러 최신 내용을 확인해주세요" else unavailable ?: sharedProposalMessage,
             canApply = canApply,
             onSelect = ::selectSharedProposal,
             onApprove = {
@@ -1478,7 +1479,7 @@ internal fun ModuHomeApp(
                             is CompanionDropoffResult.Invalid -> dropoffErrors = result.errors
                             is CompanionDropoffResult.Created -> {
                                 preparedCompanion = null
-                                preparedDropoff = editedDropoff
+                                preparedDropoff = editedDropoff.withIssuedProposal(result.proposal)
                                 exportName = result.proposal.place.name
                                 exportLink = ProposalLinkCodec.encode(result.proposal)
                                 proposalMessage = "보낼 하차지와 시간을 확인해주세요. 아직 차량으로 보내지 않았어요"
@@ -1587,7 +1588,10 @@ internal fun ModuHomeApp(
                 onEditPrepared = {
                     if (canEditCompanion()) {
                         preparedDropoff?.let { previous ->
-                            dropoffDraft = previous
+                            val issued = exportLink?.let { link ->
+                                (ProposalLinkCodec.decode(link, System.currentTimeMillis()) as? ProposalDecodeResult.Valid)?.proposal as? DropoffProposal
+                            }
+                            dropoffDraft = if (issued != null && issued.place == previous.place) previous.withIssuedProposal(issued) else previous
                             dropoffErrors = emptyMap()
                         }
                         preparedCompanion?.let { previous ->

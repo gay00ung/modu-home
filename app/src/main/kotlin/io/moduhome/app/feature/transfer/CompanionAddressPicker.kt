@@ -128,6 +128,7 @@ internal fun CompanionAddressPicker(
                     modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
                     Text(when {
                         !selectionValid -> "주소를 선택해주세요"
+                        purpose == CompanionAddressPurpose.DROPOFF -> "하차지·도착 시간 정하기"
                         kind == VisitKind.PICKUP -> "픽업 조건 정하기"
                         else -> "장보기 조건 정하기"
                     }, fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold)

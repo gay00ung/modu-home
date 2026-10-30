@@ -176,7 +176,7 @@ internal fun rememberProposalRelayActions(
                     when (result) {
                         is RelayResult.Failure -> notice(result.reason + " 연결 종료를 다시 시도할 수 있어요")
                         is RelayResult.Success -> update(current().copy(receiver = null, qr = null,
-                            message = "연결을 종료했어요. 이미 받은 볼일은 수신함에 남아요"))
+                            message = "연결을 종료했어요. 이미 받은 제안은 수신함에 남아요"))
                     }
                 }
             }
@@ -206,7 +206,7 @@ internal fun rememberProposalRelayActions(
                                 outgoing = null, delivery = null, message = "차량에 연결했어요. 보낼 볼일을 확인해주세요"))
                             val seed = result.value.seedLink
                             if (seed != null && !seedReceiver(seed)) notice("연결했지만 장소 제안을 보관하지 못했어요. 다시 연결해 확인해주세요")
-                            else if (seed == null) notice("차량에 연결했어요. 받은 실제 장소가 있다면 조건을 편집해 보낼 수 있어요")
+                            else if (seed == null) notice("차량에 연결했어요. 보낼 하차지나 볼일을 확인해주세요")
                         }
                     }
                 }
@@ -286,7 +286,7 @@ internal fun rememberProposalRelayActions(
                 when (val received = gateway(room.baseUrl).pending(room)) {
                     is RelayResult.Failure -> if (receivingAllowed(room)) {
                         if (received.code == RelayFailure.CLOSED || received.code == RelayFailure.UNAUTHORIZED) update(current().copy(receiver = null, qr = null,
-                            generation = current().generation + 1, message = "연결이 종료됐어요. 이미 받은 볼일은 보관돼요"))
+                            generation = current().generation + 1, message = "연결이 종료됐어요. 이미 받은 제안은 보관돼요"))
                         else notice(received.reason)
                     }
                     is RelayResult.Success -> for (message in received.value) {

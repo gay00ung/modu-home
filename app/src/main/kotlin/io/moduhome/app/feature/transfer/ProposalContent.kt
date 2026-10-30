@@ -108,7 +108,7 @@ private fun ProposalListContent(state: ProposalUiState, actions: ProposalActions
         }
         HorizontalDivider()
         val pending = state.inbox.entries.filter { it.status == ProposalReviewStatus.PENDING }
-        Text("받은 볼일", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text("받은 제안", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         pending.forEach { entry ->
             val proposal = entry.proposal
             OutlinedCard(Modifier.fillMaxWidth()) {

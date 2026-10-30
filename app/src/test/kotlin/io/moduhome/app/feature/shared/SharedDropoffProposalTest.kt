@@ -64,12 +64,36 @@ class SharedDropoffProposalTest {
         assertFalse(nextReview.forPassenger("p1")!!.doorstepConfirmed)
     }
 
+    @Test fun repeatingTheSamePassengerChoiceKeepsConfirmationButSwitchingPassengersClearsIt() {
+        val selected = review().forPassenger("p1")!!.confirmDoorstep(true)!!
+        assertSame(selected, selected.forPassenger("p1"))
+        assertTrue(selected.forPassenger("p1")!!.doorstepConfirmed)
+        val other = selected.passengerChoices.last().id
+        assertFalse(selected.forPassenger(other)!!.doorstepConfirmed)
+    }
+
     @Test fun aChangedDraftRevisionOrArrivalInvalidatesTheReview() {
         val preview = review().forPassenger("p1")!!.confirmDoorstep(true)!!
         val changed = original.copy(draft = original.draft.copy(allowedAdditionalMinutes = 30))
         assertTrue(changed.approveProposal(preview, inbox(), now + 1, zone) is SharedProposalApplyResult.Rejected)
         assertTrue(original.approveProposal(preview, inbox(proposal.copy(revision = 2)), now + 1, zone) is SharedProposalApplyResult.Rejected)
         assertTrue(original.approveProposal(preview, inbox(), proposal.deadlineAtMillis!! + 1, zone) is SharedProposalApplyResult.Rejected)
+    }
+
+    @Test fun aPhoneCorrectionInvalidatesTheOldReviewAndNeedsFreshPassengerConfirmation() {
+        val phone = CompanionDropoffDraft.forAddress(proposal.place, now, zone)
+        val first = (phone.createProposal(now, zone) as CompanionDropoffResult.Created).proposal
+        val oldReview = review(value = first).forPassenger("p1")!!.confirmDoorstep(true)!!
+        val corrected = (phone.withIssuedProposal(first).copy(passengerName = "수정한 이름")
+            .createProposal(now + 1, zone) as CompanionDropoffResult.Created).proposal
+        val pending = (inbox(first).receive(corrected, now + 1) as ProposalReceiveResult.Pending).inbox
+        assertTrue(original.approveProposal(oldReview, pending, now + 2, zone) is SharedProposalApplyResult.Rejected)
+        val fresh = (original.reviewProposal(pending, corrected.id, corrected.revision, now + 2, zone)
+            as SharedProposalReviewResult.Ready).review
+        assertNull(fresh.passengerId)
+        assertFalse(fresh.doorstepConfirmed)
+        assertTrue(original.approveProposal(fresh.forPassenger("p1")!!.confirmDoorstep(true)!!, pending, now + 2, zone)
+            is SharedProposalApplyResult.Applied)
     }
 
     @Test fun savedDropoffApprovalRestoresItsTargetAndRepairsOnlyItsOwnPendingReceipt() {

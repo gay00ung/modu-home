@@ -89,7 +89,7 @@ internal fun SharedVehicleScreen(
                     if (state.stage == JourneyStage.REVIEW || state.stage == JourneyStage.ACTIVE) toolbarActions?.invoke(canEdit)
                     if (state.stage == JourneyStage.INPUT) {
                         SharedAction("휴대폰 연결", canEdit, actions.onOpenPhoneConnection)
-                        SharedAction("받은 볼일 ${state.pendingProposalCount}", canEdit, actions.onOpenProposals)
+                        SharedAction("받은 제안 ${state.pendingProposalCount}", canEdit, actions.onOpenProposals)
                         SharedAction("가는 김에", canEdit, actions.onLeave)
                     } else if (state.stage == JourneyStage.ACTIVE) {
                         SharedAction("휴대폰 연결", canEdit, actions.onOpenPhoneConnection)
@@ -245,6 +245,10 @@ private fun SharedPassengerCard(
             Text("${passenger.name} · 집 앞 하차", fontSize = 32.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold)
             SharedAction(passenger.dropoff?.name ?: "하차 장소 선택", canChoose,
                 onClick = { actions.onChoosePassengerDropoff(passenger.id) }, modifier = Modifier.fillMaxWidth())
+            passenger.latestArrivalAtMillis?.let { at ->
+                val time = DateTimeFormatter.ofPattern("M월 d일 HH:mm").format(Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()))
+                Text("도착 희망 · $time", fontSize = 30.sp, lineHeight = 42.sp, color = MaterialTheme.colorScheme.primary)
+            }
             SharedCaption("내린 뒤 다른 이동이 없는 장소를 직접 확인해주세요")
             SharedChoice(
                 label = if (confirmed) "✓ 집 앞에 안전하게 정차하고 바로 내릴 수 있어요" else "집 앞에 안전하게 정차하고 바로 내릴 수 있어요",

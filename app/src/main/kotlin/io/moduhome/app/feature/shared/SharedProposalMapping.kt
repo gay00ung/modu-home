@@ -56,6 +56,7 @@ internal class SharedProposalReview private constructor(
 
     fun forPassenger(id: String): SharedProposalReview? =
         if (proposal !is DropoffProposal || passengerChoices.none { it.id == id }) null
+        else if (passengerId == id) this
         else SharedProposalReview(session, proposal, zoneId, reviewedAtMillis, id, false)
 
     fun confirmDoorstep(confirmed: Boolean): SharedProposalReview? =

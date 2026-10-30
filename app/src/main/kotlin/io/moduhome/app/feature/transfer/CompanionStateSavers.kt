@@ -147,6 +147,7 @@ internal fun companionDropoffDraftSaver(
             put("place", arrayListOf(draft.place.name, draft.place.address, draft.place.latitude, draft.place.longitude,
                 draft.place.placeId, draft.place.subId, draft.place.provider))
             draft.source?.let { put("sourceId", it.id); put("sourceRevision", it.revision) }
+            draft.issuedId?.let { put("issuedId", it); put("issuedRevision", draft.issuedRevision) }
         }
     },
     restore = { fields -> runCatching {
@@ -168,6 +169,13 @@ internal fun companionDropoffDraftSaver(
         CompanionDropoffDraft(NavigationPoint(name = point[0] as String, latitude = point[2] as Double, longitude = point[3] as Double,
             address = point[1] as String, placeId = point[4] as String, subId = point[5] as String, provider = point[6] as String),
             opened, date, zone, fields.getValue("name") as String,
-            CompanionDeadlineChoice.valueOf(fields.getValue("deadline") as String), fields.getValue("time") as String, source)
+            CompanionDeadlineChoice.valueOf(fields.getValue("deadline") as String), fields.getValue("time") as String, source,
+            issuedId = fields["issuedId"] as? String,
+            issuedRevision = (fields["issuedRevision"] as? Int) ?: 0,
+        ).also {
+            require((it.issuedId == null && it.issuedRevision == 0) ||
+                (it.issuedId?.matches(Regex("[A-Za-z0-9_-]{8,64}")) == true && it.issuedRevision in 1..100_000))
+            require(it.source == null || it.source.place == it.place)
+        }
     }.getOrNull() },
 )

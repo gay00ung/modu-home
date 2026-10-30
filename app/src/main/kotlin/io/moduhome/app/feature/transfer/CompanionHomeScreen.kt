@@ -53,7 +53,7 @@ internal fun CompanionHomeScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (connected) "차량과 연결됐어요" else "차량의 QR로 연결해주세요",
                     fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold)
-                Text(if (connected) "보낸 볼일은 차량 수신함에서 운전자가 확인해요"
+                Text(if (connected) "보낸 제안은 차량 수신함에서 운전자가 확인해요"
                     else "차량에서 ‘휴대폰 연결’을 열고 QR 링크를 열거나 QR 이미지를 선택하세요",
                     fontSize = 16.sp, lineHeight = 24.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -79,7 +79,7 @@ internal fun CompanionHomeScreen(
                 }
                 TextButton(onClick = onOpenProposals, enabled = !busy,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
-                    Text(if (pendingProposalCount > 0) "받은 볼일 ${pendingProposalCount}개 · 전송 확인"
+                    Text(if (pendingProposalCount > 0) "받은 제안 ${pendingProposalCount}개 · 전송 확인"
                         else "볼일과 차량 연결 확인", fontSize = 16.sp, lineHeight = 24.sp)
                 }
             }

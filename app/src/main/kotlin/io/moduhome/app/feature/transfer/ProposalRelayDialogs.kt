@@ -54,9 +54,9 @@ internal fun VehiclePhoneConnectionDialog(
                     state.message?.let { Text(it, fontSize = 28.sp, lineHeight = 40.sp, color = MaterialTheme.colorScheme.primary) }
                     val receiver = state.receiver
                     if (receiver == null) {
-                        Text("동승자가 보낸 볼일은 받은 볼일에 보관돼요. 운전자가 확인한 뒤 계획에 반영해요",
+                        Text("휴대폰에서 보낸 하차지와 볼일을 받아요. 운전자가 확인한 뒤 계획에 반영해요",
                             fontSize = 28.sp, lineHeight = 40.sp)
-                        Text("연결은 15분 동안 열려요. 휴대폰 앱에서 QR 코드를 스캔해주세요",
+                        Text("연결은 15분 동안 열려요. 휴대폰에서 QR 링크를 열거나 QR 이미지를 선택해주세요",
                             fontSize = 28.sp, lineHeight = 40.sp)
                         Text("연결 주소 · ${if (configuredBaseUrl.isBlank()) "현재 연결 사용 불가" else relayServerLabel(configuredBaseUrl)}",
                             fontSize = 28.sp, lineHeight = 40.sp)
@@ -76,11 +76,11 @@ internal fun VehiclePhoneConnectionDialog(
                                 else "선택한 한 곳의 장소와 볼일 조건만 공유해요", fontSize = 28.sp, lineHeight = 40.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
-                            Text("함께 보낼 장소가 없어요. 연결 후 휴대폰에서 받은 실제 장소의 조건을 편집할 수 있어요",
+                            Text("공유할 볼일 없이도 연결할 수 있어요. 휴대폰에서 하차지나 새 볼일을 작성해주세요",
                                 fontSize = 28.sp, lineHeight = 40.sp)
                         }
                     } else {
-                        Text("휴대폰 앱에서 QR 코드를 스캔해주세요", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
+                        Text("휴대폰에서 QR 링크를 열거나 QR 이미지를 선택해주세요", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
                         state.qr?.let { qr ->
                             Surface(color = Color.White, shape = RoundedCornerShape(16.dp)) {
                                 Image(qr, "동승자 휴대폰 연결 QR", Modifier.padding(16.dp).size(336.dp))
@@ -88,7 +88,7 @@ internal fun VehiclePhoneConnectionDialog(
                         }
                         Text("연결 주소 · ${relayServerLabel(receiver.sender.baseUrl)}", fontSize = 28.sp, lineHeight = 40.sp)
                         Text("${relayExpiryLabel(receiver.expiresAtMillis)}까지 연결", fontSize = 28.sp, lineHeight = 40.sp)
-                        Text("차량 앱을 열면 제안을 받아요. 받은 볼일에서 확인해주세요",
+                        Text("차량 앱을 열면 제안을 받아요. 받은 제안에서 확인해주세요",
                             fontSize = 28.sp, lineHeight = 40.sp)
                     }
                 }
@@ -124,7 +124,7 @@ internal fun PhoneVehicleJoinDialog(state: ProposalRelayState, actions: Proposal
                     Text("차량 화면과 같은 연결 주소인지 확인해주세요")
                     Text(relayServerLabel(candidate.baseUrl), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text("${relayExpiryLabel(candidate.expiresAtMillis)}까지 연결할 수 있어요")
-                    Text("연결 후 보낼 볼일을 직접 선택해요")
+                    Text("연결 후 하차지나 볼일을 확인하고 보내요")
                     state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 }
                 if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())

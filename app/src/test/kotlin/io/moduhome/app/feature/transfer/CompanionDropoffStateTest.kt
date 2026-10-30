@@ -43,4 +43,16 @@ class CompanionDropoffStateTest {
         val old = (saved as List<*>).chunked(2).filter { it[0] != "purpose" }.flatten()
         assertEquals(CompanionAddressPurpose.ERRAND, CompanionAddressStateSaver.restore(old)!!.purpose)
     }
+
+    @Test fun issuedRevisionSurvivesRecreationBeforeThePassengerEditsAgain() {
+        val draft = CompanionDropoffDraft.forAddress(place, now, zone)
+        val first = (draft.createProposal(now, zone) as CompanionDropoffResult.Created).proposal
+        val issued = draft.withIssuedProposal(first)
+        val saver = companionDropoffDraftSaver({ _, _ -> null }, { now + 1000 })
+        val saved = with(saver) { scope.save(issued) }!!
+        val restored = saver.restore(saved)!!
+        val next = (restored.createProposal(now + 1000, zone) as CompanionDropoffResult.Created).proposal
+        assertEquals(first.id, next.id)
+        assertEquals(2, next.revision)
+    }
 }

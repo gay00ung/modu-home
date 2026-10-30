@@ -342,11 +342,14 @@ private fun SharedDropoffReview(
     }
     val passenger = review.passengerChoices.firstOrNull { it.id == review.passengerId }
     passenger?.dropoff?.let { old ->
-        Text("기존 하차지 ‘${old.name}’가 위 주소로 바뀌어요", fontSize = 28.sp, lineHeight = 40.sp,
+        Text("하차지를 ‘${old.name}’에서 받은 주소로 바꿔요", fontSize = 28.sp, lineHeight = 40.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    if (passenger?.latestArrivalAtMillis != null && proposal.deadlineAtMillis == null) {
-        Text("기존 도착 희망 시간이 없어져요", fontSize = 28.sp, lineHeight = 40.sp, color = MaterialTheme.colorScheme.error)
+    if (passenger?.latestArrivalAtMillis != null && passenger.latestArrivalAtMillis != proposal.deadlineAtMillis) {
+        val previous = sharedProposalDeadline(passenger.latestArrivalAtMillis, review.zoneId)
+        Text(if (proposal.deadlineAtMillis == null) "기존 도착 희망 $previous → 시간 제한 없음" else "기존 도착 희망 · $previous",
+            fontSize = 28.sp, lineHeight = 40.sp,
+            color = if (proposal.deadlineAtMillis == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
     }
     OutlinedButton(onClick = { onConfirmDoorstep(!review.doorstepConfirmed) }, enabled = passenger != null,
         modifier = Modifier.fillMaxWidth().heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp)) {

@@ -40,4 +40,15 @@ class CompanionDropoffDraftTest {
         val received = CompanionDropoffDraft.from(source, now, zone)
         assertTrue(received.createProposal(now + 1_000, zone) is CompanionDropoffResult.Invalid)
     }
+
+    @Test fun editingAnIssuedDraftKeepsItsIdAndIncrementsTheReviewRevision() {
+        val first = (draft.createProposal(now, zone) as CompanionDropoffResult.Created).proposal
+        val edited = draft.withIssuedProposal(first).copy(deadline = CompanionDeadlineChoice.TOMORROW, deadlineTime = "01:00")
+        val next = (edited.createProposal(now + 1, zone) as CompanionDropoffResult.Created).proposal
+        assertEquals(first.id, next.id)
+        assertEquals(first.revision + 1, next.revision)
+        assertNull(first.deadlineAtMillis)
+        assertNotNull(next.deadlineAtMillis)
+        assertTrue(edited.copy(issuedRevision = 100_000).createProposal(now + 1, zone) is CompanionDropoffResult.Invalid)
+    }
 }

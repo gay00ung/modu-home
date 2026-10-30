@@ -16,6 +16,8 @@ internal data class CompanionDropoffDraft(
     val deadline: CompanionDeadlineChoice = CompanionDeadlineChoice.NONE,
     val deadlineTime: String = "",
     val source: DropoffProposal? = null,
+    val issuedId: String? = null,
+    val issuedRevision: Int = 0,
 ) {
     fun createProposal(nowMillis: Long, zoneId: ZoneId): CompanionDropoffResult {
         if (openedAtMillis < 0 || nowMillis < openedAtMillis || this.zoneId != zoneId ||
@@ -50,11 +52,21 @@ internal data class CompanionDropoffDraft(
         if (at != null && (at < nowMillis || at - nowMillis > 48 * 60 * 60 * 1000L)) {
             return invalid(CompanionDropoffField.ARRIVAL, "도착 시간은 현재 이후 48시간 안으로 선택해주세요")
         }
+        if ((issuedId == null && issuedRevision != 0) ||
+            (issuedId != null && (!issuedId.matches(Regex("[A-Za-z0-9_-]{8,64}")) || issuedRevision !in 1 until 100_000))) {
+            return invalid(CompanionDropoffField.CLOCK, "제안의 수정 정보를 확인하고 새 하차지를 작성해주세요")
+        }
         val proposal = runCatching {
-            DropoffProposal(UUID.randomUUID().toString(), 1, nowMillis, nowMillis + JourneyProposal.MAX_LIFETIME_MILLIS,
+            DropoffProposal(issuedId ?: UUID.randomUUID().toString(), issuedRevision + 1, nowMillis, nowMillis + JourneyProposal.MAX_LIFETIME_MILLIS,
                 place, name, at)
         }.getOrNull() ?: return invalid(CompanionDropoffField.PLACE, "하차할 주소와 좌표를 다시 선택해주세요")
         return CompanionDropoffResult.Created(proposal)
+    }
+
+    fun withIssuedProposal(proposal: DropoffProposal): CompanionDropoffDraft {
+        require(proposal.place == place)
+        require(issuedId == null || (issuedId == proposal.id && proposal.revision >= issuedRevision))
+        return copy(issuedId = proposal.id, issuedRevision = proposal.revision)
     }
 
     override fun toString(): String = "CompanionDropoffDraft(conditions=redacted)"

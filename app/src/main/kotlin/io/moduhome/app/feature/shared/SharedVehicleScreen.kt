@@ -430,7 +430,9 @@ private fun SharedActive(
     if (state.navigationPending && next != null) {
         if (state.terminalStopCompletionAvailable) {
             SharedCaption("현재 길안내가 없어요. 이 장소에서 실제 정차를 마쳤다면 아래에서 완료를 확인해주세요")
-        } else SharedError("남은 순서가 아직 차량 내비에 반영되지 않았어요")
+        } else if (vehicle.sending || vehicle.reading) {
+            SharedCaption("차량 내비의 남은 순서를 확인하고 있어요")
+        } else SharedError("차량 내비의 남은 순서를 확인하지 못했어요")
         if (state.canConfirmPassedStop) {
             Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(24.dp)) {
                 Column(Modifier.fillMaxWidth().padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -501,6 +503,7 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
         state.draft.passengers.all { it.dropoff != null } && (errand == null || errand.place != null)
     val allDropoffsConfirmed = state.draft.passengers.all(::dropoffConfirmed)
     val connected = vehicle.connection == NavigationConnection.Ready
+    val inputReady = allPlacesChosen && allDropoffsConfirmed && connected && vehicle.roadComparisonAvailable
     val anyValid = state.plans.any { it.isValid }
     val label = when (state.stage) {
         JourneyStage.INPUT -> when {
@@ -508,7 +511,7 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
             !allPlacesChosen -> "집과 하차 장소 선택"
             !allDropoffsConfirmed -> "하차 장소를 확인해주세요"
             !connected || !vehicle.roadComparisonAvailable -> "내비 연결을 확인해주세요"
-            else -> "지금 출발 · 함께 비교"
+            else -> "방문 순서 비교"
         }
         JourneyStage.COMPARE -> if (anyValid) "이 순서로 갈게요" else "조건 바꾸기"
         JourneyStage.REVIEW -> if (vehicle.sending) "차량 내비 확인 중" else "차량 내비로 시작"
@@ -525,7 +528,7 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
         JourneyStage.COMPLETE -> "새 함께 귀가 계획"
     }
     val enabled = canEdit && when (state.stage) {
-        JourneyStage.INPUT -> allPlacesChosen && allDropoffsConfirmed && connected && vehicle.roadComparisonAvailable
+        JourneyStage.INPUT -> inputReady
         JourneyStage.COMPARE -> !anyValid || plan?.isValid == true
         JourneyStage.REVIEW -> plan?.isValid == true && connected
         JourneyStage.ACTIVE -> plan != null && state.completedStops in 0..plan.stops.size &&
@@ -547,7 +550,13 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
     }
     VehicleActionBar(
         caption = when (state.stage) {
-            JourneyStage.INPUT -> "집 앞 하차 장소만 선택해주세요"
+            JourneyStage.INPUT -> when {
+                vehicle.planning -> "현재 위치에서 방문 순서를 비교하고 있어요"
+                !allPlacesChosen -> "집과 하차·볼일 장소를 선택해주세요"
+                !allDropoffsConfirmed -> "집 앞에서 바로 내릴 수 있는지 확인해주세요"
+                !inputReady -> "차량 내비 연결을 확인해주세요"
+                else -> "방문 순서를 비교하고 출발할 계획을 골라요"
+            }
             JourneyStage.COMPARE -> when {
                 plan != null -> "${if (plan.isValid) "선택" else "조건 확인"} · ${orderLabel(plan)}"
                 anyValid -> "확인할 순서를 선택해주세요"

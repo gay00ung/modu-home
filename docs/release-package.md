@@ -67,4 +67,34 @@ storeType=JKS
 
 일반 개발용 `assembleDebug`와 빌드 확인용 `assembleRelease`는 기존 설정으로 실행한다
 
+## 서명이 다른 APK의 AVD 검증
+
+debug 키와 배포 키의 서명이 다르면 기존 앱 위에 업데이트할 수 없다
+기존 데이터가 있는 AVD에서는 앱을 교체하기 전에 전체 스냅샷과 별도 앱 백업을 확보한다
+이 절차는 Pleos AVD에서 사용하며 실물 기기의 설치 절차와 구분한다
+
+- `adb devices -l`, AVD 이름과 현재 사용자 ID를 확인하고 모든 명령에 같은 serial 지정
+- 실행 중인 앱을 종료한 뒤 현재 APK, 앱 데이터 전체와 패키지 권한을 저장소 밖에 보관
+- debug 앱의 데이터 백업은 `run-as io.moduhome.app --user 10` 순서로 실행
+- AVD 전체 스냅샷 저장이 끝나고 목록에 표시된 것을 확인한 뒤 서명 교체 진행
+- 배포 APK의 인증서 지문과 비디버그 플래그를 확인하고 별도 시험 데이터로 실행
+
+```sh
+adb -s emulator-5554 emu avd snapshot save modu_home_before_release
+adb -s emulator-5554 emu avd snapshot list
+```
+
+설치 후에는 `dumpsys package io.moduhome.app`의 `NAVI_ROUTE`·`NAVI_ROUTE_SEARCH` 허용 여부와 실제 SDK 조회·경로 요청을 함께 확인한다
+최근 목적지 불러오기, 운영 HTTPS 비교, 방문 순서 선택, 내비 안내, 정차 완료 입력과 앱 재실행을 차례로 확인한다
+AVD의 완료 버튼 시험과 실제 이동·방문 완료는 기록에서 구분한다
+
+검증을 마치면 저장한 스냅샷을 불러오고 원래 APK 해시, 앱 데이터 파일별 해시와 권한을 백업과 대조한다
+서명이 같은 배포 APK의 업데이트 설치 결과와 기존 debug 환경의 복원 결과도 따로 기록한다
+
+```sh
+adb -s emulator-5554 emu avd snapshot load modu_home_before_release
+```
+
+기본 내비의 배경 지도는 [지도 진단 기준](native-map-diagnostics.md)에 따라 별도로 확인한다
+
 서명 설정은 [Android 앱 서명](https://developer.android.com/studio/publish/app-signing), 검증은 [apksigner](https://developer.android.com/tools/apksigner) 참고

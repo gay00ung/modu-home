@@ -54,9 +54,9 @@ internal fun SharedProposalDialog(
     onApprove: () -> Unit,
     onDecline: (String, Int) -> Unit,
     onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
     onChoosePassenger: (String) -> Unit = {},
     onConfirmDoorstep: (Boolean) -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     val maximumHeight = LocalWindowInfo.current.containerDpSize.height * 0.90f
     val pending = inbox.entries.filter { it.status == ProposalReviewStatus.PENDING }.map { it.proposal }

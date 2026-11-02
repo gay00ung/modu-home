@@ -92,7 +92,7 @@ internal fun SharedVehicleScreen(
                     if (state.stage == JourneyStage.INPUT) {
                         SharedAction("휴대폰 연결", canEdit, actions.onOpenPhoneConnection)
                         SharedAction("받은 제안 ${state.pendingProposalCount}", canEdit, actions.onOpenProposals)
-                        SharedAction("가는 김에", canEdit, actions.onLeave)
+                        SharedAction("가는김에", canEdit, actions.onLeave)
                     } else if (state.stage == JourneyStage.ACTIVE) {
                         SharedAction("휴대폰 연결", canEdit, actions.onOpenPhoneConnection)
                     }

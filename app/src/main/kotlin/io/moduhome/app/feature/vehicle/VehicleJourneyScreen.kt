@@ -663,7 +663,7 @@ private fun VehicleCaption(text: String, modifier: Modifier = Modifier) {
 
 private fun vehicleTitle(stage: JourneyStage): String = when (stage) {
     JourneyStage.INPUT -> "가는 김에 들렀다 가요"
-    JourneyStage.COMPARE -> "어떤 순서로 갈까요?"
+    JourneyStage.COMPARE -> "오늘은 어떻게 갈까요?"
     JourneyStage.REVIEW -> "이 순서로 출발할게요"
     JourneyStage.ACTIVE -> "선택한 순서대로 하나씩"
     JourneyStage.COMPLETE -> "오늘 할 일을 마쳤어요"

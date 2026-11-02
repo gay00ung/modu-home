@@ -98,6 +98,15 @@ APK 경로: `app/build/outputs/apk/debug/app-debug.apk`
 ./gradlew :app:testDebugUnitTest :app:lintDebug
 ```
 
+## 제출용 APK와 전시 실행
+
+배포 서명 APK 0.3.0은 [apk 폴더](apk/modu-home_모두집으로_release.apk)에 둔다
+[서명·해시 정보](apk/release.json)에서 설치 파일과 인증서를 대조할 수 있다
+운영 HTTPS 서버를 사용하며 같은 서명으로 업데이트 설치한다
+
+전시용 차량·휴대폰 AVD는 [실행 도구](tools/exhibition/README.md)로 켠다
+각 AVD의 사용자 데이터 파일을 별도로 지정해 재부팅 후에도 장소와 설정을 보관한다
+
 ## 코드 구조
 
 ```text

@@ -171,7 +171,25 @@ internal data class HomeUiState(
     val showErrors: Boolean = false,
     val routing: RoutedJourneyEstimates? = null,
     val acceptedProposals: List<HomeProposalAcceptance> = emptyList(),
+    /** Unaccepted options are deliberately not persisted; reopening requires a fresh lookup. */
+    val alternatives: ErrandAlternativeComparison? = null,
 ) {
+    fun withErrandAlternative(option: ErrandAlternative, nowMillis: Long, zoneId: ZoneId): HomeUiState? {
+        val compared = alternatives ?: return null
+        if (progress.stage != JourneyStage.COMPARE || !compared.matches(draft, routing) ||
+            option !in compared.options || !compared.isFresh(nowMillis) || !option.plan.isValid) return null
+        val selected = copy(draft = option.draft, routing = option.routing,
+            progress = JourneyProgress().compare(listOf(option.plan)).review(listOf(option.plan)),
+            alternatives = null, showErrors = false)
+        return when (val departure = HomeDepartureResult.prepare(selected, nowMillis, zoneId)) {
+            is HomeDepartureResult.Ready -> departure.state
+            is HomeDepartureResult.Recompare -> null
+            is HomeDepartureResult.Refresh -> null
+            is HomeDepartureResult.CalendarReview -> null
+            is HomeDepartureResult.Rejected -> null
+        }
+    }
+
     val additionalTimeSuggestion: AdditionalTimeSuggestion?
         get() = if (progress.stage == JourneyStage.COMPARE) {
             ErrandJourneyPlanner().suggestAdditionalTime(plans, draft.budget)
@@ -180,7 +198,7 @@ internal data class HomeUiState(
     fun withAdditionalTime(suggestion: AdditionalTimeSuggestion): HomeUiState? {
         if (additionalTimeSuggestion != suggestion) return null
         return copy(draft = draft.copy(budget = suggestion.requiredMinutes), progress = JourneyProgress(),
-            routing = null, showErrors = false)
+            routing = null, alternatives = null, showErrors = false)
     }
 
     fun approveProposal(

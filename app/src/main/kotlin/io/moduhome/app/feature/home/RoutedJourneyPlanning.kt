@@ -99,7 +99,7 @@ internal suspend fun loadRoutedJourney(
     return RoutedJourneyLoadResult.Success(estimates)
 }
 
-private fun routeOrders(draft: JourneyDraft, origin: NavigationPoint): Map<String, List<NavigationPoint>>? {
+internal fun routeOrders(draft: JourneyDraft, origin: NavigationPoint): Map<String, List<NavigationPoint>>? {
     val home = draft.navigationPoint(NavigationPlaceRole.HOME) ?: return null
     val visits = buildList {
         if (draft.pickup.enabled) add(VisitKind.PICKUP)

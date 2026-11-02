@@ -117,7 +117,7 @@ internal fun VehicleJourneyScreen(
                     JourneyStage.ACTIVE -> VehicleActive(state, vehicle, actions, canEdit)
                     JourneyStage.COMPLETE -> VehicleComplete(state)
                 }
-                VehicleNavigationStatus(vehicle, actions, canEdit)
+                VehicleNavigationStatus(vehicle, actions, canEdit, stage)
             }
         }
     }
@@ -445,7 +445,12 @@ private fun VehicleComplete(state: HomeUiState) {
 }
 
 @Composable
-private fun VehicleNavigationStatus(vehicle: VehicleNavigationUiState, actions: JourneyActions, canEdit: Boolean) {
+private fun VehicleNavigationStatus(
+    vehicle: VehicleNavigationUiState,
+    actions: JourneyActions,
+    canEdit: Boolean,
+    stage: JourneyStage,
+) {
     val busy = vehicle.reading || vehicle.sending || vehicle.planning
     Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -479,9 +484,14 @@ private fun VehicleNavigationStatus(vehicle: VehicleNavigationUiState, actions: 
                 }
             }
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            vehicle.message?.takeUnless { vehicle.error }?.let { message ->
-                Text(message, fontSize = 28.sp, lineHeight = 38.sp,
-                    color = if (vehicle.error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+            when (stage) {
+                JourneyStage.INPUT, JourneyStage.COMPARE, JourneyStage.REVIEW -> {
+                    vehicle.message?.takeUnless { vehicle.error }?.let { message ->
+                        Text(message, fontSize = 28.sp, lineHeight = 38.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                JourneyStage.ACTIVE, JourneyStage.COMPLETE -> Unit
             }
         }
     }

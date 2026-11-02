@@ -46,6 +46,39 @@ class SharedJourneySessionTest {
     private val plan get() = routing.plans.first()
     private val compared get() = SharedJourneyProgress().compare(routing.plans)
     private val reviewed get() = compared.review(routing.plans)
+
+    private fun budgetLimitedSession(): SharedJourneySession {
+        val input = draft.copy(allowedAdditionalMinutes = 0)
+        val gateway = object : RouteEstimateGateway {
+            override suspend fun estimate(points: List<NavigationPoint>) = RouteEstimateResult.Success(response(points))
+        }
+        val estimates = (runBlocking { loadSharedRoutedJourney(input, origin, gateway, { now }, zone) }
+            as SharedRoutedJourneyLoadResult.Success).estimates
+        return SharedJourneySession(input, SharedJourneyProgress().compare(estimates.plans), estimates)
+    }
+
+    @Test fun budgetChoiceKeepsPassengersAndErrandButRequiresANewRoadComparison() {
+        val old = budgetLimitedSession()
+        val suggestion = requireNotNull(old.additionalTimeSuggestion)
+        val next = requireNotNull(old.withAdditionalTime(suggestion))
+        assertEquals(old.draft.copy(allowedAdditionalMinutes = suggestion.requiredMinutes), next.draft)
+        assertEquals(SharedJourneyProgress(), next.progress)
+        assertNull(next.routing)
+        assertNull(next.additionalTimeSuggestion)
+        assertEquals(old.acceptedProposals, next.acceptedProposals)
+    }
+
+    @Test fun changedSharedDraftAndNonComparisonStagesRejectOldBudgetChoice() {
+        val old = budgetLimitedSession()
+        val suggestion = requireNotNull(old.additionalTimeSuggestion)
+        val changed = old.copy(draft = old.draft.copy(allowedAdditionalMinutes = 20))
+        assertNull(changed.withAdditionalTime(suggestion))
+        for (stage in JourneyStage.entries.filter { it != JourneyStage.COMPARE }) {
+            val state = old.copy(progress = old.progress.copy(stage = stage))
+            assertNull(state.additionalTimeSuggestion)
+            assertNull(state.withAdditionalTime(suggestion))
+        }
+    }
     private val starting get() = reviewed.start(plan, home, now + 1)
     private val active get() = starting.observeNavigation(snapshot(plan.currentWindow(home, 0)))
 

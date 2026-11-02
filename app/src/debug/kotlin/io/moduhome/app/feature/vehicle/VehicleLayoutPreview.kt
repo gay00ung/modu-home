@@ -4,6 +4,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.sp
@@ -34,6 +38,23 @@ fun VehicleLayoutPreview() {
 @Composable
 fun VehicleComparisonLayoutPreview() {
     VehicleLayoutSample(JourneyStage.COMPARE)
+}
+
+@Preview(name = "가는김에 시간 한도 제안", widthDp = 628, heightDp = 855)
+@Preview(name = "가는김에 시간 제안 큰 글씨", widthDp = 628, heightDp = 855, fontScale = 1.3f)
+@Composable
+fun VehicleAdditionalTimeLayoutPreview() {
+    var state by remember {
+        val sample = HomeUiState(JourneyDraft(budget = 20,
+            pickup = VisitDraft(place = "예시 픽업 장소", stay = "5", ready = true),
+            groceries = VisitDraft(place = "예시 장보기 장소", stay = "15")))
+        mutableStateOf(sample.copy(progress = sample.progress.compare(sample.plans)))
+    }
+    VehicleLayoutSample(state, JourneyActions(onUseAdditionalTime = { suggestion ->
+        state.withAdditionalTime(suggestion)?.let { next ->
+            state = next.copy(progress = next.progress.compare(next.plans))
+        }
+    }))
 }
 
 @Preview(name = "가는김에 선택 전", widthDp = 628, heightDp = 855)
@@ -92,13 +113,13 @@ private fun VehicleLayoutSample(stage: JourneyStage, departure: String = "18:10"
 }
 
 @Composable
-private fun VehicleLayoutSample(state: HomeUiState) {
+private fun VehicleLayoutSample(state: HomeUiState, actions: JourneyActions = JourneyActions()) {
     ModuHomeTheme(vehicle = true) {
         Column(Modifier.fillMaxSize()) {
-            Text("화면 배치 예시 · 실제 조작 없음", fontSize = 18.sp, lineHeight = 26.sp)
+            Text("화면 확인용 예시 · 실제 경로 조회 없음", fontSize = 18.sp, lineHeight = 26.sp)
             VehicleJourneyScreen(
                 state = state,
-                actions = JourneyActions(), vehicle = VehicleNavigationUiState(),
+                actions = actions, vehicle = VehicleNavigationUiState(),
                 editingAllowed = true, restrictionMessage = null,
                 onOpenDetails = {}, onOpenShared = {}, onOpenPhoneConnection = {}, onVoice = {},
                 voiceAvailable = true, modifier = Modifier.weight(1f),

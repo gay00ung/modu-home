@@ -94,6 +94,13 @@ internal data class ErrandJourneyPlan(
 }
 
 internal class ErrandJourneyPlanner {
+    fun suggestAdditionalTime(plans: List<ErrandJourneyPlan>, allowedMinutes: Int): AdditionalTimeSuggestion? {
+        if (allowedMinutes !in 0..240 || plans.any { it.isValid }) return null
+        return AdditionalTimeSuggestion.fromCandidates(allowedMinutes, plans.filter { plan ->
+            plan.issues.isNotEmpty() && plan.issues.all { it.kind == PlanIssueKind.OVER_BUDGET }
+        }.map { it.additionalMinutes })
+    }
+
     fun compare(request: ErrandJourneyRequest): List<ErrandJourneyPlan> {
         return compareOrders(request) { order ->
             order.mapIndexed { index, visit ->

@@ -26,6 +26,7 @@ import java.time.LocalDate
 internal data class JourneyActions(
     val onDraftChange: (JourneyDraft) -> Unit = {},
     val onCompare: () -> Unit = {},
+    val onUseAdditionalTime: (AdditionalTimeSuggestion) -> Unit = {},
     val onSelect: (String) -> Unit = {},
     val onReview: () -> Unit = {},
     val onStart: () -> Unit = {},

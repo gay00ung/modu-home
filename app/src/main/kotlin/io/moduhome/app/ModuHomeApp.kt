@@ -993,6 +993,15 @@ internal fun ModuHomeApp(
         if (state.progress.stage != JourneyStage.INPUT) detailsOpen = false
     }
     val actions = JourneyActions(
+        onUseAdditionalTime = use@{ suggestion ->
+            if (!homeNavigationIdle()) return@use
+            if (isVehicle && (!roadComparisonAvailable || connection != NavigationConnection.Ready)) return@use
+            val next = state.withAdditionalTime(suggestion) ?: return@use
+            clearNavigationRead()
+            if (!update(next)) return@use
+            if (roadComparisonAvailable) compareRoadRoutes()
+            else update(state.copy(progress = state.progress.compare(state.plans)))
+        },
         onDraftChange = { draft ->
             if (editingAllowed && state.progress.stage == JourneyStage.INPUT && !sending && !estimating && !planning) {
                 clearNavigationRead()

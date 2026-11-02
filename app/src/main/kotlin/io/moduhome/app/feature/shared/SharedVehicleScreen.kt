@@ -53,6 +53,7 @@ import io.moduhome.app.core.shared.currentWindow
 import io.moduhome.app.core.vehicle.DrivingInteraction
 import io.moduhome.app.core.vehicle.restrictContent
 import io.moduhome.app.feature.vehicle.VehicleActionBar
+import io.moduhome.app.feature.vehicle.VehicleAdditionalTimeSuggestion
 import io.moduhome.app.feature.vehicle.VehicleMetric
 import io.moduhome.app.feature.vehicle.VehicleMetrics
 import io.moduhome.app.feature.vehicle.VehicleToolbar
@@ -264,6 +265,9 @@ private fun SharedPassengerCard(
 
 @Composable
 private fun SharedComparison(state: SharedVehicleUiState, actions: SharedVehicleActions, canEdit: Boolean) {
+    state.additionalTimeSuggestion?.let {
+        VehicleAdditionalTimeSuggestion(it, canEdit, actions.onUseAdditionalTime)
+    }
     if (state.plans.isEmpty()) {
         SharedError("비교할 경로가 없어요. 장소와 하차 조건을 다시 확인해주세요")
         return

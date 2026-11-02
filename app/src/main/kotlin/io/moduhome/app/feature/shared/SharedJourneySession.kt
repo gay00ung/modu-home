@@ -3,6 +3,8 @@ package io.moduhome.app.feature.shared
 import io.moduhome.app.core.navigation.remainingAfter
 import io.moduhome.app.core.navigation.NavigationPlan
 import io.moduhome.app.core.planning.JourneyStage
+import io.moduhome.app.core.planning.AdditionalTimeSuggestion
+import io.moduhome.app.core.shared.SharedJourneyPlanner
 import io.moduhome.app.core.shared.SharedJourneyProgress
 import io.moduhome.app.core.shared.currentWindow
 import io.moduhome.app.core.transfer.JourneyProposalInbox
@@ -15,6 +17,17 @@ internal data class SharedJourneySession(
     val routing: SharedRoutedJourneyEstimates? = null,
     val acceptedProposals: List<SharedProposalAcceptance> = emptyList(),
 ) {
+    val additionalTimeSuggestion: AdditionalTimeSuggestion?
+        get() = if (progress.stage == JourneyStage.COMPARE) {
+            SharedJourneyPlanner().suggestAdditionalTime(
+                routing?.takeIf { it.matches(draft) }?.plans.orEmpty(), draft.allowedAdditionalMinutes)
+        } else null
+
+    fun withAdditionalTime(suggestion: AdditionalTimeSuggestion): SharedJourneySession? {
+        if (additionalTimeSuggestion != suggestion) return null
+        return resetToInput(draft.copy(allowedAdditionalMinutes = suggestion.requiredMinutes))
+    }
+
     fun resetToInput(draft: SharedJourneyDraft = this.draft): SharedJourneySession =
         copy(draft = draft, progress = SharedJourneyProgress(), routing = null)
 

@@ -5,6 +5,8 @@ import io.moduhome.app.core.planning.ErrandJourneyPlan
 import io.moduhome.app.core.planning.ErrandJourneyRequest
 import io.moduhome.app.core.planning.ErrandVisit
 import io.moduhome.app.core.planning.JourneyProgress
+import io.moduhome.app.core.planning.JourneyStage
+import io.moduhome.app.core.planning.AdditionalTimeSuggestion
 import io.moduhome.app.core.planning.TravelEstimates
 import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.navigation.NavigationPlan
@@ -170,6 +172,17 @@ internal data class HomeUiState(
     val routing: RoutedJourneyEstimates? = null,
     val acceptedProposals: List<HomeProposalAcceptance> = emptyList(),
 ) {
+    val additionalTimeSuggestion: AdditionalTimeSuggestion?
+        get() = if (progress.stage == JourneyStage.COMPARE) {
+            ErrandJourneyPlanner().suggestAdditionalTime(plans, draft.budget)
+        } else null
+
+    fun withAdditionalTime(suggestion: AdditionalTimeSuggestion): HomeUiState? {
+        if (additionalTimeSuggestion != suggestion) return null
+        return copy(draft = draft.copy(budget = suggestion.requiredMinutes), progress = JourneyProgress(),
+            routing = null, showErrors = false)
+    }
+
     fun approveProposal(
         inbox: JourneyProposalInbox,
         id: String,

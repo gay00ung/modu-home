@@ -541,6 +541,13 @@ internal fun SharedJourneyFlow(
             }))
         },
         onCompare = ::compareRoutes,
+        onUseAdditionalTime = use@{ suggestion ->
+            val current = runtime.latest
+            if (!idle() || routeGateway == null || gateway.connection.value != NavigationConnection.Ready) return@use
+            val session = current.session.withAdditionalTime(suggestion) ?: return@use
+            if (publish(current.copy(session = session, planPage = 0, snapshot = null,
+                    errors = emptyList(), message = null, error = false))) compareRoutes()
+        },
         onSelectPlan = { id ->
             val current = runtime.latest
             if (idle()) publish(current.copy(session = current.session.copy(progress = current.session.progress.select(id, current.session.plans()))))
@@ -737,6 +744,7 @@ internal fun SharedJourneyFlow(
         pendingProposalCount = pendingProposalCount,
         guidanceArrival = guidanceArrival, guidanceNowMillis = state.guidanceNowMillis,
         guidanceZoneId = routing?.zoneId ?: java.time.ZoneId.systemDefault(),
+        additionalTimeSuggestion = state.session.additionalTimeSuggestion,
     )
     SharedVehicleScreen(ui, actions, VehicleNavigationUiState(
         connection = connection, sending = state.sending, reading = state.reading || state.polling,

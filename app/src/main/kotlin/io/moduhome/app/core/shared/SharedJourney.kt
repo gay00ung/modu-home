@@ -2,6 +2,7 @@ package io.moduhome.app.core.shared
 
 import io.moduhome.app.core.navigation.NavigationPoint
 import io.moduhome.app.core.planning.ErrandVisit
+import io.moduhome.app.core.planning.AdditionalTimeSuggestion
 import io.moduhome.app.core.planning.TimeBudget
 
 internal enum class TravelEstimateKind { USER_INPUT, ROUTING_SERVICE, SAMPLE }
@@ -181,6 +182,13 @@ internal data class SharedJourneyPlan(
 
 /** Enumerates candidate combinations and every stop order; the driver's home is always last. */
 internal class SharedJourneyPlanner {
+    fun suggestAdditionalTime(plans: List<SharedJourneyPlan>, allowedMinutes: Int): AdditionalTimeSuggestion? {
+        if (allowedMinutes !in 0..240 || plans.any { it.isValid }) return null
+        return AdditionalTimeSuggestion.fromCandidates(allowedMinutes, plans.filter { plan ->
+            plan.issues.isNotEmpty() && plan.issues.all { it is SharedPlanIssue.DriverOverBudget }
+        }.mapNotNull { it.driverAdditionalMinutes })
+    }
+
     /** Route loaders use these identities and endpoint chains before collecting any responses. */
     fun orders(request: SharedJourneyRequest): List<SharedJourneyOrder> =
         plannedOrders(request).map { order -> describeOrder(request, order) }

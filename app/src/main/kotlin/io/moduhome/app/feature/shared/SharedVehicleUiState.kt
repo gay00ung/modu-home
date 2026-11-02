@@ -2,6 +2,7 @@ package io.moduhome.app.feature.shared
 
 import io.moduhome.app.core.planning.JourneyStage
 import io.moduhome.app.core.planning.VisitKind
+import io.moduhome.app.core.planning.AdditionalTimeSuggestion
 import io.moduhome.app.core.shared.SharedJourneyPlan
 import io.moduhome.app.core.shared.SharedGuidanceArrival
 import java.time.ZoneId
@@ -25,6 +26,7 @@ internal data class SharedVehicleUiState(
     val guidanceArrival: SharedGuidanceArrival? = null,
     val guidanceNowMillis: Long = 0L,
     val guidanceZoneId: ZoneId = ZoneId.systemDefault(),
+    val additionalTimeSuggestion: AdditionalTimeSuggestion? = null,
 ) {
     val selectedPlan: SharedJourneyPlan? get() = plans.firstOrNull { it.id == selectedPlanId }
     val canConfirmPassedStop: Boolean get() = passedStopCount in 1..2
@@ -40,6 +42,7 @@ internal data class SharedVehicleActions(
     /** The owner records the user's doorstep/access confirmation and its time together. */
     val onConfirmDropoff: (String, Boolean) -> Unit,
     val onCompare: () -> Unit,
+    val onUseAdditionalTime: (AdditionalTimeSuggestion) -> Unit,
     val onSelectPlan: (String) -> Unit,
     val onPlanPageChange: (Int) -> Unit,
     val onReview: () -> Unit,

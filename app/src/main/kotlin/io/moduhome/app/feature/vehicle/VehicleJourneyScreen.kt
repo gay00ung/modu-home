@@ -268,6 +268,9 @@ private fun VehicleVisitCard(
 
 @Composable
 private fun VehicleComparison(state: HomeUiState, actions: JourneyActions, canEdit: Boolean) {
+    state.additionalTimeSuggestion?.let {
+        VehicleAdditionalTimeSuggestion(it, canEdit, actions.onUseAdditionalTime)
+    }
     if (state.plans.isEmpty()) {
         VehicleError("비교할 계획이 없어요. 장소와 조건을 다시 확인해주세요")
         return

@@ -5,7 +5,7 @@ NaviHelper의 목적지·경유 순서·안내 상태와 기본 내비의 지도
 
 ## 현재 확인 범위
 
-2026년 10월 30~31일 Pleos Connect 2.1.0 ARM64·사용자 10에서 확인했다
+2026년 10월 30일~11월 2일 Pleos Connect 2.1.0 ARM64·사용자 10에서 확인했다
 
 - 영구 배포 키로 서명한 비디버그 앱에 `NAVI_ROUTE`·`NAVI_ROUTE_SEARCH` 허용
 - 운영 HTTPS 비교와 선택한 방문 순서의 실제 내비 요청·완료 후 다음 구간 연결 확인
@@ -79,6 +79,46 @@ generic String 요청을 받는 하위 AIDL이 있다는 이유로 임의의 미
 기본 내비 manifest의 `debuggable`도 false이므로 디버거로 내부 스타일을 강제 교체하는 검증은 하지 않았다
 
 [공식 NaviHelper 소개](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/intro) · [권한 선언](https://document.pleos.ai/en/api-reference/connect-sdk-pleos/NaviHelper/declaring-permissions)
+
+## 공식 배포 재확인과 초기 상태 AVD
+
+11월 2일 공식 배포 피드·릴리스 노트·NaviHelper Maven 메타데이터를 다시 읽었다
+
+- ARM64·x86_64 피드는 모두 Android 34·revision 2·Pleos Connect v2.1.0
+- ARM64 피드 SHA-256은 10월 31일에 보관한 값과 일치
+- 공개 `raw-releases` 전체 목록은 다섯 항목이며 후속 페이지나 별도 내비 업데이트 APK는 없음
+- NaviHelper의 latest·release는 3.0.5이며 버전 목록은 2.0.2·2.0.3·3.0.5
+- 공식 릴리스 노트도 에뮬레이터 2.1.0·NaviHelper 3.0.5와 2026년 10월 19일 배포를 안내
+
+공식 ARM ZIP의 중앙 목록을 4,529바이트 범위 요청으로 읽고 로컬 설치 파일과 대조했다
+`system.img`·`vendor.img`·`userdata.img`·커널·램디스크·설정 등 10개 파일의 크기와 CRC32가 모두 일치했다
+이는 파일 크기·CRC32 대조이며 개별 파일의 암호학적 SHA 검증이나 전체 ZIP 재다운로드를 뜻하지 않는다
+
+이 설치 이미지로 원본과 별도 경로에 새 AVD를 생성했다
+공식 가이드의 RAM 4GB·Cold boot·Hardware 그래픽 조건을 적용하고 기존 사용자 데이터를 복사하지 않았다
+모두 집으로를 설치하지 않은 기본 내비에서 `CGV`를 검색해 `CGV 판교`를 목적지로 선택했다
+
+- 검색·추천 경로 계산·10분·3.5km 길안내와 TBT·경로선은 표시
+- 기본 내비 3.3.2-rc5-hotfix.3에서 도로·배경은 미표시
+- 로그의 환경은 `coral`·`CORAL`, 스타일 URI는 `connect_empty`
+- `StyleLoaded`·`MapLoaded`·`onInitialized` 각 1회와 수집 범위 내 map-loading-error 0회 확인
+
+기존 사용자 데이터와 모두 집으로 설치가 없어도 같은 화면이 재현됐다
+같은 Apple Silicon 호스트와 네트워크를 사용했으므로 다른 하드웨어·사용자 전체의 결과로 일반화하지 않는다
+
+[에뮬레이터 릴리스 노트](https://document.pleos.ai/docs/pleos-only/release-note/emulator-release-note) · [SDK 릴리스 노트](https://document.pleos.ai/docs/pleos-only/release-note/sdk-release-note) · [설치 가이드](https://document.pleos.ai/docs/connect/guide/getting-started/application-development/setup-connect-sdk-emulator) · [ARM64 공식 피드](https://nexus-playground.pleos.ai/repository/raw-releases/connect-avd/2.x/crp-arm64-sys-img.xml)
+
+## 공개된 다른 개발자 사례
+
+11월 2일 공개 Pleos 문서·공모전 공지·FAQ와 Pleos·NaviHelper 관련 저장소·이슈·기술 게시물을 검색했다
+현재 ARM64 이미지에서 경로선·마커는 보이지만 도로·배경만 사라진 동일 증상을 직접 보고한 공개 사례와 공식 장애 공지는 찾지 못했다
+
+- [PleosTest의 Windows x86_64 설정 기록](https://github.com/LeonBogum/PleosTest/blob/main/README.md)은 2.1.0·API 34·RAM 4GB·Cold boot·WHPX 환경을 설명하지만 지도 실행 캡처나 정상 표시 결과는 없음
+- [chadak-pleos-app](https://github.com/Mujin8623/chadak-pleos-app)의 README와 [경유지 추가 이슈](https://github.com/Mujin8623/chadak-pleos-app/issues/6)는 개발 계획이며 도로 지도 정상 표시나 같은 장애를 입증하는 실행 기록은 없음
+
+검색에서 사례를 찾지 못했다는 결과이며 다른 사용자에게 문제가 없다는 결론은 아니다
+일반 Mapbox·다른 플랫폼의 빈 지도 사례는 Pleos와 발생 조건이 달라 동일 사례로 분류하지 않았다
+새 공식 이미지나 공개 지도 프로필 전환 방법을 확인하지 못했으므로 원본 AVD의 지도 설정을 변경하지 않았다
 
 ## 지형·위성 모드와 차량 설정
 

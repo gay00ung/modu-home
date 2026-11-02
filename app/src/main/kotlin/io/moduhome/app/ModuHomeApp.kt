@@ -113,6 +113,8 @@ import io.moduhome.app.feature.home.HomeProposalCommitResult
 import io.moduhome.app.feature.home.proposal
 import io.moduhome.app.feature.home.loadRoutedJourney
 import io.moduhome.app.feature.home.RoutedJourneyLoadResult
+import io.moduhome.app.feature.home.loadErrandAlternatives
+import io.moduhome.app.feature.home.ErrandAlternativesLoadResult
 import io.moduhome.app.feature.home.HomeScreen
 import io.moduhome.app.feature.transfer.CompanionHomeScreen
 import io.moduhome.app.feature.transfer.CompanionAddressStateSaver
@@ -974,6 +976,53 @@ internal fun ModuHomeApp(
             } finally { planning = false }
         }
     }
+    fun compareErrandAlternatives() {
+        val roads = routeGateway ?: return
+        if (!homeNavigationIdle() || connection != NavigationConnection.Ready ||
+            state.progress.stage != JourneyStage.COMPARE || !state.draft.pickup.enabled || !state.draft.groceries.enabled) return
+        val input = when (val result = DepartureDraftResult.prepare(state.draft.copy(origin = "현재 차량 위치"),
+            System.currentTimeMillis(), ZoneId.systemDefault())) {
+            is DepartureDraftResult.Ready -> result.draft
+            is DepartureDraftResult.CalendarReview -> { requestNewJourney(result.reason); return }
+            is DepartureDraftResult.Invalid -> {
+                navigationMessage = result.reason; navigationError = true; return
+            }
+        }
+        val expected = state.copy(alternatives = null)
+        if (!update(expected)) return
+        clearNavigationRead()
+        val limits = restrictions.state.value
+        navigationMessage = "시간 한도는 유지하고, 현재 위치에서 볼일별 경로를 다시 비교하고 있어요"
+        launchHomeNavigation(read = true) { request ->
+            val location = gateway.currentLocation()
+            if (!homeNavigationMatches(request, expected, limits)) return@launchHomeNavigation
+            val result = when (location) {
+                is VehicleLocationResult.Available -> loadErrandAlternatives(input, location.location.point, roads)
+                is VehicleLocationResult.Failed -> ErrandAlternativesLoadResult.Failed(location.reason)
+                VehicleLocationResult.Unsupported -> ErrandAlternativesLoadResult.Failed("Pleos 차량에서 현재 위치를 확인해주세요")
+            }
+            if (!homeNavigationMatches(request, expected, limits)) return@launchHomeNavigation
+            when (result) {
+                is ErrandAlternativesLoadResult.Success -> {
+                    val now = System.currentTimeMillis()
+                    val comparison = result.comparison.rebaseDeparture(now, ZoneId.systemDefault())
+                    if (comparison == null || !comparison.isFresh(now)) {
+                        navigationMessage = "조회 중 시각이나 조건이 달라졌어요. 대안을 다시 비교해주세요"
+                        navigationError = true
+                        return@launchHomeNavigation
+                    }
+                    val compared = expected.copy(draft = comparison.draft, routing = comparison.full,
+                        alternatives = comparison, showErrors = false)
+                    if (update(compared.copy(progress = JourneyProgress().compare(compared.plans)))) {
+                        navigationMessage = "같은 시간 한도로 픽업만·장보기만 하는 경로를 비교했어요"
+                    }
+                }
+                is ErrandAlternativesLoadResult.Failed -> {
+                    navigationMessage = result.reason; navigationError = true
+                }
+            }
+        }
+    }
     LaunchedEffect(editingAllowed, interaction.voiceTranscriptionAllowed) {
         if (!editingAllowed) {
             detailsOpen = false
@@ -993,6 +1042,20 @@ internal fun ModuHomeApp(
         if (state.progress.stage != JourneyStage.INPUT) detailsOpen = false
     }
     val actions = JourneyActions(
+        onCompareAlternatives = ::compareErrandAlternatives,
+        onSelectAlternative = choose@{ option ->
+            if (!homeNavigationIdle() || connection != NavigationConnection.Ready) return@choose
+            val next = state.withErrandAlternative(option, System.currentTimeMillis(), ZoneId.systemDefault())
+            if (next == null) {
+                navigationMessage = "대안이나 시각이 바뀌었어요. 대안 경로를 다시 조회해주세요"
+                navigationError = true
+                return@choose
+            }
+            if (update(next)) {
+                clearNavigationRead()
+                navigationMessage = "시간 한도는 유지했어요. 선택한 볼일과 집 도착을 확인해주세요"
+            }
+        },
         onUseAdditionalTime = use@{ suggestion ->
             if (!homeNavigationIdle()) return@use
             if (isVehicle && (!roadComparisonAvailable || connection != NavigationConnection.Ready)) return@use

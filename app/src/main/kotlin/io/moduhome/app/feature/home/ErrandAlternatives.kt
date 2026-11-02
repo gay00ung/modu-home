@@ -113,4 +113,3 @@ internal suspend fun loadErrandAlternatives(
         ?: return ErrandAlternativesLoadResult.Failed("모든 대안을 같은 도로 데이터로 확인하지 못했어요. 다시 비교해주세요")
     return ErrandAlternativesLoadResult.Success(comparison)
 }
-

@@ -23,11 +23,12 @@ internal fun VehicleAdditionalTimeSuggestion(
     enabled: Boolean,
     onApply: (AdditionalTimeSuggestion) -> Unit,
     modifier: Modifier = Modifier,
+    title: String = "현재 시간 한도에 맞는 순서가 없어요",
 ) {
     Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("현재 시간 한도에 맞는 순서가 없어요", fontSize = 30.sp, lineHeight = 42.sp,
+            Text(title, fontSize = 30.sp, lineHeight = 42.sp,
                 fontWeight = FontWeight.SemiBold)
             VehicleMetric("이 비교에서 필요한 최소 추가시간", "${suggestion.requiredMinutes}분")
             Text("현재 ${suggestion.allowedMinutes}분 한도보다 ${suggestion.increaseMinutes}분 더 필요해요",

@@ -112,7 +112,7 @@ internal fun VehicleJourneyScreen(
                 verticalArrangement = Arrangement.spacedBy(24.dp)) {
                 when (stage) {
                     JourneyStage.INPUT -> VehicleInput(state, actions, vehicle, canEdit)
-                    JourneyStage.COMPARE -> VehicleComparison(state, actions, canEdit)
+                    JourneyStage.COMPARE -> VehicleComparison(state, actions, canEdit, vehicle.roadComparisonAvailable)
                     JourneyStage.REVIEW -> VehicleReview(state)
                     JourneyStage.ACTIVE -> VehicleActive(state, vehicle, actions, canEdit)
                     JourneyStage.COMPLETE -> VehicleComplete(state)
@@ -267,9 +267,16 @@ private fun VehicleVisitCard(
 }
 
 @Composable
-private fun VehicleComparison(state: HomeUiState, actions: JourneyActions, canEdit: Boolean) {
+private fun VehicleComparison(state: HomeUiState, actions: JourneyActions, canEdit: Boolean, roadComparisonAvailable: Boolean) {
+    if (state.draft.pickup.enabled && state.draft.groceries.enabled) {
+        val options = state.alternatives?.takeIf { it.matches(state.draft, state.routing) }?.options.orEmpty()
+        VehicleErrandAlternatives(state.draft.budget, options, canEdit && roadComparisonAvailable,
+            actions.onCompareAlternatives, actions.onSelectAlternative)
+    }
     state.additionalTimeSuggestion?.let {
-        VehicleAdditionalTimeSuggestion(it, canEdit, actions.onUseAdditionalTime)
+        val title = if (state.draft.pickup.enabled && state.draft.groceries.enabled)
+            "두 볼일을 모두 하면 한도를 넘어요" else "현재 시간 한도에 맞는 순서가 없어요"
+        VehicleAdditionalTimeSuggestion(it, canEdit, actions.onUseAdditionalTime, title = title)
     }
     if (state.plans.isEmpty()) {
         VehicleError("비교할 계획이 없어요. 장소와 조건을 다시 확인해주세요")
@@ -606,7 +613,7 @@ private fun deadlineNote(scheduled: ScheduledVisit, dateEpochDay: Long): String?
 }
 
 @Composable
-private fun VehiclePlanIssues(plan: ErrandJourneyPlan) {
+internal fun VehiclePlanIssues(plan: ErrandJourneyPlan) {
     plan.issues.forEach { issue ->
         val place = plan.visits.firstOrNull { it.visit.kind == issue.visit }?.visit?.place
         VehicleError(when (issue.kind) {

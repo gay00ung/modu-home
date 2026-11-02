@@ -27,6 +27,8 @@ internal data class JourneyActions(
     val onDraftChange: (JourneyDraft) -> Unit = {},
     val onCompare: () -> Unit = {},
     val onUseAdditionalTime: (AdditionalTimeSuggestion) -> Unit = {},
+    val onCompareAlternatives: () -> Unit = {},
+    val onSelectAlternative: (ErrandAlternative) -> Unit = {},
     val onSelect: (String) -> Unit = {},
     val onReview: () -> Unit = {},
     val onStart: () -> Unit = {},

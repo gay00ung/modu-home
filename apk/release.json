@@ -1,0 +1,13 @@
+{
+  "applicationId": "io.moduhome.app",
+  "versionCode": 3,
+  "versionName": "0.3.0",
+  "apk": "modu-home_모두집으로_release.apk",
+  "sha256": "5bc0018f4a99219614ce5b4726d14f922811406fa563121ccdf5200f3ccdd0e0",
+  "certificateSha256": "b26f2c765c60f13f823e3f6bcdce22695496b81dc713a15fe9d74727c99c5c03",
+  "signatureVerified": true,
+  "routingBaseUrl": "https://modu-home.lateinit.net",
+  "proposalRelayBaseUrl": "https://modu-home.lateinit.net",
+  "vehicleVoiceEnabled": false,
+  "buildSourceCommit": "a56a9ea22a2b9bb2b07a960d50ccee125062bdd5"
+}

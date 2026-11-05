@@ -107,6 +107,7 @@ APK 경로: `app/build/outputs/apk/debug/app-debug.apk`
 
 전시용 차량·휴대폰 AVD는 [실행 도구](tools/exhibition/README.md)로 켠다
 각 AVD의 사용자 데이터 파일을 별도로 지정해 재부팅 후에도 장소와 설정을 보관한다
+시연 영상은 [편집 도구](tools/video/README.md)에서 녹화 구간과 자막을 조정하고 배포 APK의 버전으로 만든다
 
 ## 코드 구조
 

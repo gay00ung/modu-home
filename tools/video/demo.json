@@ -1,0 +1,175 @@
+{
+  "recordedOn": "2026-11-05",
+  "recordedRelease": {
+    "versionName": "0.3.1",
+    "versionCode": 4,
+    "sha256": "66ef5b36eec19f16e0078be5f649dda909fb18679491d85a3c131b376c53512b"
+  },
+  "scenes": [
+    {
+      "source": "phone_dropoff.mp4",
+      "kind": "phone",
+      "start": 30.5,
+      "duration": 11,
+      "chapter": "01 · 하차지 제안",
+      "title": "내릴 곳을\n직접 골라요",
+      "bullets": [
+        "친구가 아는 주소를\n휴대폰에서 검색",
+        "차량에서 주소를\n다시 입력하지 않아요"
+      ]
+    },
+    {
+      "source": "phone_dropoff.mp4",
+      "kind": "phone",
+      "start": 65.5,
+      "duration": 12.5,
+      "chapter": "01 · 하차지 제안",
+      "title": "차량으로\n보내요",
+      "bullets": [
+        "보낸 하차지는\n차량 수신함에 보관",
+        "연결 QR 영역 가림"
+      ]
+    },
+    {
+      "source": "car_shared.mp4",
+      "kind": "car",
+      "start": 5,
+      "duration": 20,
+      "chapter": "02 · 차량에서 승인",
+      "title": "받은 위치를\n확인해요",
+      "bullets": [
+        "어느 친구의\n하차지인지 선택",
+        "차량 정차 가능 여부를\n확인하고 계획에 반영"
+      ]
+    },
+    {
+      "source": "car_shared.mp4",
+      "kind": "car",
+      "start": 29,
+      "duration": 17.5,
+      "chapter": "03 · 함께 귀가",
+      "title": "누구부터\n내려줄까요?",
+      "bullets": [
+        "여섯 방문 순서 비교",
+        "동승자 도착은\n지정 하차지 기준"
+      ]
+    },
+    {
+      "source": "car_shared.mp4",
+      "kind": "car",
+      "start": 49.8,
+      "duration": 8.6,
+      "chapter": "03 · 함께 귀가",
+      "title": "정한 하차지로\n바로 안내",
+      "bullets": [
+        "친구가 보낸 주소를\n실제 내비로 전달",
+        "경로선과 남은 시간 확인"
+      ]
+    },
+    {
+      "source": "car_shared_status.mp4",
+      "kind": "car",
+      "start": 6,
+      "duration": 2.7,
+      "chapter": "03 · 함께 귀가",
+      "title": "하차지까지\n남은 시간",
+      "bullets": [
+        "차량 내비 응답으로\n도착 예상 갱신"
+      ]
+    },
+    {
+      "source": "car_solo.mp4",
+      "kind": "car",
+      "start": 2,
+      "duration": 5.5,
+      "chapter": "04 · 가는김에",
+      "title": "오늘은\n20분까지",
+      "bullets": [
+        "픽업과 장보기\n각각 15분 체류",
+        "집 직행보다\n추가 20분 한도"
+      ]
+    },
+    {
+      "source": "car_solo.mp4",
+      "kind": "car",
+      "start": 33,
+      "duration": 24.1,
+      "chapter": "04 · 가는김에",
+      "title": "시간은 그대로\n볼일은 하나만",
+      "bullets": [
+        "두 볼일은 한도 초과",
+        "픽업만·장보기만\n현재 위치에서 재조회"
+      ]
+    },
+    {
+      "source": "car_pickup.mp4",
+      "kind": "car",
+      "start": 1.5,
+      "duration": 11,
+      "chapter": "05 · 픽업만",
+      "title": "픽업 장소로\n출발해요",
+      "bullets": [
+        "장보기는 제외하고\n픽업 장소부터 안내"
+      ]
+    },
+    {
+      "source": "car_pickup.mp4",
+      "kind": "car",
+      "start": 20,
+      "duration": 19,
+      "chapter": "05 · 픽업만",
+      "title": "픽업 다음은\n집",
+      "bullets": [
+        "정차 상태에서\n완료 입력 시연",
+        "다음 목적지를\n집으로 이어서 안내"
+      ]
+    },
+    {
+      "source": "car_pickup.mp4",
+      "kind": "car",
+      "start": 62,
+      "duration": 5.3,
+      "chapter": "05 · 픽업만",
+      "title": "완료를\n기억해요",
+      "bullets": [
+        "다시 열어도\n픽업·집 도착 기록 복원"
+      ]
+    },
+    {
+      "source": "car_grocery.mp4",
+      "kind": "car",
+      "start": 12.7,
+      "duration": 19.2,
+      "chapter": "06 · 장보기만",
+      "title": "오늘은\n장보기만",
+      "bullets": [
+        "같은 20분 한도",
+        "선택한 장보기 장소를\n실제 내비로 안내"
+      ]
+    },
+    {
+      "source": "car_grocery.mp4",
+      "kind": "car",
+      "start": 41,
+      "duration": 18,
+      "chapter": "06 · 장보기만",
+      "title": "장보기 뒤\n집으로",
+      "bullets": [
+        "완료를 확인하면\n집 안내가 이어져요"
+      ]
+    },
+    {
+      "source": "car_grocery.mp4",
+      "kind": "car",
+      "start": 68.2,
+      "duration": 9.5,
+      "chapter": "07 · 귀가 완료",
+      "title": "다시 열어도\n기록은 그대로",
+      "bullets": [
+        "장보기와 집 도착\n완료 상태 복원",
+        "정차한 AVD에서\n완료 입력 검증"
+      ],
+      "holdLast": 3
+    }
+  ]
+}

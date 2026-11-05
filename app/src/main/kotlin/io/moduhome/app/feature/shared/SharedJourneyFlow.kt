@@ -534,8 +534,7 @@ internal fun SharedJourneyFlow(
             val now = System.currentTimeMillis()
             updateDraft(draft.copy(passengers = draft.passengers.map { passenger ->
                 if (passenger.id != id || passenger.dropoff == null) passenger else passenger.copy(
-                    doorstepDropoffConfirmed = confirmed, doorstepConfirmedAtMillis = if (confirmed) now else null,
-                    verification = if (confirmed) DropoffVerification(AccessCheck.SUITABLE, AccessCheck.SUITABLE, "직접 확인", now)
+                    verification = if (confirmed) DropoffVerification(AccessCheck.SUITABLE, "직접 확인", now)
                         else DropoffVerification(),
                 )
             }))
@@ -904,7 +903,7 @@ private fun passedStopsDescription(confirmation: SharedPassedStopConfirmation, s
     stops.forEachIndexed { index, stop ->
         append("${if (stops.size == 1) "완료할 정차" else "${index + 1}. 완료할 정차"} · ${stop.place.point.name}\n")
         when (stop) {
-            is SharedScheduledStop.Dropoff -> append("집 앞 하차 · ${stop.passenger.name}님이 이곳에서 실제로 내렸나요?\n\n")
+            is SharedScheduledStop.Dropoff -> append("지정 하차지 · ${stop.passenger.name}님이 이곳에서 실제로 내렸나요?\n\n")
             is SharedScheduledStop.Errand -> append("${if (stop.errand.visit.kind == VisitKind.PICKUP) "픽업" else "장보기"} · 이곳에서 실제로 볼일을 마쳤나요?\n\n")
         }
     }

@@ -24,7 +24,7 @@ class SharedProposalMappingTest {
     private val draft = SharedJourneyDraft(
         driverHome = NavigationPoint("운전자 집", 37.5, 127.0),
         passengers = listOf(SharedPassengerDraft("p1", "동승자 1", NavigationPoint("집 앞", 37.52, 127.03),
-            true, now - 1000, DropoffVerification(AccessCheck.SUITABLE, AccessCheck.SUITABLE, "직접 확인", now - 1000),
+            DropoffVerification(AccessCheck.SUITABLE, "직접 확인", now - 1000),
             latestArrivalAtMillis = now + 7_200_000, maximumOnboardMinutes = 120)),
         errand = SharedErrandDraft(VisitKind.GROCERIES, NavigationPoint("기존 장보기", 37.53, 127.04),
             15, 1, true, now + 3_600_000),

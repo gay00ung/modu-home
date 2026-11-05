@@ -36,42 +36,22 @@ internal data class SharedDrivingEstimate(val minutes: Int, val evidence: Travel
 
 internal enum class AccessCheck { NOT_CHECKED, SUITABLE, UNSUITABLE }
 
-/** Both the vehicle approach and the onward pedestrian connection need their own check. */
+/** The driver checks whether the vehicle can approach and stop at the chosen dropoff. */
 internal data class DropoffVerification(
     val vehicleAccess: AccessCheck = AccessCheck.NOT_CHECKED,
-    val pedestrianConnection: AccessCheck = AccessCheck.NOT_CHECKED,
     val source: String = "",
     val checkedAtMillis: Long? = null,
 ) {
     init {
-        val hasCheck = vehicleAccess != AccessCheck.NOT_CHECKED || pedestrianConnection != AccessCheck.NOT_CHECKED
+        val hasCheck = vehicleAccess != AccessCheck.NOT_CHECKED
         require(!hasCheck || (source.isNotBlank() && checkedAtMillis != null))
         require(checkedAtMillis == null || checkedAtMillis >= 0)
-    }
-}
-
-internal enum class OnwardTravelMode { WALK, TRANSIT }
-
-/** Total minutes include the walking component and any waiting included by the source. */
-internal data class OnwardJourneyEstimate(
-    val mode: OnwardTravelMode,
-    val totalMinutes: Int,
-    val walkingMinutes: Int,
-    val transfers: Int = 0,
-    val evidence: TravelEvidence,
-) {
-    init {
-        require(totalMinutes in 0..480)
-        require(walkingMinutes in 0..totalMinutes)
-        require(transfers in 0..10)
-        require(mode != OnwardTravelMode.WALK || (walkingMinutes == totalMinutes && transfers == 0))
     }
 }
 
 internal data class SharedDropoffCandidate(
     val id: String,
     val place: SharedJourneyPlace,
-    val onward: OnwardJourneyEstimate,
     val verification: DropoffVerification = DropoffVerification(),
     val stopMinutes: Int = 1,
 ) {
@@ -148,7 +128,6 @@ internal data class SharedPassengerArrival(
     val passengerName: String,
     val candidate: SharedDropoffCandidate,
     val dropoffMinute: Int?,
-    val homeArrivalMinute: Int?,
     val onboardMinutes: Int?,
 )
 
@@ -280,31 +259,27 @@ internal class SharedJourneyPlanner {
                     val candidate = stop.candidate
                     val verification = candidate.verification
                     when {
-                        verification.vehicleAccess == AccessCheck.UNSUITABLE ||
-                            verification.pedestrianConnection == AccessCheck.UNSUITABLE ->
+                        verification.vehicleAccess == AccessCheck.UNSUITABLE ->
                             issues += SharedPlanIssue.UnsuitableDropoff(passenger.id, candidate.id)
-                        verification.vehicleAccess == AccessCheck.NOT_CHECKED ||
-                            verification.pedestrianConnection == AccessCheck.NOT_CHECKED ->
+                        verification.vehicleAccess == AccessCheck.NOT_CHECKED ->
                             issues += SharedPlanIssue.UnverifiedDropoff(passenger.id, candidate.id)
                     }
                     stopMinutes += candidate.stopMinutes
                     minute = arrival?.plus(candidate.stopMinutes)
-                    val dropoffMinute = minute
-                    val homeArrival = dropoffMinute?.plus(candidate.onward.totalMinutes)
+                    val dropoffMinute = arrival
                     val onboardMinutes = dropoffMinute?.minus(request.departureMinute)
                     val deadline = passenger.latestArrivalMinute
-                    if (deadline != null && homeArrival != null && homeArrival > deadline) {
-                        issues += SharedPlanIssue.PassengerLate(passenger.id, homeArrival - deadline)
+                    if (deadline != null && dropoffMinute != null && dropoffMinute > deadline) {
+                        issues += SharedPlanIssue.PassengerLate(passenger.id, dropoffMinute - deadline)
                     }
                     val onboardLimit = passenger.maximumOnboardMinutes
                     if (onboardLimit != null && onboardMinutes != null && onboardMinutes > onboardLimit) {
                         issues += SharedPlanIssue.PassengerRideTooLong(passenger.id, onboardMinutes - onboardLimit)
                     }
-                    evidence += candidate.onward.evidence
                     arrivals[passenger.id] = SharedPassengerArrival(
-                        passenger.id, passenger.name, candidate, dropoffMinute, homeArrival, onboardMinutes,
+                        passenger.id, passenger.name, candidate, dropoffMinute, onboardMinutes,
                     )
-                    SharedScheduledStop.Dropoff(passenger, candidate, arrival, dropoffMinute)
+                    SharedScheduledStop.Dropoff(passenger, candidate, arrival, minute)
                 }
                 is PlannedStop.Errand -> {
                     val visit = stop.errand.visit
@@ -334,7 +309,7 @@ internal class SharedJourneyPlanner {
         }
         val passengerArrivals = request.passengers.map { arrivals.getValue(it.id) }
         val totalPersonMinutes = homeArrival?.let { driverArrival ->
-            val passengerDurations = passengerArrivals.map { it.homeArrivalMinute?.minus(request.departureMinute) }
+            val passengerDurations = passengerArrivals.map { it.dropoffMinute?.minus(request.departureMinute) }
             if (passengerDurations.all { it != null }) {
                 driverArrival - request.departureMinute + passengerDurations.filterNotNull().sum()
             } else null

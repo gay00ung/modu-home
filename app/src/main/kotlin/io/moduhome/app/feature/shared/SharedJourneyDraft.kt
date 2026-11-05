@@ -5,26 +5,20 @@ import io.moduhome.app.core.planning.ErrandVisit
 import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.shared.AccessCheck
 import io.moduhome.app.core.shared.DropoffVerification
-import io.moduhome.app.core.shared.OnwardJourneyEstimate
-import io.moduhome.app.core.shared.OnwardTravelMode
 import io.moduhome.app.core.shared.SharedDropoffCandidate
 import io.moduhome.app.core.shared.SharedErrand
 import io.moduhome.app.core.shared.SharedJourneyPlace
 import io.moduhome.app.core.shared.SharedJourneyRequest
 import io.moduhome.app.core.shared.SharedPassenger
-import io.moduhome.app.core.shared.TravelEstimateKind
-import io.moduhome.app.core.shared.TravelEvidence
 import java.time.Instant
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
-/** A direct doorstep dropoff is an explicit user condition, not a transit recommendation. */
+/** A passenger chooses the vehicle's dropoff, independently of their home address. */
 internal data class SharedPassengerDraft(
     val id: String,
     val name: String,
     val dropoff: NavigationPoint? = null,
-    val doorstepDropoffConfirmed: Boolean = false,
-    val doorstepConfirmedAtMillis: Long? = null,
     val verification: DropoffVerification = DropoffVerification(),
     val stopMinutes: Int = 1,
     val latestArrivalAtMillis: Long? = null,
@@ -32,8 +26,6 @@ internal data class SharedPassengerDraft(
 ) {
     fun chooseDropoff(point: NavigationPoint): SharedPassengerDraft = if (point == dropoff) this else copy(
         dropoff = point,
-        doorstepDropoffConfirmed = false,
-        doorstepConfirmedAtMillis = null,
         verification = DropoffVerification(),
     )
 }
@@ -90,17 +82,14 @@ internal data class SharedJourneyDraft(
             val key = "passengers.$index"
             if (draft.id.isBlank() || draft.name.isBlank()) errors[key] = "동승자 정보를 확인해주세요"
             val point = actualPoint("$key.dropoff", draft.dropoff, "${draft.name.ifBlank { "동승자" }} 하차")
-            val confirmedAt = draft.doorstepConfirmedAtMillis
-            if (!draft.doorstepDropoffConfirmed || confirmedAt == null || confirmedAt !in 0L..departureAtMillis) {
-                errors["$key.doorstep"] = "집 앞에서 바로 내리며 하차 후 이동이 없는지 확인해주세요"
-            }
             if (draft.stopMinutes !in 0..30) errors["$key.stop"] = "하차 정차시간은 0~30분으로 선택해주세요"
             if (draft.maximumOnboardMinutes != null && draft.maximumOnboardMinutes !in 0..480) {
                 errors["$key.onboard"] = "탑승시간 한도는 0~480분으로 설정해주세요"
             }
             val verification = draft.verification
-            if ((verification.vehicleAccess != AccessCheck.NOT_CHECKED || verification.pedestrianConnection != AccessCheck.NOT_CHECKED) &&
-                verification.checkedAtMillis?.let { it > departureAtMillis } == true) {
+            if (verification.vehicleAccess != AccessCheck.SUITABLE) {
+                errors["$key.verification"] = "지정한 하차지에 정차해 내릴 수 있는지 확인해주세요"
+            } else if (verification.checkedAtMillis?.let { it > departureAtMillis } == true) {
                 errors["$key.verification"] = "하차 장소를 확인한 시각을 다시 확인해주세요"
             }
             val deadline = deadlineMinute("$key.deadline", draft.latestArrivalAtMillis)
@@ -110,10 +99,9 @@ internal data class SharedJourneyDraft(
                 id = id,
                 name = draft.name.trim(),
                 candidates = listOf(SharedDropoffCandidate(
+                    // Persisted order and routing identities remain stable across the scope change.
                     id = "home-doorstep",
                     place = SharedJourneyPlace("passenger:${id.length}:$id:home", point),
-                    onward = OnwardJourneyEstimate(OnwardTravelMode.WALK, 0, 0,
-                        evidence = TravelEvidence(TravelEstimateKind.USER_INPUT, "사용자가 집 앞 직접 하차를 확인", confirmedAt)),
                     verification = verification,
                     stopMinutes = draft.stopMinutes,
                 )),

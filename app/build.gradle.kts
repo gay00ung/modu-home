@@ -123,8 +123,8 @@ android {
         applicationId = "io.moduhome.app"
         minSdk = 28
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.3.1"
         buildConfigField("boolean", "ENABLE_VEHICLE_VOICE", vehicleVoiceEnabled.getOrElse(false).toString())
         buildConfigField("String", "ROUTING_BASE_URL", stringConstant(routingBaseUrl.orEmpty()))
         buildConfigField("String", "PROPOSAL_RELAY_BASE_URL", stringConstant(proposalRelayBaseUrl.orEmpty()))

@@ -31,7 +31,7 @@ internal object SharedJourneyJson {
     private const val MAX_BYTES = 256 * 1024
 
     fun encode(session: SharedJourneySession): String? = try {
-        val json = JSONObject().put("schema", 1).put("draft", writeDraft(session.draft))
+        val json = JSONObject().put("schema", 2).put("draft", writeDraft(session.draft))
             .put("progress", writeProgress(session.progress)).put("acceptedProposals", writeAccepted(session.acceptedProposals))
         session.routing?.let { json.put("routing", writeRouting(it)) }
         json.toString().takeIf { boundedJson(it) }
@@ -42,7 +42,7 @@ internal object SharedJourneyJson {
         var fallback = SharedJourneySession()
         return try {
             val json = JSONObject(saved)
-            require(integer(json, "schema") == 1)
+            require(integer(json, "schema") in 1..2)
             val draft = readDraft(json.getJSONObject("draft"))
             fallback = SharedJourneySession(draft)
             val accepted = readAccepted(json)
@@ -103,11 +103,9 @@ internal object SharedJourneyJson {
         draft.passengers.forEach { person ->
             require(person.stopMinutes in 0..30 && (person.maximumOnboardMinutes == null || person.maximumOnboardMinutes in 0..480))
             people.put(JSONObject().put("id", checkedText(person.id, 64)).put("name", checkedText(person.name, 80))
-                .put("dropoff", person.dropoff?.let(::writePoint)).put("doorstep", person.doorstepDropoffConfirmed)
-                .put("doorstepAt", person.doorstepConfirmedAtMillis).put("stop", person.stopMinutes)
+                .put("dropoff", person.dropoff?.let(::writePoint)).put("stop", person.stopMinutes)
                 .put("deadline", person.latestArrivalAtMillis).put("onboard", person.maximumOnboardMinutes)
                 .put("verification", JSONObject().put("vehicle", person.verification.vehicleAccess.name)
-                    .put("pedestrian", person.verification.pedestrianConnection.name)
                     .put("source", checkedText(person.verification.source, 500)).put("checkedAt", person.verification.checkedAtMillis)))
         }
         val json = JSONObject().put("home", draft.driverHome?.let(::writePoint))
@@ -128,11 +126,8 @@ internal object SharedJourneyJson {
             SharedPassengerDraft(
                 id = text(person, "id", 64), name = text(person, "name", 80),
                 dropoff = optionalObject(person, "dropoff")?.let(::readPoint),
-                doorstepDropoffConfirmed = boolean(person, "doorstep"),
-                doorstepConfirmedAtMillis = optionalLong(person, "doorstepAt"),
                 verification = DropoffVerification(
                     AccessCheck.valueOf(text(verification, "vehicle", 32)),
-                    AccessCheck.valueOf(text(verification, "pedestrian", 32)),
                     text(verification, "source", 500), optionalLong(verification, "checkedAt")),
                 stopMinutes = integer(person, "stop"), latestArrivalAtMillis = optionalLong(person, "deadline"),
                 maximumOnboardMinutes = optionalLong(person, "onboard")?.let { require(it in 0..480); it.toInt() },

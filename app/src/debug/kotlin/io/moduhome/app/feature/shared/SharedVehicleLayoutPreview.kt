@@ -78,13 +78,13 @@ private fun SharedLayoutSample(state: SharedVehicleUiState, actions: SharedVehic
 private fun sharedLayoutState(stage: JourneyStage, page: Int = 0, budget: Int = 60): SharedVehicleUiState {
     val zone = ZoneId.of("Asia/Seoul")
     val departure = LocalDate.of(2026, 1, 1).atTime(23, 50).atZone(zone).toInstant().toEpochMilli()
-    val verification = DropoffVerification(AccessCheck.SUITABLE, AccessCheck.SUITABLE, "화면 배치 예시 확인", 1L)
+    val verification = DropoffVerification(AccessCheck.SUITABLE, "화면 배치 예시 확인", 1L)
     val draft = SharedJourneyDraft(
         driverHome = NavigationPoint("예시 운전자 집 공동주택 후문 승하차장", 37.5, 127.0),
         passengers = (1..2).map { number ->
             SharedPassengerDraft("passenger-$number", "동승자 $number",
-                NavigationPoint("예시 동승자 $number 집 앞 북측 출입구 승하차장", 37.5, 127.0),
-                doorstepDropoffConfirmed = true, doorstepConfirmedAtMillis = 1L, verification = verification)
+                NavigationPoint("예시 동승자 $number 골목 입구 하차지", 37.5, 127.0),
+                verification = verification)
         },
         errand = SharedErrandDraft(VisitKind.PICKUP,
             NavigationPoint("예시 픽업 매장 중앙주차장 1층 출입구", 37.5, 127.0), stayMinutes = 10, ready = true),

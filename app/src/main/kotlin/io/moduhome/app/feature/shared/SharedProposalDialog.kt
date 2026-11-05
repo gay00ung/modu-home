@@ -56,7 +56,7 @@ internal fun SharedProposalDialog(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     onChoosePassenger: (String) -> Unit = {},
-    onConfirmDoorstep: (Boolean) -> Unit = {},
+    onConfirmDropoff: (Boolean) -> Unit = {},
 ) {
     val maximumHeight = LocalWindowInfo.current.containerDpSize.height * 0.90f
     val pending = inbox.entries.filter { it.status == ProposalReviewStatus.PENDING }.map { it.proposal }
@@ -75,7 +75,7 @@ internal fun SharedProposalDialog(
         )
     }
     val approveEnabled = canApply && currentReview != null && selectedProposal != null &&
-        (selectedProposal !is DropoffProposal || (currentReview.passengerId != null && currentReview.doorstepConfirmed))
+        (selectedProposal !is DropoffProposal || (currentReview.passengerId != null && currentReview.dropoffConfirmed))
     val previousProposal = pending.getOrNull(selectedIndex - 1).takeIf { selectedIndex > 0 }
     val nextProposal = pending.getOrNull(if (selectedIndex < 0) 0 else selectedIndex + 1)
 
@@ -111,7 +111,7 @@ internal fun SharedProposalDialog(
                                 fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.Medium,
                             )
                             selectedProposal is DropoffProposal -> SharedDropoffReview(
-                                selectedProposal, currentReview, onChoosePassenger, onConfirmDoorstep,
+                                selectedProposal, currentReview, onChoosePassenger, onConfirmDropoff,
                             )
                             received != null -> {
                                 Text("받은 제안의 조건이에요", fontSize = 28.sp, lineHeight = 40.sp,
@@ -323,7 +323,7 @@ private fun SharedDropoffReview(
     proposal: DropoffProposal,
     review: SharedProposalReview?,
     onChoosePassenger: (String) -> Unit,
-    onConfirmDoorstep: (Boolean) -> Unit,
+    onConfirmDropoff: (Boolean) -> Unit,
 ) {
     Text("${proposal.passengerName} · 받은 하차지", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
     Text(proposal.place.name, fontSize = 40.sp, lineHeight = 52.sp, fontWeight = FontWeight.Bold)
@@ -351,11 +351,11 @@ private fun SharedDropoffReview(
             fontSize = 28.sp, lineHeight = 40.sp,
             color = if (proposal.deadlineAtMillis == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    OutlinedButton(onClick = { onConfirmDoorstep(!review.doorstepConfirmed) }, enabled = passenger != null,
+    OutlinedButton(onClick = { onConfirmDropoff(!review.dropoffConfirmed) }, enabled = passenger != null,
         modifier = Modifier.fillMaxWidth().heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp)) {
-        Text(if (review.doorstepConfirmed) "✓ 집 앞 직접 하차 확인됨" else "집 앞에서 바로 내릴 수 있어요",
+        Text(if (review.dropoffConfirmed) "✓ 이 하차지에서 내릴 수 있어요" else "이 하차지에 정차해 내릴 수 있어요",
             fontSize = 28.sp, lineHeight = 40.sp)
     }
-    Text("차량 진입·정차와 하차 후 이동 여부를 직접 확인해주세요", fontSize = 28.sp, lineHeight = 40.sp,
+    Text("동승자가 보낸 위치와 차량 진입·정차 가능 여부를 확인해주세요", fontSize = 28.sp, lineHeight = 40.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

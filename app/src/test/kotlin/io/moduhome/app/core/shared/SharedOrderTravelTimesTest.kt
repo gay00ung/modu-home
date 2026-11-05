@@ -9,16 +9,14 @@ import org.junit.Test
 class SharedOrderTravelTimesTest {
     private val oldMatrixEvidence = TravelEvidence(TravelEstimateKind.SAMPLE, "이전 행렬")
     private val routeEvidence = TravelEvidence(TravelEstimateKind.ROUTING_SERVICE, "방문 순서별 테스트 응답", 1000L)
-    private val onwardEvidence = TravelEvidence(TravelEstimateKind.USER_INPUT, "동승자가 입력한 시간")
-    private val checked = DropoffVerification(AccessCheck.SUITABLE, AccessCheck.SUITABLE, "테스트 확인 자료", 1L)
+    private val checked = DropoffVerification(AccessCheck.SUITABLE, "테스트 확인 자료", 1L)
     private val origin = place("origin", 37.50)
     private val home = place("home", 37.51)
     private val a = place("a", 37.52)
     private val b = place("b", 37.53)
     private val shop = place("shop", 37.54)
-    private val onward = OnwardJourneyEstimate(OnwardTravelMode.TRANSIT, 12, 4, evidence = onwardEvidence)
-    private val first = SharedPassenger("first", "동승자 1", listOf(SharedDropoffCandidate("a", a, onward, checked)))
-    private val second = SharedPassenger("second", "동승자 2", listOf(SharedDropoffCandidate("b", b, onward, checked)))
+    private val first = SharedPassenger("first", "동승자 1", listOf(SharedDropoffCandidate("a", a, checked)))
+    private val second = SharedPassenger("second", "동승자 2", listOf(SharedDropoffCandidate("b", b, checked)))
     private val errand = SharedErrand(shop, ErrandVisit(VisitKind.PICKUP, "픽업", 10))
     private val planner = SharedJourneyPlanner()
 
@@ -108,13 +106,13 @@ class SharedOrderTravelTimesTest {
         val plans = planner.compare(request, bundle(request))
         val aThenErrandThenB = plans.single { it.stops.map { stop -> stop.place.id } == listOf(a.id, shop.id, b.id) }
         val aThenBThenErrand = plans.single { it.stops.map { stop -> stop.place.id } == listOf(a.id, b.id, shop.id) }
-        assertEquals(1103, aThenErrandThenB.passengerArrivals.single { it.passengerId == first.id }.homeArrivalMinute)
+        assertEquals(1090, aThenErrandThenB.passengerArrivals.single { it.passengerId == first.id }.dropoffMinute)
         assertEquals(
-            aThenBThenErrand.passengerArrivals.single { it.passengerId == first.id }.homeArrivalMinute,
-            aThenErrandThenB.passengerArrivals.single { it.passengerId == first.id }.homeArrivalMinute,
+            aThenBThenErrand.passengerArrivals.single { it.passengerId == first.id }.dropoffMinute,
+            aThenErrandThenB.passengerArrivals.single { it.passengerId == first.id }.dropoffMinute,
         )
-        assertEquals(1134, aThenErrandThenB.passengerArrivals.single { it.passengerId == second.id }.homeArrivalMinute)
-        assertEquals(1114, aThenBThenErrand.passengerArrivals.single { it.passengerId == second.id }.homeArrivalMinute)
+        assertEquals(1121, aThenErrandThenB.passengerArrivals.single { it.passengerId == second.id }.dropoffMinute)
+        assertEquals(1101, aThenBThenErrand.passengerArrivals.single { it.passengerId == second.id }.dropoffMinute)
     }
 
     @Test fun missingAnEntireOrderDoesNotProduceAPartialSetDespiteACompleteLegacyMatrix() {

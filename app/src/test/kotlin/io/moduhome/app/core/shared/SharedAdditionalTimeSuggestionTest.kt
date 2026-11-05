@@ -15,8 +15,7 @@ class SharedAdditionalTimeSuggestionTest {
     private val dropoff = place("동승자 집")
     private val shop = place("픽업")
     private val candidate = SharedDropoffCandidate("집 앞", dropoff,
-        OnwardJourneyEstimate(OnwardTravelMode.WALK, 0, 0, evidence = evidence),
-        DropoffVerification(AccessCheck.SUITABLE, AccessCheck.SUITABLE, "직접 확인", 1))
+        DropoffVerification(AccessCheck.SUITABLE, "직접 확인", 1))
     private val passenger = SharedPassenger("p1", "동승자", listOf(candidate), latestArrivalMinute = 1103)
     private val request: SharedJourneyRequest get() {
         val points = listOf(origin, home, dropoff, shop)
@@ -44,7 +43,7 @@ class SharedAdditionalTimeSuggestionTest {
 
     @Test fun dropoffSafetyAndPickupReadinessAreNeverAssumed() {
         for (check in listOf(DropoffVerification(),
-            DropoffVerification(AccessCheck.UNSUITABLE, AccessCheck.SUITABLE, "직접 확인", 1))) {
+            DropoffVerification(AccessCheck.UNSUITABLE, "직접 확인", 1))) {
             val person = passenger.copy(candidates = listOf(candidate.copy(verification = check)))
             assertNull(planner.suggestAdditionalTime(planner.compare(request.copy(passengers = listOf(person))), 20))
         }

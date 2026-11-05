@@ -2,6 +2,7 @@ package io.moduhome.app.feature.shared
 
 import io.moduhome.app.core.navigation.NavigationPoint
 import io.moduhome.app.core.planning.VisitKind
+import io.moduhome.app.core.shared.AccessCheck
 import io.moduhome.app.core.transfer.*
 import io.moduhome.app.core.shared.*
 import io.moduhome.app.data.shared.SharedJourneyJson
@@ -36,14 +37,14 @@ class SharedDropoffProposalTest {
     }
 
     @Test fun explicitApprovalChangesOnlyTheSelectedPassengerAndPreservesTheOtherConditions() {
-        val preview = review().forPassenger("p1")!!.confirmDoorstep(true)!!
+        val preview = review().forPassenger("p1")!!.confirmDropoff(true)!!
         val result = original.approveProposal(preview, inbox(), now + 1, zone) as SharedProposalApplyResult.Applied
         val person = result.session.draft.passengers.single()
         assertEquals(proposal.place, person.dropoff)
         assertEquals(proposal.passengerName, person.name)
         assertEquals(proposal.deadlineAtMillis, person.latestArrivalAtMillis)
-        assertTrue(person.doorstepDropoffConfirmed)
-        assertEquals(now + 1, person.doorstepConfirmedAtMillis)
+        assertEquals(AccessCheck.SUITABLE, person.verification.vehicleAccess)
+        assertEquals(now + 1, person.verification.checkedAtMillis)
         assertEquals(original.draft.driverHome, result.session.draft.driverHome)
         assertEquals(original.draft.errand, result.session.draft.errand)
         assertEquals(60, result.session.draft.allowedAdditionalMinutes)
@@ -53,7 +54,7 @@ class SharedDropoffProposalTest {
     @Test fun addingASecondPassengerKeepsTheFirstAndCannotCreateAThird() {
         val preview = review()
         val secondId = preview.passengerChoices.last().id
-        val first = original.approveProposal(preview.forPassenger(secondId)!!.confirmDoorstep(true)!!, inbox(), now, zone)
+        val first = original.approveProposal(preview.forPassenger(secondId)!!.confirmDropoff(true)!!, inbox(), now, zone)
             as SharedProposalApplyResult.Applied
         assertEquals(2, first.session.draft.passengers.size)
         assertEquals(original.draft.passengers.single(), first.session.draft.passengers.first())
@@ -61,19 +62,19 @@ class SharedDropoffProposalTest {
         val nextReview = review(first.session, next)
         assertEquals(2, nextReview.passengerChoices.size)
         assertNull(nextReview.forPassenger("third-person"))
-        assertFalse(nextReview.forPassenger("p1")!!.doorstepConfirmed)
+        assertFalse(nextReview.forPassenger("p1")!!.dropoffConfirmed)
     }
 
     @Test fun repeatingTheSamePassengerChoiceKeepsConfirmationButSwitchingPassengersClearsIt() {
-        val selected = review().forPassenger("p1")!!.confirmDoorstep(true)!!
+        val selected = review().forPassenger("p1")!!.confirmDropoff(true)!!
         assertSame(selected, selected.forPassenger("p1"))
-        assertTrue(selected.forPassenger("p1")!!.doorstepConfirmed)
+        assertTrue(selected.forPassenger("p1")!!.dropoffConfirmed)
         val other = selected.passengerChoices.last().id
-        assertFalse(selected.forPassenger(other)!!.doorstepConfirmed)
+        assertFalse(selected.forPassenger(other)!!.dropoffConfirmed)
     }
 
     @Test fun aChangedDraftRevisionOrArrivalInvalidatesTheReview() {
-        val preview = review().forPassenger("p1")!!.confirmDoorstep(true)!!
+        val preview = review().forPassenger("p1")!!.confirmDropoff(true)!!
         val changed = original.copy(draft = original.draft.copy(allowedAdditionalMinutes = 30))
         assertTrue(changed.approveProposal(preview, inbox(), now + 1, zone) is SharedProposalApplyResult.Rejected)
         assertTrue(original.approveProposal(preview, inbox(proposal.copy(revision = 2)), now + 1, zone) is SharedProposalApplyResult.Rejected)
@@ -83,7 +84,7 @@ class SharedDropoffProposalTest {
     @Test fun aPhoneCorrectionInvalidatesTheOldReviewAndNeedsFreshPassengerConfirmation() {
         val phone = CompanionDropoffDraft.forAddress(proposal.place, now, zone)
         val first = (phone.createProposal(now, zone) as CompanionDropoffResult.Created).proposal
-        val oldReview = review(value = first).forPassenger("p1")!!.confirmDoorstep(true)!!
+        val oldReview = review(value = first).forPassenger("p1")!!.confirmDropoff(true)!!
         val corrected = (phone.withIssuedProposal(first).copy(passengerName = "수정한 이름")
             .createProposal(now + 1, zone) as CompanionDropoffResult.Created).proposal
         val pending = (inbox(first).receive(corrected, now + 1) as ProposalReceiveResult.Pending).inbox
@@ -91,13 +92,13 @@ class SharedDropoffProposalTest {
         val fresh = (original.reviewProposal(pending, corrected.id, corrected.revision, now + 2, zone)
             as SharedProposalReviewResult.Ready).review
         assertNull(fresh.passengerId)
-        assertFalse(fresh.doorstepConfirmed)
-        assertTrue(original.approveProposal(fresh.forPassenger("p1")!!.confirmDoorstep(true)!!, pending, now + 2, zone)
+        assertFalse(fresh.dropoffConfirmed)
+        assertTrue(original.approveProposal(fresh.forPassenger("p1")!!.confirmDropoff(true)!!, pending, now + 2, zone)
             is SharedProposalApplyResult.Applied)
     }
 
     @Test fun savedDropoffApprovalRestoresItsTargetAndRepairsOnlyItsOwnPendingReceipt() {
-        val applied = original.approveProposal(review().forPassenger("p1")!!.confirmDoorstep(true)!!, inbox(), now, zone)
+        val applied = original.approveProposal(review().forPassenger("p1")!!.confirmDropoff(true)!!, inbox(), now, zone)
             as SharedProposalApplyResult.Applied
         val restored = SharedJourneyJson.decode(SharedJourneyJson.encode(applied.session)!!, now + 1)
         assertEquals(applied.session, restored)
@@ -108,13 +109,13 @@ class SharedDropoffProposalTest {
     }
 
     @Test fun twoApprovedDropoffsAndAnErrandProduceSixOrdersWithTheArrivalConstraintApplied() {
-        val first = original.approveProposal(review().forPassenger("p1")!!.confirmDoorstep(true)!!, inbox(), now, zone)
+        val first = original.approveProposal(review().forPassenger("p1")!!.confirmDropoff(true)!!, inbox(), now, zone)
             as SharedProposalApplyResult.Applied
         val other = proposal.copy(id = "dropoff-002", passengerName = "친구 B", deadlineAtMillis = null,
             place = NavigationPoint("두 번째 하차지", 37.57, 126.99))
         val secondReview = review(first.session, other)
         val next = first.session.approveProposal(secondReview.forPassenger(secondReview.passengerChoices.last().id)!!
-            .confirmDoorstep(true)!!, inbox(other), now, zone) as SharedProposalApplyResult.Applied
+            .confirmDropoff(true)!!, inbox(other), now, zone) as SharedProposalApplyResult.Applied
         val request = next.session.draft.validate(NavigationPoint("출발", 37.6, 127.1), now, zone).request!!
         val places = listOf(request.origin, request.home) + request.passengers.flatMap { p -> p.candidates.map { it.place } } + request.errand!!.place
         val evidence = TravelEvidence(TravelEstimateKind.USER_INPUT, "단위 테스트의 구간 시간")

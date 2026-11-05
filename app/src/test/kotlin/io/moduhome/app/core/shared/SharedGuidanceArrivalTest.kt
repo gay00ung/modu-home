@@ -22,16 +22,16 @@ class SharedGuidanceArrivalTest {
     private val a = point("a", 37.51, "")
     private val b = point("b", 37.52)
 
-    @Test fun usesCurrentNativeTimeAndIncludesThePassengerStopInTheDeadline() {
+    @Test fun usesCurrentNativeTimeAtTheDropoffWithoutAddingAlightingOrOnwardTime() {
         val plan = plan(listOf(dropoff(a, "a", 1_185)), 1_179)
         val progress = progress(plan)
         val native = estimate(checkNotNull(progress.confirmedWindow), departure, 2_880)
         val value = project(plan, progress, native)!!
         assertEquals(a, value.point)
         assertEquals(at("2026-10-30T20:05:00"), value.drivingArrivalAtMillis)
-        assertEquals(at("2026-10-30T20:06:00"), value.readyAtMillis)
-        assertEquals(21L, value.lateMinutes)
-        assertEquals(27L, value.planDelayMinutes)
+        assertEquals(at("2026-10-30T20:05:00"), value.readyAtMillis)
+        assertEquals(20L, value.lateMinutes)
+        assertEquals(26L, value.planDelayMinutes)
         assertEquals(48L, value.drivingMinutes)
     }
 
@@ -42,7 +42,7 @@ class SharedGuidanceArrivalTest {
         val native = estimate(checkNotNull(progress.confirmedWindow), departure, 1_500, listOf(300, 900))
         val value = project(plan, progress, native)!!
         assertEquals(first, value.point)
-        assertEquals(departure + 6 * 60_000, value.readyAtMillis)
+        assertEquals(departure + 5 * 60_000, value.readyAtMillis)
     }
 
     @Test fun completedStopTimeIsNotAddedAgainAndOldWindowCannotLabelTheNextPassenger() {
@@ -56,7 +56,7 @@ class SharedGuidanceArrivalTest {
         val completed = pending.observeNavigation(snapshot(window))
         val fresh = estimate(window, departure + 2_000, 1_200, listOf(600))
         assertNull(project(plan, completed, old, departure + 2_000))
-        assertEquals(departure + 2_000 + 11 * 60_000, project(plan, completed, fresh, departure + 2_000)!!.readyAtMillis)
+        assertEquals(departure + 2_000 + 10 * 60_000, project(plan, completed, fresh, departure + 2_000)!!.readyAtMillis)
     }
 
     @Test fun aNativePassedWaypointNeverBecomesAnAutomaticPhysicalCompletion() {
@@ -90,8 +90,8 @@ class SharedGuidanceArrivalTest {
         val progress = progress(plan, received)
         val native = estimate(checkNotNull(progress.confirmedWindow), received, 60)
         val value = SharedGuidanceArrival.fromObservation(plan, progress, native, received, zone, received)!!
-        assertEquals(at("2026-10-31T00:01:00"), value.readyAtMillis)
-        assertEquals(1L, value.lateMinutes)
+        assertEquals(at("2026-10-31T00:00:00"), value.readyAtMillis)
+        assertEquals(0L, value.lateMinutes)
     }
 
     @Test fun homeIsShownOnlyAfterAllStopsAreExplicitlyCompleted() {
@@ -136,12 +136,12 @@ class SharedGuidanceArrivalTest {
     }
 
     @Test fun partialMinuteLatenessRoundsUpAndARefreshClockDoesNotMoveTheSameEstimate() {
-        val plan = plan(listOf(dropoff(a, "a", 1_187)))
+        val plan = plan(listOf(dropoff(a, "a", 1_186)))
         val progress = progress(plan)
         val native = estimate(checkNotNull(progress.confirmedWindow), departure + 10_000, 1_750)
         val first = project(plan, progress, native, departure + 10_000)!!
         val later = project(plan, progress, native, departure + 40_000)!!
-        assertEquals(at("2026-10-30T19:47:20"), first.readyAtMillis)
+        assertEquals(at("2026-10-30T19:46:20"), first.readyAtMillis)
         assertEquals(1L, first.lateMinutes)
         assertEquals(first.readyAtMillis, later.readyAtMillis)
         assertEquals(30L, later.drivingMinutes)
@@ -149,13 +149,12 @@ class SharedGuidanceArrivalTest {
 
     private fun plan(stops: List<SharedScheduledStop>, plannedArrival: Int = 1_179) = SharedJourneyPlan(
         "fixture", stops, stops.filterIsInstance<SharedScheduledStop.Dropoff>().map {
-            SharedPassengerArrival(it.passenger.id, it.passenger.name, it.candidate, plannedArrival, plannedArrival, 10)
+            SharedPassengerArrival(it.passenger.id, it.passenger.name, it.candidate, plannedArrival, 10)
         }, 1_206, 30, 2, 10, 50, emptyList(), emptyList(),
     )
 
     private fun dropoff(point: NavigationPoint, id: String, deadline: Int? = null): SharedScheduledStop.Dropoff {
-        val candidate = SharedDropoffCandidate(id, SharedJourneyPlace(id, point),
-            OnwardJourneyEstimate(OnwardTravelMode.WALK, 0, 0, evidence = TravelEvidence(TravelEstimateKind.USER_INPUT, "fixture")))
+        val candidate = SharedDropoffCandidate(id, SharedJourneyPlace(id, point))
         return SharedScheduledStop.Dropoff(SharedPassenger(id, id, listOf(candidate), deadline), candidate, 1_178, 1_179)
     }
 

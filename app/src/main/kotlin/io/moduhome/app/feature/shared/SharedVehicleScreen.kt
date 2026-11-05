@@ -98,9 +98,9 @@ internal fun SharedVehicleScreen(
                     }
                 }
                 SharedCaption(when (state.stage) {
-                    JourneyStage.INPUT -> "동승자를 집 앞에 내려주고, 가는 김에 볼일까지"
+                    JourneyStage.INPUT -> "친구가 정한 곳에 내려주고, 가는 김에 볼일까지"
                     JourneyStage.COMPARE -> "운전자와 동승자의 도착을 함께 비교해요"
-                    JourneyStage.REVIEW -> "집 앞 하차와 볼일의 전체 순서를 확인해주세요"
+                    JourneyStage.REVIEW -> "지정한 하차지와 볼일의 전체 순서를 확인해주세요"
                     JourneyStage.ACTIVE -> "하차와 완료 확인은 정차한 뒤에 해주세요"
                     JourneyStage.COMPLETE -> "동승자 하차와 집 도착을 기록했어요"
                 })
@@ -229,7 +229,7 @@ private fun SharedInput(
             }
         }
     }
-    SharedCaption("현재 차량 위치에서 출발해요 · 동승자는 직접 확인한 집 앞 장소에 내려요")
+    SharedCaption("현재 차량 위치에서 출발해요 · 동승자가 지정한 하차지까지 안내해요")
 }
 
 @Composable
@@ -244,16 +244,16 @@ private fun SharedPassengerCard(
     Surface(modifier, color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            Text("${passenger.name} · 집 앞 하차", fontSize = 32.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold)
+            Text("${passenger.name} · 지정 하차지", fontSize = 32.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold)
             SharedAction(passenger.dropoff?.name ?: "하차 장소 선택", canChoose,
                 onClick = { actions.onChoosePassengerDropoff(passenger.id) }, modifier = Modifier.fillMaxWidth())
             passenger.latestArrivalAtMillis?.let { at ->
                 val time = DateTimeFormatter.ofPattern("M월 d일 HH:mm").format(Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()))
                 Text("도착 희망 · $time", fontSize = 30.sp, lineHeight = 42.sp, color = MaterialTheme.colorScheme.primary)
             }
-            SharedCaption("내린 뒤 다른 이동이 없는 장소를 직접 확인해주세요")
+            SharedCaption("동승자가 내릴 위치와 차량 정차 가능 여부를 확인해주세요")
             SharedChoice(
-                label = if (confirmed) "✓ 집 앞에 안전하게 정차하고 바로 내릴 수 있어요" else "집 앞에 안전하게 정차하고 바로 내릴 수 있어요",
+                label = if (confirmed) "✓ 이 하차지에서 내릴 수 있어요" else "이 하차지에 정차해 내릴 수 있어요",
                 selected = confirmed,
                 enabled = canEdit && passenger.dropoff != null,
                 onClick = { if (canEdit && passenger.dropoff != null) actions.onConfirmDropoff(passenger.id, !confirmed) },
@@ -326,7 +326,7 @@ private fun SharedPlanCard(
             SharedCaption(when {
                 selected && recommended -> "✓ 선택한 추천 계획"
                 selected -> "✓ 선택한 계획"
-                recommended -> "전원 이동시간이 짧은 계획"
+                recommended -> "함께 탄 시간이 짧은 계획"
                 plan.isValid -> "조건에 맞는 계획"
                 else -> "조건 확인 필요"
             })
@@ -341,7 +341,7 @@ private fun SharedPlanCard(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(arrival.passengerName, Modifier.weight(1f), fontSize = 28.sp, lineHeight = 38.sp,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(clock(arrival.homeArrivalMinute), Modifier.widthIn(max = 220.dp), fontSize = 32.sp, lineHeight = 42.sp,
+                    Text(clock(arrival.dropoffMinute), Modifier.widthIn(max = 220.dp), fontSize = 32.sp, lineHeight = 42.sp,
                         fontWeight = FontWeight.SemiBold, maxLines = 2)
                 }
             }
@@ -368,7 +368,7 @@ private fun SharedReview(state: SharedVehicleUiState) {
             plan.stops.forEachIndexed { index, stop ->
                 val arrivalMinute = when (stop) {
                     is SharedScheduledStop.Dropoff -> plan.passengerArrivals
-                        .singleOrNull { it.passengerId == stop.passenger.id }?.homeArrivalMinute
+                        .singleOrNull { it.passengerId == stop.passenger.id }?.dropoffMinute
                     is SharedScheduledStop.Errand -> stop.arrivalMinute
                 }
                 SharedStopLine("${index + 1}", stop.place.point.name, stopLabel(stop), clock(arrivalMinute))
@@ -425,8 +425,7 @@ private fun SharedActive(
     state.arrivalWarning()?.let { SharedError(it) }
     if (state.guidanceArrival != null) {
         when (next) {
-            is SharedScheduledStop.Dropoff -> SharedCaption("하차 ${next.candidate.stopMinutes}분" +
-                (if (next.candidate.onward.totalMinutes > 0) " · 하차 후 이동 ${next.candidate.onward.totalMinutes}분" else "") + " 포함")
+            is SharedScheduledStop.Dropoff -> SharedCaption("동승자가 지정한 하차지까지의 도착 예상이에요")
             is SharedScheduledStop.Errand -> SharedCaption("가게까지 편도 도보 ${next.errand.visit.walkingMinutesOneWay}분 · 체류 ${next.errand.visit.stayMinutes}분 포함")
             null -> Unit
         }
@@ -557,7 +556,7 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
             JourneyStage.INPUT -> when {
                 vehicle.planning -> "현재 위치에서 방문 순서를 비교하고 있어요"
                 !allPlacesChosen -> "집과 하차·볼일 장소를 선택해주세요"
-                !allDropoffsConfirmed -> "집 앞에서 바로 내릴 수 있는지 확인해주세요"
+                !allDropoffsConfirmed -> "지정한 하차지에 정차해 내릴 수 있는지 확인해주세요"
                 !inputReady -> "차량 내비 연결을 확인해주세요"
                 else -> "방문 순서를 비교하고 출발할 계획을 골라요"
             }
@@ -598,7 +597,7 @@ private fun SharedEstimateNote(state: SharedVehicleUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SharedCaption(state.estimateLabel ?: "이동시간 산출 기준을 확인해주세요")
         state.directHomeMinutes?.let { SharedCaption("운전자 집 직행 ${it}분 · 정차와 체류시간 별도") }
-        SharedCaption("동승자는 선택한 집 앞에 도착하는 기준이에요")
+        SharedCaption("동승자 도착시각은 지정한 하차지 기준이에요")
         SharedCaption("© OpenStreetMap contributors · ODbL · openstreetmap.org/copyright")
     }
 }
@@ -657,7 +656,7 @@ private fun SharedRestrictedScreen(state: SharedVehicleUiState, interaction: Dri
 }
 
 private fun SharedVehicleUiState.arrivalLabel(): String = when (selectedPlan?.stops?.getOrNull(completedStops)) {
-    is SharedScheduledStop.Dropoff -> "동승자 도착 예상"
+    is SharedScheduledStop.Dropoff -> "하차지 도착 예상"
     is SharedScheduledStop.Errand -> "볼일 완료 예상"
     null -> "집 도착 예상"
 }
@@ -731,13 +730,12 @@ private fun SharedError(text: String) {
     Text(text, fontSize = 28.sp, lineHeight = 38.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.error)
 }
 
-private fun dropoffConfirmed(passenger: SharedPassengerDraft): Boolean = passenger.doorstepDropoffConfirmed &&
-    passenger.doorstepConfirmedAtMillis != null && passenger.verification.vehicleAccess == AccessCheck.SUITABLE &&
-    passenger.verification.pedestrianConnection == AccessCheck.SUITABLE && passenger.verification.checkedAtMillis != null &&
+private fun dropoffConfirmed(passenger: SharedPassengerDraft): Boolean = passenger.dropoff != null &&
+    passenger.verification.vehicleAccess == AccessCheck.SUITABLE && passenger.verification.checkedAtMillis != null &&
     passenger.verification.source.isNotBlank()
 
 private fun stopLabel(stop: SharedScheduledStop): String = when (stop) {
-    is SharedScheduledStop.Dropoff -> "${stop.passenger.name} 집 앞 하차"
+    is SharedScheduledStop.Dropoff -> "${stop.passenger.name} 하차"
     is SharedScheduledStop.Errand -> errandLabel(stop.errand.visit.kind)
 }
 

@@ -1391,9 +1391,9 @@ internal fun ModuHomeApp(
                     sharedProposalReview = visibleReview?.forPassenger(id)
                 }
             },
-            onConfirmDoorstep = { confirmed ->
+            onConfirmDropoff = { confirmed ->
                 if (canReviewSharedProposal() && sharedProposalReview == visibleReview && visibleInteraction == restrictions.state.value) {
-                    sharedProposalReview = visibleReview?.confirmDoorstep(confirmed)
+                    sharedProposalReview = visibleReview?.confirmDropoff(confirmed)
                 }
             },
             onDismiss = ::dismissSharedProposals,

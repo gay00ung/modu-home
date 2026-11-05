@@ -8,14 +8,13 @@ import org.junit.Test
 
 class SharedJourneyPlannerTest {
     private val entered = TravelEvidence(TravelEstimateKind.USER_INPUT, "사용자 입력")
-    private val checked = DropoffVerification(AccessCheck.SUITABLE, AccessCheck.SUITABLE, "현장 확인", 1L)
+    private val checked = DropoffVerification(AccessCheck.SUITABLE, "현장 확인", 1L)
     private val origin = place("origin")
     private val home = place("home")
     private val station = place("station")
     private val otherStation = place("other-station")
     private val shop = place("shop")
-    private val onward = OnwardJourneyEstimate(OnwardTravelMode.TRANSIT, 12, 4, evidence = entered)
-    private val candidate = SharedDropoffCandidate("station", station, onward, checked)
+    private val candidate = SharedDropoffCandidate("station", station, checked)
     private val passenger = SharedPassenger("passenger", "동승자", listOf(candidate))
     private val errand = SharedErrand(shop, ErrandVisit(VisitKind.PICKUP, "픽업", 10))
     private val planner = SharedJourneyPlanner()
@@ -38,15 +37,15 @@ class SharedJourneyPlannerTest {
         return SharedJourneyRequest(origin, home, departure, budget, passengers, legs, errand)
     }
 
-    @Test fun onePassengerIncludesAlightingAndTheWholeOnwardJourney() {
+    @Test fun passengerArrivalEndsAtTheSelectedDropoffWhileDriverTimeIncludesAlighting() {
         val plan = planner.compare(request()).single()
         assertTrue(plan.isValid)
         assertEquals(1101, plan.driverHomeArrivalMinute)
         assertEquals(1, plan.driverAdditionalMinutes)
-        assertEquals(1091, plan.passengerArrivals.single().dropoffMinute)
-        assertEquals(1103, plan.passengerArrivals.single().homeArrivalMinute)
-        assertEquals(11, plan.passengerArrivals.single().onboardMinutes)
-        assertEquals(44, plan.totalPersonMinutes)
+        assertEquals(1090, plan.passengerArrivals.single().dropoffMinute)
+        assertEquals(10, plan.passengerArrivals.single().onboardMinutes)
+        assertEquals(31, plan.totalPersonMinutes)
+        assertEquals(1091, plan.stops.single().departureMinute)
         assertTrue(plan.includesUserEstimates)
         assertFalse(plan.includesSampleTimes)
     }
@@ -55,8 +54,8 @@ class SharedJourneyPlannerTest {
         val plans = planner.compare(request(errand = errand))
         val after = plans.single { it.stops.first() is SharedScheduledStop.Dropoff }
         val before = plans.single { it.stops.first() is SharedScheduledStop.Errand }
-        assertEquals(1103, after.passengerArrivals.single().homeArrivalMinute)
-        assertEquals(1123, before.passengerArrivals.single().homeArrivalMinute)
+        assertEquals(1090, after.passengerArrivals.single().dropoffMinute)
+        assertEquals(1110, before.passengerArrivals.single().dropoffMinute)
         assertEquals(1121, after.driverHomeArrivalMinute)
         assertEquals(after.driverHomeArrivalMinute, before.driverHomeArrivalMinute)
         assertTrue(after.totalPersonMinutes!! < before.totalPersonMinutes!!)
@@ -100,7 +99,7 @@ class SharedJourneyPlannerTest {
     }
 
     @Test fun driverBudgetAndPassengerDeadlineIncludeEveryAffectedStop() {
-        val boundedPassenger = passenger.copy(latestArrivalMinute = 1103)
+        val boundedPassenger = passenger.copy(latestArrivalMinute = 1090)
         val plans = planner.compare(request(listOf(boundedPassenger), errand, budget = 20))
         assertTrue(plans.all { it.issues.contains(SharedPlanIssue.DriverOverBudget(1)) })
         val after = plans.single { it.stops.first() is SharedScheduledStop.Dropoff }
@@ -111,13 +110,13 @@ class SharedJourneyPlannerTest {
     }
 
     @Test fun exactBudgetDeadlineAndOnboardLimitAreAllowed() {
-        val bounded = passenger.copy(latestArrivalMinute = 1103, maximumOnboardMinutes = 11)
+        val bounded = passenger.copy(latestArrivalMinute = 1090, maximumOnboardMinutes = 10)
         val plan = planner.compare(request(listOf(bounded), budget = 1)).single()
         assertTrue(plan.isValid)
     }
 
     @Test fun oneMinuteOverTheOnboardLimitIsExplained() {
-        val plan = planner.compare(request(listOf(passenger.copy(maximumOnboardMinutes = 10)))).single()
+        val plan = planner.compare(request(listOf(passenger.copy(maximumOnboardMinutes = 9)))).single()
         assertEquals(listOf(SharedPlanIssue.PassengerRideTooLong(passenger.id, 1)), plan.issues)
     }
 
@@ -130,7 +129,7 @@ class SharedJourneyPlannerTest {
         assertNull(plan.driverHomeArrivalMinute)
         assertNull(plan.drivingMinutes)
         assertNull(plan.driverAdditionalMinutes)
-        assertNull(plan.passengerArrivals.single().homeArrivalMinute)
+        assertNull(plan.passengerArrivals.single().dropoffMinute)
         assertNull(plan.totalPersonMinutes)
     }
 
@@ -140,7 +139,7 @@ class SharedJourneyPlannerTest {
         val plan = planner.compare(initial.copy(drivingEstimates = initial.drivingEstimates - missing)).single()
         assertFalse(plan.isValid)
         assertEquals(1101, plan.driverHomeArrivalMinute)
-        assertEquals(1103, plan.passengerArrivals.single().homeArrivalMinute)
+        assertEquals(1090, plan.passengerArrivals.single().dropoffMinute)
         assertNull(plan.driverAdditionalMinutes)
         assertEquals(listOf(SharedPlanIssue.MissingDrivingEstimate(missing)), plan.issues)
     }
@@ -150,7 +149,7 @@ class SharedJourneyPlannerTest {
         val missing = DrivingLegKey(station.id, shop.id)
         val plans = planner.compare(initial.copy(drivingEstimates = initial.drivingEstimates - missing))
         val after = plans.single { it.stops.first() is SharedScheduledStop.Dropoff }
-        assertEquals(1103, after.passengerArrivals.single().homeArrivalMinute)
+        assertEquals(1090, after.passengerArrivals.single().dropoffMinute)
         assertNull(after.driverHomeArrivalMinute)
         assertTrue(after.issues.contains(SharedPlanIssue.MissingDrivingEstimate(missing)))
     }
@@ -194,9 +193,9 @@ class SharedJourneyPlannerTest {
 
     @Test fun absoluteMinutesKeepAnExplicitNextDayDeadlineAcrossMidnight() {
         val lateDeparture = 1430
-        val nextDay = passenger.copy(latestArrivalMinute = 1453)
+        val nextDay = passenger.copy(latestArrivalMinute = 1440)
         val plan = planner.compare(request(listOf(nextDay), departure = lateDeparture)).single()
-        assertEquals(1453, plan.passengerArrivals.single().homeArrivalMinute)
+        assertEquals(1440, plan.passengerArrivals.single().dropoffMinute)
         assertTrue(plan.isValid)
         val sameDay = nextDay.copy(latestArrivalMinute = 13)
         assertFalse(planner.compare(request(listOf(sameDay), departure = lateDeparture)).single().isValid)
@@ -205,9 +204,9 @@ class SharedJourneyPlannerTest {
     @Test fun routeAndSampleSourcesStayDistinguishableInThePlan() {
         val live = TravelEvidence(TravelEstimateKind.ROUTING_SERVICE, "경로 응답", 1234L, includesLiveTraffic = true)
         val sample = TravelEvidence(TravelEstimateKind.SAMPLE, "전시 예시")
-        val sampleCandidate = candidate.copy(onward = onward.copy(evidence = sample))
-        val plan = planner.compare(request(listOf(passenger.copy(candidates = listOf(sampleCandidate))), overrides = mapOf(
+        val plan = planner.compare(request(overrides = mapOf(
             DrivingLegKey(origin.id, station.id) to SharedDrivingEstimate(10, live),
+            DrivingLegKey(station.id, home.id) to SharedDrivingEstimate(10, sample),
         ))).single()
         assertTrue(plan.includesSampleTimes)
         assertTrue(plan.includesUserEstimates)

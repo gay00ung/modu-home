@@ -25,8 +25,8 @@ class SharedDepartureRebaseTest {
     private val shop = NavigationPoint("픽업", 37.53, 127.03)
 
     private fun draft(at: Long = now): SharedJourneyDraft = SharedJourneyDraft(home, listOf(
-        SharedPassengerDraft("p1", "동승자 1", passengerHome, true, at - 1000,
-            DropoffVerification(AccessCheck.SUITABLE, AccessCheck.SUITABLE, "사용자 확인", at - 500)),
+        SharedPassengerDraft("p1", "동승자 1", passengerHome,
+            DropoffVerification(AccessCheck.SUITABLE, "사용자 확인", at - 500)),
     ))
 
     private inner class Gateway(private val queriedAt: Long) : RouteEstimateGateway {
@@ -62,7 +62,7 @@ class SharedDepartureRebaseTest {
     }
 
     @Test fun aLaterDepartureCanMakeTheSameSelectedOrderMissThePassengersDeadline() {
-        val input = draft().copy(passengers = draft().passengers.map { it.copy(latestArrivalAtMillis = now + 2 * 60 * 1000) })
+        val input = draft().copy(passengers = draft().passengers.map { it.copy(latestArrivalAtMillis = now + 60 * 1000) })
         val original = load(input)
         assertTrue(original.plans.single().isValid)
         val rebased = requireNotNull(original.rebaseDeparture(now + 60 * 1000))
@@ -102,7 +102,7 @@ class SharedDepartureRebaseTest {
         assertEquals(zone, rebased.zoneId)
         assertEquals(1, rebased.request.departureMinute)
         assertEquals(5, rebased.request.passengers.single().latestArrivalMinute)
-        assertEquals(3, rebased.plans.single().passengerArrivals.single().homeArrivalMinute)
+        assertEquals(2, rebased.plans.single().passengerArrivals.single().dropoffMinute)
         assertTrue(rebased.plans.single().isValid)
     }
 

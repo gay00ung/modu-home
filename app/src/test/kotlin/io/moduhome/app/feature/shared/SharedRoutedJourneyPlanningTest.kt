@@ -27,9 +27,9 @@ class SharedRoutedJourneyPlanningTest {
     private val a = NavigationPoint("동승자 1 집", 37.52, 127.02)
     private val b = NavigationPoint("동승자 2 집", 37.53, 127.03)
     private val shop = NavigationPoint("픽업", 37.54, 127.04)
-    private val checked = DropoffVerification(AccessCheck.SUITABLE, AccessCheck.SUITABLE, "사용자 확인", now - 500)
-    private val first = SharedPassengerDraft("p1", "동승자 1", a, true, now - 1000, checked)
-    private val second = SharedPassengerDraft("p2", "동승자 2", b, true, now - 1000, checked)
+    private val checked = DropoffVerification(AccessCheck.SUITABLE, "사용자 확인", now - 500)
+    private val first = SharedPassengerDraft("p1", "동승자 1", a, checked)
+    private val second = SharedPassengerDraft("p2", "동승자 2", b, checked)
     private val draft = SharedJourneyDraft(home, listOf(first, second), SharedErrandDraft(VisitKind.PICKUP, shop, ready = true))
 
     private fun response(points: List<NavigationPoint>, seconds: List<Double> = List(points.size - 1) { 60.0 },
@@ -110,17 +110,15 @@ class SharedRoutedJourneyPlanningTest {
         assertTrue(result.estimates.plans.all { it.drivingMinutes == 8 })
     }
 
-    @Test fun anUnverifiedDropoffRemainsAnInvalidPlanEvenWhenRoadQueriesSucceed() = runBlocking {
+    @Test fun anUnverifiedDropoffIsRejectedBeforeSendingAnyRoadQueries() = runBlocking {
         val unverified = draft.copy(passengers = draft.passengers.map { it.copy(verification = DropoffVerification()) })
-        val result = load(unverified) as SharedRoutedJourneyLoadResult.Success
-        assertTrue(result.estimates.plans.all { !it.isValid })
-        assertTrue(result.estimates.plans.all { plan -> plan.issues.count { it is SharedPlanIssue.UnverifiedDropoff } == 2 })
-        assertTrue(result.estimates.request.passengers.all {
-            it.candidates.single().verification.vehicleAccess == AccessCheck.NOT_CHECKED
-        })
+        val gateway = Gateway { _, _ -> error("must not query") }
+        val result = load(unverified, gateway) as SharedRoutedJourneyLoadResult.Failed
+        assertTrue(result.errors.keys.containsAll(listOf("passengers.0.verification", "passengers.1.verification")))
+        assertTrue(gateway.calls.isEmpty())
     }
 
-    @Test fun explicitlyVerifiedDoorstepInputsCanProduceValidPlans() = runBlocking {
+    @Test fun verifiedPassengerSelectedDropoffsCanProduceValidPlans() = runBlocking {
         val result = load() as SharedRoutedJourneyLoadResult.Success
         assertTrue(result.estimates.plans.all { it.isValid })
         assertTrue(result.estimates.request.drivingEstimates.isEmpty())
@@ -193,12 +191,12 @@ class SharedRoutedJourneyPlanningTest {
         assertTrue(load(gateway = gateway) is SharedRoutedJourneyLoadResult.Failed)
     }
 
-    @Test fun missingPlacesAndUnconfirmedDoorstepConditionsFailBeforeAnyQuery() = runBlocking {
+    @Test fun missingPlacesAndUnconfirmedDropoffsFailBeforeAnyQuery() = runBlocking {
         val gateway = Gateway { _, _ -> error("must not query") }
         assertTrue(load(draft.copy(driverHome = null), gateway) is SharedRoutedJourneyLoadResult.Failed)
-        val result = load(draft.copy(passengers = listOf(first.copy(doorstepDropoffConfirmed = false))), gateway)
+        val result = load(draft.copy(passengers = listOf(first.copy(verification = DropoffVerification()))), gateway)
             as SharedRoutedJourneyLoadResult.Failed
-        assertTrue(result.errors.containsKey("passengers.0.doorstep"))
+        assertTrue(result.errors.containsKey("passengers.0.verification"))
         assertTrue(gateway.calls.isEmpty())
     }
 

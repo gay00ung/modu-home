@@ -19,8 +19,8 @@ class SharedTerminalStopConfirmationTest {
     private val session by lazy {
         val home = NavigationPoint("운전자 집", 37.50, 127.0, placeId = "home")
         val address = NavigationPoint("검색한 하차 주소", 37.51, 127.01)
-        val draft = SharedJourneyDraft(home, listOf(SharedPassengerDraft("p1", "동승자 1", address, true, now - 500,
-            DropoffVerification(AccessCheck.SUITABLE, AccessCheck.SUITABLE, "직접 확인", now - 500))))
+        val draft = SharedJourneyDraft(home, listOf(SharedPassengerDraft("p1", "동승자 1", address,
+            DropoffVerification(AccessCheck.SUITABLE, "직접 확인", now - 500))))
         val gateway = object : RouteEstimateGateway {
             override suspend fun estimate(points: List<NavigationPoint>) = RouteEstimate.fromObservation(
                 points, List(points.size - 1) { ObservedRouteLeg(60.0, 600.0) },

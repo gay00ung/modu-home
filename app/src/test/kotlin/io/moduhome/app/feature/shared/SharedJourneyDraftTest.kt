@@ -4,8 +4,6 @@ import io.moduhome.app.core.navigation.NavigationPoint
 import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.shared.AccessCheck
 import io.moduhome.app.core.shared.DropoffVerification
-import io.moduhome.app.core.shared.OnwardTravelMode
-import io.moduhome.app.core.shared.TravelEstimateKind
 import org.junit.Assert.*
 import org.junit.Test
 import java.time.Instant
@@ -16,12 +14,12 @@ class SharedJourneyDraftTest {
     private val zone = ZoneId.of("Asia/Seoul")
     private val origin = NavigationPoint("현재 차량", 37.50, 127.00)
     private val driverHome = NavigationPoint("운전자 집", 37.51, 127.01)
-    private val passengerHome = NavigationPoint("동승자 집", 37.52, 127.02)
+    private val passengerHome = NavigationPoint("친구가 정한 골목 입구", 37.52, 127.02)
     private val passenger = SharedPassengerDraft("p1", "동승자 1", passengerHome,
-        doorstepDropoffConfirmed = true, doorstepConfirmedAtMillis = now - 1000)
+        verification = DropoffVerification(AccessCheck.SUITABLE, "지정 하차지 확인", now - 1000))
     private val draft = SharedJourneyDraft(driverHome, listOf(passenger))
 
-    @Test fun anExplicitDoorstepConditionCreatesWalkingZeroWithoutInventingATransitRoute() {
+    @Test fun aPassengerSelectedDropoffDoesNotRequireAHomeOrAnOnwardJourney() {
         val result = draft.validate(origin, now, zone)
         assertTrue(result.errors.isEmpty())
         val request = requireNotNull(result.request)
@@ -29,50 +27,40 @@ class SharedJourneyDraftTest {
         assertEquals(1080, request.departureMinute)
         assertEquals(driverHome, request.home.point)
         assertEquals(passengerHome, candidate.place.point)
-        assertEquals(OnwardTravelMode.WALK, candidate.onward.mode)
-        assertEquals(0, candidate.onward.totalMinutes)
-        assertEquals(0, candidate.onward.walkingMinutes)
-        assertEquals(TravelEstimateKind.USER_INPUT, candidate.onward.evidence.kind)
+        assertEquals(passenger.verification, candidate.verification)
         assertTrue(request.drivingEstimates.isEmpty())
     }
 
     @Test fun selectingAPlaceDoesNotSilentlyConfirmItsAccess() {
-        val candidate = requireNotNull(draft.validate(origin, now, zone).request).passengers.single().candidates.single()
-        assertEquals(AccessCheck.NOT_CHECKED, candidate.verification.vehicleAccess)
-        assertEquals(AccessCheck.NOT_CHECKED, candidate.verification.pedestrianConnection)
-        assertNull(candidate.verification.checkedAtMillis)
-        assertEquals("", candidate.verification.source)
+        val chosen = SharedPassengerDraft("p1", "동승자 1").chooseDropoff(passengerHome)
+        assertEquals(DropoffVerification(), chosen.verification)
+        assertNull(draft.copy(passengers = listOf(chosen)).validate(origin, now, zone).request)
     }
 
     @Test fun anExplicitUserAccessRecordIsPreservedVerbatim() {
-        val verification = DropoffVerification(AccessCheck.SUITABLE, AccessCheck.SUITABLE, "사용자 확인", now - 500)
+        val verification = DropoffVerification(AccessCheck.SUITABLE, "사용자 확인", now - 500)
         val request = requireNotNull(draft.copy(passengers = listOf(passenger.copy(verification = verification)))
             .validate(origin, now, zone).request)
         assertEquals(verification, request.passengers.single().candidates.single().verification)
     }
 
-    @Test fun missingDoorstepConfirmationDoesNotCreateAnAssumedZeroMinuteOnwardJourney() {
-        val result = draft.copy(passengers = listOf(passenger.copy(doorstepDropoffConfirmed = false)))
+    @Test fun unconfirmedVehicleAccessBlocksPlanningWithoutAskingAboutHomeOrWalking() {
+        val result = draft.copy(passengers = listOf(passenger.copy(verification = DropoffVerification())))
             .validate(origin, now, zone)
         assertNull(result.request)
-        assertTrue(result.errors.containsKey("passengers.0.doorstep"))
+        assertTrue(result.errors.containsKey("passengers.0.verification"))
     }
 
-    @Test fun aMissingOrFutureDoorstepConfirmationTimestampIsRejected() {
-        listOf(null, now + 1).forEach { timestamp ->
-            val result = draft.copy(passengers = listOf(passenger.copy(doorstepConfirmedAtMillis = timestamp)))
-                .validate(origin, now, zone)
-            assertNull(result.request)
-            assertTrue(result.errors.containsKey("passengers.0.doorstep"))
-        }
+    @Test fun aFutureVehicleAccessConfirmationIsRejected() {
+        val future = passenger.verification.copy(checkedAtMillis = now + 1)
+        val result = draft.copy(passengers = listOf(passenger.copy(verification = future))).validate(origin, now, zone)
+        assertNull(result.request)
+        assertTrue(result.errors.containsKey("passengers.0.verification"))
     }
 
     @Test fun choosingADifferentDropoffClearsTheOldConditionAndAccessCheck() {
-        val previous = passenger.copy(verification = DropoffVerification(AccessCheck.SUITABLE,
-            AccessCheck.SUITABLE, "사용자 확인", now - 500))
+        val previous = passenger.copy(verification = DropoffVerification(AccessCheck.SUITABLE, "사용자 확인", now - 500))
         val changed = previous.chooseDropoff(passengerHome.copy(placeId = "different-entrance"))
-        assertFalse(changed.doorstepDropoffConfirmed)
-        assertNull(changed.doorstepConfirmedAtMillis)
         assertEquals(DropoffVerification(), changed.verification)
         assertEquals(previous, previous.chooseDropoff(passengerHome))
     }

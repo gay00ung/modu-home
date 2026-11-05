@@ -2,6 +2,8 @@ package io.moduhome.app.data.shared
 
 import io.moduhome.app.core.navigation.NavigationPoint
 import io.moduhome.app.core.navigation.NavigationPlan
+import io.moduhome.app.core.navigation.NavigationSnapshot
+import io.moduhome.app.core.navigation.ObservedNavigationPlace
 import io.moduhome.app.core.planning.JourneyStage
 import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.routing.ObservedRouteLeg
@@ -35,8 +37,8 @@ class SharedJourneyJsonTest {
         12, 2, false, now + 1_800_123)
     private val receipt = SharedProposalAcceptance(proposal, now)
     private val draft = SharedJourneyDraft(home, listOf(SharedPassengerDraft("p1", "동승자 1",
-        NavigationPoint("집 앞", 37.51, 127.01), true, now - 1000,
-        DropoffVerification(AccessCheck.SUITABLE, AccessCheck.SUITABLE, "직접 확인", now - 1000))),
+        NavigationPoint("집 앞", 37.51, 127.01),
+        DropoffVerification(AccessCheck.SUITABLE, "직접 확인", now - 1000))),
         SharedErrandDraft(proposal.kind, proposal.place, 12, 2, false, proposal.deadlineAtMillis), 60)
     private val session get() = SharedJourneySession(draft, acceptedProposals = listOf(receipt))
     private fun encoded(current: SharedJourneySession = session) = requireNotNull(SharedJourneyJson.encode(current))
@@ -76,6 +78,48 @@ class SharedJourneyJsonTest {
             "progress":{"stage":"INPUT","completed":0,"completedAt":[]}
         }"""
         assertEquals(SharedJourneySession(), SharedJourneyJson.decode(original, now))
+    }
+
+    @Test fun newSavedStateContainsOnlyTheChosenDropoffAndVehicleAccessCheck() {
+        val raw = JSONObject(encoded())
+        assertEquals(2, raw.getInt("schema"))
+        val person = raw.getJSONObject("draft").getJSONArray("passengers").getJSONObject(0)
+        assertFalse(person.has("doorstep"))
+        assertFalse(person.has("doorstepAt"))
+        assertFalse(person.getJSONObject("verification").has("pedestrian"))
+        assertEquals(session, SharedJourneyJson.decode(raw.toString(), now + 1))
+    }
+
+    @Test fun schemaOneKeepsPlacesSelectedOrderAndCompletedStopsWithoutTheOldHomeCondition() {
+        val compared = routedSession()
+        val routing = requireNotNull(compared.routing)
+        val plan = routing.plans.first()
+        var progress = compared.progress.review(routing.plans).start(plan, home, now + 1)
+        val states = mutableListOf(compared, compared.copy(progress = progress))
+        repeat(plan.stops.size) { index ->
+            val window = requireNotNull(progress.pendingWindow)
+            fun observed(point: NavigationPoint) = ObservedNavigationPlace(point.name, point.placeId, point.provider,
+                point.latitude, point.longitude, point.subId)
+            progress = progress.observeNavigation(NavigationSnapshot(observed(window.destination), window.waypoints.map(::observed), true))
+                .confirmStop(plan, now + index + 2)
+            states += compared.copy(progress = progress)
+        }
+        states += compared.copy(progress = progress.finish(plan, now + 10))
+        for (state in states) {
+            val raw = JSONObject(encoded(state)).put("schema", 1)
+            val person = raw.getJSONObject("draft").getJSONArray("passengers").getJSONObject(0)
+            // An old home/pedestrian condition must not veto a verified vehicle dropoff.
+            person.put("doorstep", false).put("doorstepAt", now - 1000)
+            person.getJSONObject("verification").put("pedestrian", "UNSUITABLE")
+            val restored = SharedJourneyJson.decode(raw.toString(), now + 100)
+            assertEquals(state.draft, restored.draft)
+            assertEquals(state.progress.stage, restored.progress.stage)
+            assertEquals(state.progress.selectedPlanId, restored.progress.selectedPlanId)
+            assertEquals(state.progress.completedAtMillis, restored.progress.completedAtMillis)
+            assertEquals(state.progress.completedStopCount, restored.progress.completedStopCount)
+            assertEquals(state.acceptedProposals, restored.acceptedProposals)
+            assertEquals(routing.plans.map { it.id }.toSet(), restored.routing!!.plans.map { it.id }.toSet())
+        }
     }
 
     @Test fun expiredAcceptedProposalsRemainHistoryInsteadOfBeingDecodedAsNewSuggestions() {

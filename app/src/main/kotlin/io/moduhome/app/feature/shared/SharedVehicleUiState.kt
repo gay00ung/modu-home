@@ -39,7 +39,7 @@ internal data class SharedVehicleActions(
     val onChoosePassengerDropoff: (String) -> Unit,
     val onErrandChoice: (VisitKind?) -> Unit,
     val onChooseErrandPlace: () -> Unit,
-    /** The owner records the user's doorstep/access confirmation and its time together. */
+    /** The owner records the user's vehicle access confirmation and its time together. */
     val onConfirmDropoff: (String, Boolean) -> Unit,
     val onCompare: () -> Unit,
     val onUseAdditionalTime: (AdditionalTimeSuggestion) -> Unit,

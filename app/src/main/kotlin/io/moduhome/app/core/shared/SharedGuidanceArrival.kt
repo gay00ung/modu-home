@@ -45,8 +45,8 @@ internal class SharedGuidanceArrival private constructor(
             if (native.point != point) return null
             val terms = when (next) {
                 is SharedScheduledStop.Dropoff -> ArrivalTerms(
-                    next.candidate.stopMinutes + next.candidate.onward.totalMinutes,
-                    plan.passengerArrivals.singleOrNull { it.passengerId == next.passenger.id }?.homeArrivalMinute,
+                    0,
+                    plan.passengerArrivals.singleOrNull { it.passengerId == next.passenger.id }?.dropoffMinute,
                     next.passenger.latestArrivalMinute,
                 )
                 is SharedScheduledStop.Errand -> ArrivalTerms(

@@ -46,10 +46,10 @@ class JourneyShortcutStateTest {
     }
 
     private fun together(): SharedJourneySession {
-        val checked = DropoffVerification(AccessCheck.SUITABLE, AccessCheck.SUITABLE, "사용자 확인", now - 500)
+        val checked = DropoffVerification(AccessCheck.SUITABLE, "사용자 확인", now - 500)
         val draft = SharedJourneyDraft(home, listOf(
-            SharedPassengerDraft("p1", "동승자 1", pickup, true, now - 1_000, checked),
-            SharedPassengerDraft("p2", "동승자 2", groceries, true, now - 1_000, checked),
+            SharedPassengerDraft("p1", "동승자 1", pickup, checked),
+            SharedPassengerDraft("p2", "동승자 2", groceries, checked),
         ), SharedErrandDraft(VisitKind.PICKUP,
             NavigationPoint("볼일", 37.53, 127.03, placeId = "errand"), ready = true))
         val gateway = object : RouteEstimateGateway {

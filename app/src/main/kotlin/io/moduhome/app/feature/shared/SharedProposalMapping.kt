@@ -44,7 +44,7 @@ internal class SharedProposalReview private constructor(
     val zoneId: ZoneId,
     val reviewedAtMillis: Long,
     val passengerId: String? = null,
-    val doorstepConfirmed: Boolean = false,
+    val dropoffConfirmed: Boolean = false,
 ) {
     val passengerChoices: List<SharedPassengerDraft>
         get() {
@@ -59,7 +59,7 @@ internal class SharedProposalReview private constructor(
         else if (passengerId == id) this
         else SharedProposalReview(session, proposal, zoneId, reviewedAtMillis, id, false)
 
-    fun confirmDoorstep(confirmed: Boolean): SharedProposalReview? =
+    fun confirmDropoff(confirmed: Boolean): SharedProposalReview? =
         if (proposal !is DropoffProposal || passengerId == null) null
         else SharedProposalReview(session, proposal, zoneId, reviewedAtMillis, passengerId, confirmed)
 
@@ -83,13 +83,11 @@ internal class SharedProposalReview private constructor(
             is DropoffProposal -> {
                 val slot = passengerChoices.firstOrNull { it.id == passengerId }
                     ?: return SharedProposalApplyResult.Rejected("하차할 동승자를 선택해주세요")
-                if (!doorstepConfirmed) return SharedProposalApplyResult.Rejected("집 앞에서 바로 내릴 수 있는지 확인해주세요")
+                if (!dropoffConfirmed) return SharedProposalApplyResult.Rejected("받은 하차지에 정차해 내릴 수 있는지 확인해주세요")
                 val passenger = slot.chooseDropoff(value.place).copy(
                     name = value.passengerName.takeUnless { it == "동승자" } ?: slot.name,
                     latestArrivalAtMillis = value.deadlineAtMillis,
-                    doorstepDropoffConfirmed = true,
-                    doorstepConfirmedAtMillis = nowMillis,
-                    verification = DropoffVerification(AccessCheck.SUITABLE, AccessCheck.SUITABLE, "운전자가 받은 하차지를 직접 확인", nowMillis),
+                    verification = DropoffVerification(AccessCheck.SUITABLE, "운전자가 받은 하차지를 직접 확인", nowMillis),
                 )
                 val people = if (currentSession.draft.passengers.any { it.id == passenger.id }) {
                     currentSession.draft.passengers.map { if (it.id == passenger.id) passenger else it }

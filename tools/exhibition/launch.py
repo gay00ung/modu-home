@@ -150,18 +150,14 @@ def main():
                               capture_output=True, text=True, timeout=10)
         component = home.stdout.strip().splitlines()[-1] if home.stdout.strip() else ''
         if home.returncode == 0 and component == 'ai.umos.homescreen/.HomeActivity':
-            result = subprocess.run(adb + ['shell', 'am', 'start', '--user', user, '-n', component],
-                                    capture_output=True, text=True, timeout=10)
+            result = subprocess.run(adb + ['shell', 'am', 'start', '-W', '--user', user, '-n', component],
+                                    capture_output=True, text=True, timeout=15)
             shell_opened = result.returncode == 0 and 'Error:' not in result.stdout + result.stderr
-            deadline = time.monotonic() + 30
-            while shell_opened:
-                activities = subprocess.run(adb + ['shell', 'dumpsys', 'activity', 'activities'],
-                                            capture_output=True, text=True, timeout=5)
-                if 'ai.umos.drivingview/.DrivingViewActivity' in activities.stdout:
-                    break
-                if time.monotonic() > deadline:
-                    raise RuntimeError('차량 홈의 앱 영역을 아직 확인하지 못했어요 잠시 후 다시 실행해주세요')
-                time.sleep(1)
+            # Official images can keep the app area under HomeActivity without a
+            # separate DrivingViewActivity. Await that actual launch, then verify
+            # the navigation and app activities below instead of a private class.
+            if not shell_opened:
+                raise RuntimeError('차량 홈을 열지 못했어요 AVD 화면을 확인해주세요')
     navigation_opened = False
     if args.profile == 'car' and not args.restore_ready and user.isdecimal():
         native = subprocess.run(adb + ['shell', 'am', 'start', '-W', '--user', user,

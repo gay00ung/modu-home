@@ -18,7 +18,7 @@ python3 tools/exhibition/launch.py --profile phone
 ```
 
 - Android SDK는 ANDROID_SDK_ROOT, ANDROID_HOME, local.properties 순으로 찾으며 macOS 기본 경로도 지원
-- 차량은 공식 홈의 DrivingView와 기본 내비를 먼저 열어 앱 영역과 SDK 현재 위치 조회 준비
+- 차량은 공식 홈과 기본 내비를 차례로 열고 앱의 전경 유지 상태를 확인해 앱 영역과 SDK 조회 준비
 - 새로 부팅한 차량 AVD는 예시 위치 37.4127212, 127.094681 사용
 - 실행 중인 AVD를 다시 열 때는 위치를 바꾸지 않음
 - 설치된 모두 집으로 앱은 현재 Android 사용자에서 자동 실행

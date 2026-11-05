@@ -100,7 +100,7 @@ APK 경로: `app/build/outputs/apk/debug/app-debug.apk`
 
 ## 제출용 APK와 전시 실행
 
-배포 서명 APK 0.3.0은 [apk 폴더](apk/modu-home_모두집으로_release.apk)에 둔다
+배포 서명 APK 0.3.1은 [apk 폴더](apk/modu-home_모두집으로_release.apk)에 둔다
 [서명·해시 정보](apk/release.json)에서 설치 파일과 인증서를 대조할 수 있다
 운영 HTTPS 서버를 사용하며 같은 서명으로 업데이트 설치한다
 

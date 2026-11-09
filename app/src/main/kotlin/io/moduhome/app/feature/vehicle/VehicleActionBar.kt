@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -32,13 +33,18 @@ internal fun VehicleActionBar(
     actionEnabled: Boolean,
     onAction: () -> Unit,
     modifier: Modifier = Modifier,
+    contentWidth: Dp? = null,
     secondaryAction: (@Composable () -> Unit)? = null,
 ) {
     val fontScale = LocalDensity.current.fontScale
     Surface(modifier = modifier, color = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.navigationBarsPadding()) {
+        Column(Modifier.navigationBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
             HorizontalDivider()
-            BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 40.dp, vertical = 24.dp)) {
+            BoxWithConstraints(
+                Modifier.padding(horizontal = 40.dp, vertical = 24.dp)
+                    .then(if (contentWidth == null) Modifier else Modifier.widthIn(max = contentWidth))
+                    .fillMaxWidth(),
+            ) {
                 if (maxWidth < 1000.dp || fontScale > 1.1f) {
                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         if (caption != null) VehicleActionCaption(caption)

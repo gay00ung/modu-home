@@ -41,7 +41,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,6 +66,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+
+private val SharedComparisonMaxWidth = 2_160.dp
 
 /** Pure vehicle presentation. Place lookup, user confirmations, routing and persistence belong to the app. */
 @Composable
@@ -129,11 +130,22 @@ internal fun SharedVehicleScreen(
             Column(
                 Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
                     .verticalScroll(rememberScrollState()).padding(horizontal = 40.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
+                verticalArrangement = if (hasSelectedOrder && vehicle.connection == NavigationConnection.Ready) {
+                    Arrangement.spacedBy(24.dp, Alignment.CenterVertically)
+                } else {
+                    Arrangement.spacedBy(24.dp)
+                },
             ) {
                 when (state.stage) {
                     JourneyStage.INPUT -> SharedInput(state.draft, actions, vehicle, canEdit)
-                    JourneyStage.COMPARE -> SharedComparison(state, actions, canEdit)
+                    JourneyStage.COMPARE -> Column(
+                        Modifier.align(Alignment.CenterHorizontally)
+                            .then(if (hasSelectedOrder) Modifier.widthIn(max = SharedComparisonMaxWidth) else Modifier)
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(24.dp),
+                    ) {
+                        SharedComparison(state, actions, canEdit)
+                    }
                     JourneyStage.REVIEW -> SharedReview(state)
                     JourneyStage.ACTIVE -> SharedActive(state, actions, vehicle, canEdit)
                     JourneyStage.COMPLETE -> SharedComplete(state)
@@ -289,7 +301,7 @@ private fun SharedComparison(state: SharedVehicleUiState, actions: SharedVehicle
     var showAll by rememberSaveable { mutableStateOf(false) }
     val selected = state.selectedPlan?.takeIf { it.isValid }
     if (selected != null) {
-        SharedSelectedRoute(selected)
+        SharedOrderPanel(selected)
         val firstPlaceId = selected.stops.firstOrNull()?.place?.id
         val alternate = state.plans.firstOrNull { it.isValid && it.id != selected.id && it.stops.firstOrNull()?.place?.id != firstPlaceId }
             ?: state.plans.firstOrNull { it.isValid && it.id != selected.id }
@@ -302,7 +314,7 @@ private fun SharedComparison(state: SharedVehicleUiState, actions: SharedVehicle
                 if (current != null && other != null) current - other else null
             }
             val label = when {
-                firstAlternate == null || firstAlternate.place.id == firstPlaceId -> "다른 순서"
+                firstAlternate == null || firstAlternate.place.id == firstPlaceId -> null
                 passenger != null && earlier != null && earlier > 0 -> "${passenger.name} ${earlier}분 먼저"
                 else -> "${shortStopLabel(firstAlternate)} 먼저"
             }
@@ -315,9 +327,12 @@ private fun SharedComparison(state: SharedVehicleUiState, actions: SharedVehicle
                 delta > 0 -> "집 ${delta}분 늦게"
                 else -> "집 ${-delta}분 일찍"
             }
-            SharedAction(listOfNotNull(label, homeChange).joinToString(" · "), canEdit,
+            SharedOrderSwapButton(
+                detail = listOfNotNull(label, homeChange).joinToString(" · "),
+                enabled = canEdit,
                 onClick = { actions.onSelectPlan(alternate.id) },
-                modifier = Modifier.fillMaxWidth())
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
         val shownOrders = if (alternate == null) 1 else 2
         if (state.plans.size > shownOrders) {
@@ -358,51 +373,6 @@ private fun SharedComparison(state: SharedVehicleUiState, actions: SharedVehicle
             canEdit, onClick = { actions.onPlanPageChange((page + 1) % pages) }, modifier = Modifier.fillMaxWidth())
     }
     SharedComparisonSource(state)
-}
-
-@Composable
-private fun SharedSelectedRoute(plan: SharedJourneyPlan) {
-    val first = plan.stops.firstOrNull()
-    val title = when (first) {
-        is SharedScheduledStop.Dropoff -> "${first.passenger.name}부터 내려요"
-        is SharedScheduledStop.Errand -> "${first.place.point.name}부터 들러요"
-        null -> "내 집으로 출발해요"
-    }
-    Text(title, fontSize = 52.sp, lineHeight = 64.sp, fontWeight = FontWeight.Bold)
-    val stops: @Composable () -> Unit = {
-        plan.stops.forEachIndexed { index, stop ->
-            val arrival = when (stop) {
-                is SharedScheduledStop.Dropoff -> plan.passengerArrivals.firstOrNull { it.passengerId == stop.passenger.id }?.dropoffMinute
-                is SharedScheduledStop.Errand -> stop.arrivalMinute
-            }
-            SharedStopLine("${index + 1}", stop.place.point.name, shortStopLabel(stop), clock(arrival),
-                timeStyle = TextStyle(fontSize = 48.sp, lineHeight = 60.sp, fontWeight = FontWeight.Bold))
-        }
-    }
-    val home: @Composable () -> Unit = {
-        SharedCaption("교통 제외 · 집 도착")
-        Text(clock(plan.driverHomeArrivalMinute), fontSize = 68.sp, lineHeight = 80.sp,
-            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-        plan.driverAdditionalMinutes?.let {
-            Text("직행 +${it}분", fontSize = 30.sp, lineHeight = 40.sp, fontWeight = FontWeight.SemiBold)
-        }
-    }
-    val fontScale = LocalDensity.current.fontScale
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        if (maxWidth >= 900.dp && fontScale <= 1.15f) {
-            Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1.6f), verticalArrangement = Arrangement.spacedBy(14.dp)) { stops() }
-                Surface(Modifier.weight(1f), color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(24.dp)) {
-                    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { home() }
-                }
-            }
-        } else {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                stops()
-                home()
-            }
-        }
-    }
 }
 
 @Composable
@@ -672,6 +642,7 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
                 JourneyStage.COMPLETE -> actions.onNewJourney()
             }
         },
+        contentWidth = if (state.stage == JourneyStage.COMPARE && plan?.isValid == true) SharedComparisonMaxWidth else null,
         secondaryAction = secondaryAction,
     )
 }
@@ -801,13 +772,7 @@ private fun SharedAction(label: String, enabled: Boolean, onClick: () -> Unit, m
 }
 
 @Composable
-private fun SharedStopLine(
-    marker: String,
-    place: String,
-    label: String,
-    time: String?,
-    timeStyle: TextStyle = TextStyle(fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.SemiBold),
-) {
+private fun SharedStopLine(marker: String, place: String, label: String, time: String?) {
     val fontScale = LocalDensity.current.fontScale
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val stacked = maxWidth < 800.dp || fontScale > 1.1f
@@ -818,9 +783,9 @@ private fun SharedStopLine(
                 Text(place, fontSize = 32.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                 SharedCaption(label)
-                if (stacked) time?.let { Text(it, style = timeStyle) }
+                if (stacked) time?.let { Text(it, fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.SemiBold) }
             }
-            if (!stacked) time?.let { Text(it, style = timeStyle) }
+            if (!stacked) time?.let { Text(it, fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.SemiBold) }
         }
     }
 }
@@ -844,7 +809,7 @@ private fun stopLabel(stop: SharedScheduledStop): String = when (stop) {
     is SharedScheduledStop.Errand -> errandLabel(stop.errand.visit.kind)
 }
 
-private fun shortStopLabel(stop: SharedScheduledStop): String = when (stop) {
+internal fun shortStopLabel(stop: SharedScheduledStop): String = when (stop) {
     is SharedScheduledStop.Dropoff -> stop.passenger.name
     is SharedScheduledStop.Errand -> errandLabel(stop.errand.visit.kind)
 }

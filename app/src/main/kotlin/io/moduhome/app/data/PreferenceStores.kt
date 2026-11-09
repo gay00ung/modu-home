@@ -18,9 +18,9 @@ internal object PreferenceStores {
 
     @Synchronized
     @SuppressLint("ApplySharedPref", "UseKtx") // A failed mode change must not appear after recreation.
-    fun flag(preferences: SharedPreferences, key: String): AcknowledgedValueStore<Boolean> =
+    fun flag(preferences: SharedPreferences, key: String, defaultValue: Boolean = false): AcknowledgedValueStore<Boolean> =
         flags.getOrPut(preferences to key) {
-            val initial = try { preferences.getBoolean(key, false) } catch (_: ClassCastException) { false }
+            val initial = try { preferences.getBoolean(key, defaultValue) } catch (_: ClassCastException) { false }
             AcknowledgedValueStore(initial) { value -> preferences.edit().putBoolean(key, value).commit() }
         }
 }

@@ -4,10 +4,10 @@ import android.content.Context
 import io.moduhome.app.data.PreferenceStores
 import io.moduhome.app.feature.shared.SharedJourneySession
 
-internal class SharedJourneyPreferences(context: Context) {
+internal class SharedJourneyPreferences(context: Context, defaultMode: Boolean = false) {
     private val preferences = context.applicationContext.getSharedPreferences("shared_journey", Context.MODE_PRIVATE)
     private val session = PreferenceStores.text(preferences, "session")
-    private val selectedMode = PreferenceStores.flag(preferences, "selected_mode")
+    private val selectedMode = PreferenceStores.flag(preferences, "selected_mode", defaultMode)
 
     fun load(): SharedJourneySession = try {
         session.load()?.let { SharedJourneyJson.decode(it, System.currentTimeMillis()) }

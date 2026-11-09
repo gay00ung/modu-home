@@ -52,6 +52,40 @@ private val DarkColors = darkColorScheme(
     onSurfaceVariant = Color(0xFFB0BDCF),
 )
 
+private val LightVehicleColors = LightColors.copy(
+    primary = Color(0xFF3549B9),
+    onPrimary = Color(0xFFFFFDFB),
+    primaryContainer = Color(0xFFE7EAFF),
+    onPrimaryContainer = Color(0xFF222840),
+    secondaryContainer = Color(0xFFFFD4B6),
+    onSecondaryContainer = Color(0xFF683A28),
+    background = Color(0xFFFDF9F3),
+    onBackground = Color(0xFF222840),
+    surface = Color(0xFFFDF9F3),
+    surfaceContainer = Color(0xFFF3EEE8),
+    onSurface = Color(0xFF222840),
+    onSurfaceVariant = Color(0xFF526078),
+    outline = Color(0xFF758198),
+    outlineVariant = Color(0xFFCCD2E4),
+)
+
+private val DarkVehicleColors = DarkColors.copy(
+    primary = Color(0xFFBEC8FF),
+    onPrimary = Color(0xFF1B2348),
+    primaryContainer = Color(0xFF343F69),
+    onPrimaryContainer = Color(0xFFF4F5FF),
+    secondaryContainer = Color(0xFF62484A),
+    onSecondaryContainer = Color(0xFFFFE4D1),
+    background = Color(0xFF1B2033),
+    onBackground = Color(0xFFF4F5FF),
+    surface = Color(0xFF1B2033),
+    surfaceContainer = Color(0xFF252C43),
+    onSurface = Color(0xFFF4F5FF),
+    onSurfaceVariant = Color(0xFFC2CBE4),
+    outline = Color(0xFF9CA8C7),
+    outlineVariant = Color(0xFF52607C),
+)
+
 @Composable
 internal fun ModuHomeTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -60,7 +94,12 @@ internal fun ModuHomeTheme(
 ) {
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides if (vehicle) 80.dp else 48.dp) {
         MaterialTheme(
-            colorScheme = if (darkTheme) DarkColors else LightColors,
+            colorScheme = when {
+                vehicle && darkTheme -> DarkVehicleColors
+                vehicle -> LightVehicleColors
+                darkTheme -> DarkColors
+                else -> LightColors
+            },
             typography = if (vehicle) VehicleTypography else Typography(),
             content = content,
         )

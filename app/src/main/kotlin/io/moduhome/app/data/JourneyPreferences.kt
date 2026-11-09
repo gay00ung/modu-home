@@ -8,6 +8,8 @@ internal class JourneyPreferences(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences("errand_journey", Context.MODE_PRIVATE)
     private val session = PreferenceStores.text(preferences, "session")
 
+    fun hasSavedSession(): Boolean = session.load() != null
+
     fun load(fallback: JourneyDraft): HomeUiState = try {
         session.load()?.let { JourneyJson.decode(it, fallback, System.currentTimeMillis()) }
             ?: HomeUiState(fallback)

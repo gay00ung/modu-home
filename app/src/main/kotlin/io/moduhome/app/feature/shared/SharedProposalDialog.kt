@@ -56,7 +56,6 @@ internal fun SharedProposalDialog(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     onChoosePassenger: (String) -> Unit = {},
-    onConfirmDropoff: (Boolean) -> Unit = {},
 ) {
     val maximumHeight = LocalWindowInfo.current.containerDpSize.height * 0.90f
     val pending = inbox.entries.filter { it.status == ProposalReviewStatus.PENDING }.map { it.proposal }
@@ -75,7 +74,7 @@ internal fun SharedProposalDialog(
         )
     }
     val approveEnabled = canApply && currentReview != null && selectedProposal != null &&
-        (selectedProposal !is DropoffProposal || (currentReview.passengerId != null && currentReview.dropoffConfirmed))
+        (selectedProposal !is DropoffProposal || currentReview.passengerId != null)
     val previousProposal = pending.getOrNull(selectedIndex - 1).takeIf { selectedIndex > 0 }
     val nextProposal = pending.getOrNull(if (selectedIndex < 0) 0 else selectedIndex + 1)
 
@@ -87,6 +86,7 @@ internal fun SharedProposalDialog(
         ) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 SharedProposalHeader(
+                    title = if (selectedProposal is DropoffProposal) "받은 하차지" else "받은 제안",
                     showPager = pending.size > 1 || (pending.isNotEmpty() && selectedIndex < 0),
                     position = if (selectedIndex >= 0) selectedIndex + 1 else 0,
                     total = pending.size,
@@ -111,7 +111,7 @@ internal fun SharedProposalDialog(
                                 fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.Medium,
                             )
                             selectedProposal is DropoffProposal -> SharedDropoffReview(
-                                selectedProposal, currentReview, onChoosePassenger, onConfirmDropoff,
+                                selectedProposal, currentReview, onChoosePassenger,
                             )
                             received != null -> {
                                 Text("받은 제안의 조건이에요", fontSize = 28.sp, lineHeight = 40.sp,
@@ -144,10 +144,11 @@ internal fun SharedProposalDialog(
                     }
                 }
                 HorizontalDivider()
-                Text("반영 후 경로를 다시 비교해요. 현재 내비 안내는 바꾸지 않아요",
+                Text(if (selectedProposal is DropoffProposal) "차가 들어가고 잠깐 정차할 수 있는 곳인지 확인해주세요"
+                    else "반영 후 경로를 다시 비교해요. 현재 내비 안내는 바꾸지 않아요",
                     fontSize = 28.sp, lineHeight = 40.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 SharedProposalFooter(
-                    approveLabel = if (selectedProposal is DropoffProposal) "하차지 반영" else if (existing != null) "이 볼일로 바꾸기" else "계획에 추가",
+                    approveLabel = if (selectedProposal is DropoffProposal) "정차 확인하고 반영" else if (existing != null) "이 볼일로 바꾸기" else "계획에 추가",
                     approveEnabled = approveEnabled,
                     declineEnabled = selectedIndex >= 0,
                     onApprove = { if (approveEnabled) onApprove() },
@@ -161,6 +162,7 @@ internal fun SharedProposalDialog(
 
 @Composable
 private fun SharedProposalHeader(
+    title: String,
     showPager: Boolean,
     position: Int,
     total: Int,
@@ -172,12 +174,12 @@ private fun SharedProposalHeader(
         if (showPager && maxWidth >= 900.dp) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                Text("받은 제안", Modifier.weight(1f), fontSize = 36.sp, lineHeight = 48.sp, fontWeight = FontWeight.Bold)
+                Text(title, Modifier.weight(1f), fontSize = 36.sp, lineHeight = 48.sp, fontWeight = FontWeight.Bold)
                 SharedProposalPager(position, total, previous, next, onSelect, Modifier.width(420.dp))
             }
         } else {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("받은 제안", fontSize = 36.sp, lineHeight = 48.sp, fontWeight = FontWeight.Bold)
+                Text(title, fontSize = 36.sp, lineHeight = 48.sp, fontWeight = FontWeight.Bold)
                 if (showPager) SharedProposalPager(position, total, previous, next, onSelect, Modifier.fillMaxWidth())
             }
         }
@@ -306,7 +308,7 @@ private fun SharedProposalSecondaryAction(label: String, enabled: Boolean, onCli
 
 @Composable
 private fun SharedProposalApproveAction(label: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
-    Button(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = 88.dp),
+    Button(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = 96.dp),
         shape = RoundedCornerShape(18.dp), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp)) {
         Text(label, fontSize = 28.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold)
     }
@@ -323,13 +325,15 @@ private fun SharedDropoffReview(
     proposal: DropoffProposal,
     review: SharedProposalReview?,
     onChoosePassenger: (String) -> Unit,
-    onConfirmDropoff: (Boolean) -> Unit,
 ) {
-    Text("${proposal.passengerName} · 받은 하차지", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
-    Text(proposal.place.name, fontSize = 40.sp, lineHeight = 52.sp, fontWeight = FontWeight.Bold)
-    if (proposal.place.address != proposal.place.name) Text(proposal.place.address, fontSize = 30.sp, lineHeight = 42.sp)
-    Text("도착 희망 · ${sharedProposalDeadline(proposal.deadlineAtMillis, review?.zoneId ?: ZoneId.systemDefault()).replace("마감 없음", "시간 제한 없음")}",
-        fontSize = 30.sp, lineHeight = 42.sp)
+    Text("${proposal.passengerName} 님이 보낸 하차지", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
+    Text(proposal.place.name, fontSize = 48.sp, lineHeight = 60.sp, fontWeight = FontWeight.Bold)
+    if (proposal.place.address.isNotBlank() && proposal.place.address != proposal.place.name) {
+        Text(proposal.place.address, fontSize = 30.sp, lineHeight = 42.sp)
+    }
+    proposal.deadlineAtMillis?.let {
+        Text("도착 희망 ${sharedProposalDeadline(it, review?.zoneId ?: ZoneId.systemDefault())}", fontSize = 30.sp, lineHeight = 42.sp)
+    }
     if (review == null) return
     Text("어느 동승자의 하차지인가요?", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
     review.passengerChoices.forEach { passenger ->
@@ -351,11 +355,4 @@ private fun SharedDropoffReview(
             fontSize = 28.sp, lineHeight = 40.sp,
             color = if (proposal.deadlineAtMillis == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    OutlinedButton(onClick = { onConfirmDropoff(!review.dropoffConfirmed) }, enabled = passenger != null,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp)) {
-        Text(if (review.dropoffConfirmed) "✓ 이 하차지에서 내릴 수 있어요" else "이 하차지에 정차해 내릴 수 있어요",
-            fontSize = 28.sp, lineHeight = 40.sp)
-    }
-    Text("동승자가 보낸 위치와 차량 진입·정차 가능 여부를 확인해주세요", fontSize = 28.sp, lineHeight = 40.sp,
-        color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

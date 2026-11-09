@@ -198,8 +198,9 @@ internal fun ModuHomeApp(
         }
     }
     val preferences = remember(context) { JourneyPreferences(context) }
-    val sharedPreferences = remember(context) { SharedJourneyPreferences(context) }
+    val sharedPreferences = remember(context) { SharedJourneyPreferences(context, defaultMode = !preferences.hasSavedSession()) }
     var sharedMode by remember(sharedPreferences) { mutableStateOf(isVehicle && sharedPreferences.isSelectedMode()) }
+    var sharedDetailsOpen by rememberSaveable { mutableStateOf(false) }
     var sharedState by remember(sharedPreferences) {
         mutableStateOf(SharedJourneyFlowState(session = sharedPreferences.load()))
     }
@@ -476,7 +477,11 @@ internal fun ModuHomeApp(
         sharedProposalInteraction = restrictions.state.value
         when (val result = sharedState.session.reviewProposal(inbox, id, revision, sharedProposalNow)) {
             is SharedProposalReviewResult.Ready -> {
-                sharedProposalReview = result.review
+                val review = result.review
+                val emptySeat = review.session.draft.passengers.singleOrNull { it.dropoff == null }
+                sharedProposalReview = if (review.proposal is DropoffProposal && emptySeat != null) {
+                    review.forPassenger(emptySeat.id) ?: review
+                } else review
                 sharedProposalMessage = null
             }
             is SharedProposalReviewResult.Rejected -> {
@@ -485,11 +490,12 @@ internal fun ModuHomeApp(
             }
         }
     }
-    fun openSharedProposals() {
+    fun openSharedProposals(preferDropoff: Boolean = false) {
         if (!canReviewSharedProposal()) return
         sharedProposalPanelOpen = true
         sharedProposalMessage = null
-        val first = inbox.entries.firstOrNull { it.status == ProposalReviewStatus.PENDING }
+        val pending = inbox.entries.filter { it.status == ProposalReviewStatus.PENDING }
+        val first = (if (preferDropoff) pending.firstOrNull { it.proposal is DropoffProposal } else null) ?: pending.firstOrNull()
         if (first != null) selectSharedProposal(first.proposal.id, first.proposal.revision)
     }
     DisposableEffect(lifecycleOwner) {
@@ -610,7 +616,7 @@ internal fun ModuHomeApp(
         if (!isVehicle && relayState.sender != null &&
             lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) proposalPanelOpen = true
     }
-    fun openVehicleRelay() {
+    fun openVehicleRelay(browserDropoff: Boolean = false) {
         if (!isVehicle || !restrictions.state.value.editingAllowed ||
             !lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) ||
             sending || reading || estimating || planning || sharedState.busy || sharedState.dialogOpen ||
@@ -618,7 +624,15 @@ internal fun ModuHomeApp(
         dismissVoice()
         proposalPanelOpen = false
         resumeConfirmation = null
-        relayActions.openVehicle()
+        if (browserDropoff) {
+            relayActions.openBrowserDropoff()
+            if (relayState.vehicleDialogOpen && relayState.browserDropoff && relayState.receiver == null &&
+                BuildConfig.PROPOSAL_RELAY_BASE_URL.isNotBlank()) {
+                relayActions.createRoom()
+            }
+        } else {
+            relayActions.openVehicle()
+        }
     }
     fun receiveAppLink(link: String) {
         if (RelayLinkCodec.accepts(link.trim())) {
@@ -1260,8 +1274,12 @@ internal fun ModuHomeApp(
             interaction = interaction,
             pendingProposalCount = inbox.entries.count { it.status == ProposalReviewStatus.PENDING },
             proposalPanelOpen = sharedProposalPanelOpen || relayState.vehicleDialogOpen,
-            onOpenProposals = ::openSharedProposals,
-            onOpenPhoneConnection = ::openVehicleRelay,
+            showLanding = !sharedDetailsOpen,
+            onOpenEditor = { sharedDetailsOpen = true },
+            onShowLanding = { sharedDetailsOpen = false },
+            onOpenProposals = { openSharedProposals() },
+            onOpenPhoneConnection = { openVehicleRelay() },
+            onOpenBrowserDropoff = { openVehicleRelay(browserDropoff = true) },
             toolbarActions = journeyShortcutActions,
             onReconnect = {
                 if (restrictions.state.value.editingAllowed && !sharedState.busy) {
@@ -1298,6 +1316,7 @@ internal fun ModuHomeApp(
                         proposalPanelOpen = false
                         detailsOpen = false
                         resumeConfirmation = null
+                        sharedDetailsOpen = false
                         sharedMode = true
                     } else {
                         navigationMessage = "화면 선택을 저장하지 못했어요"
@@ -1305,7 +1324,7 @@ internal fun ModuHomeApp(
                     }
                 }
             },
-            onOpenPhoneConnection = ::openVehicleRelay,
+            onOpenPhoneConnection = { openVehicleRelay() },
             voiceAvailable = BuildConfig.ENABLE_VEHICLE_VOICE && interaction.voiceTranscriptionAllowed &&
                 !voicePermissionPending && !voiceStartAfterPermission &&
                 voiceState !is VoiceInputState.Failed && voiceState != VoiceInputState.Stopping,
@@ -1332,7 +1351,22 @@ internal fun ModuHomeApp(
         BackHandler(enabled = isVehicle && detailsOpen) { detailsOpen = false }
     }
     if (isVehicle && relayState.vehicleDialogOpen && editingAllowed) {
-        VehiclePhoneConnectionDialog(relayState, BuildConfig.PROPOSAL_RELAY_BASE_URL, relayActions)
+        if (relayState.browserDropoff) {
+            VehicleBrowserDropoffDialog(
+                state = relayState,
+                pendingDropoffCount = inbox.entries.count {
+                    it.status == ProposalReviewStatus.PENDING && it.proposal is DropoffProposal
+                },
+                configured = BuildConfig.PROPOSAL_RELAY_BASE_URL.isNotBlank(),
+                actions = relayActions,
+                onOpenInbox = {
+                    relayActions.dismissVehicle()
+                    openSharedProposals(preferDropoff = true)
+                },
+            )
+        } else {
+            VehiclePhoneConnectionDialog(relayState, BuildConfig.PROPOSAL_RELAY_BASE_URL, relayActions)
+        }
     }
     if (!isVehicle && relayState.candidate != null && editingAllowed) {
         PhoneVehicleJoinDialog(relayState, relayActions)
@@ -1359,7 +1393,11 @@ internal fun ModuHomeApp(
             onApprove = {
                 if (canReviewSharedProposal() && visibleReview != null && sharedProposalReview == visibleReview &&
                     visibleInteraction == restrictions.state.value) {
-                    when (val applied = sharedState.session.approveProposal(visibleReview, inbox, System.currentTimeMillis())) {
+                    val approval = if (visibleReview.proposal is DropoffProposal) {
+                        visibleReview.confirmDropoff(true)
+                    } else visibleReview
+                    if (approval == null) return@SharedProposalDialog
+                    when (val applied = sharedState.session.approveProposal(approval, inbox, System.currentTimeMillis())) {
                         is SharedProposalApplyResult.Rejected -> sharedProposalMessage = applied.reason
                         is SharedProposalApplyResult.Applied -> {
                             val saved = updateShared(SharedJourneyFlowState(
@@ -1369,8 +1407,9 @@ internal fun ModuHomeApp(
                             ))
                             if (saved) {
                                 saveInbox(applied.inbox)
+                                if (visibleReview.proposal is DropoffProposal) sharedDetailsOpen = false
                                 dismissSharedProposals()
-                            } else sharedProposalMessage = "볼일을 저장하지 못했어요. 다시 시도해주세요"
+                            } else sharedProposalMessage = "제안을 저장하지 못했어요. 다시 시도해주세요"
                         }
                     }
                 }
@@ -1389,11 +1428,6 @@ internal fun ModuHomeApp(
             onChoosePassenger = { id ->
                 if (canReviewSharedProposal() && sharedProposalReview == visibleReview && visibleInteraction == restrictions.state.value) {
                     sharedProposalReview = visibleReview?.forPassenger(id)
-                }
-            },
-            onConfirmDropoff = { confirmed ->
-                if (canReviewSharedProposal() && sharedProposalReview == visibleReview && visibleInteraction == restrictions.state.value) {
-                    sharedProposalReview = visibleReview?.confirmDropoff(confirmed)
                 }
             },
             onDismiss = ::dismissSharedProposals,

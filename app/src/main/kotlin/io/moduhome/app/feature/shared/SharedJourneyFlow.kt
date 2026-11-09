@@ -64,8 +64,12 @@ internal fun SharedJourneyFlow(
     onReconnect: () -> Unit,
     pendingProposalCount: Int,
     proposalPanelOpen: Boolean,
+    showLanding: Boolean,
+    onOpenEditor: () -> Unit,
+    onShowLanding: () -> Unit,
     onOpenProposals: () -> Unit,
     onOpenPhoneConnection: () -> Unit,
+    onOpenBrowserDropoff: () -> Unit,
     modifier: Modifier = Modifier,
     toolbarActions: (@Composable (Boolean) -> Unit)? = null,
 ) {
@@ -497,7 +501,7 @@ internal fun SharedJourneyFlow(
             current.busy -> showError("차량 내비 응답을 확인하고 있어요. 잠시 뒤 다시 눌러주세요")
             !canInteract() -> Unit
             else -> when (current.session.progress.stage) {
-                JourneyStage.INPUT -> currentOnLeave()
+                JourneyStage.INPUT -> if (showLanding) currentOnLeave() else onShowLanding()
                 JourneyStage.COMPARE -> publish(current.copy(session = current.session.copy(progress = SharedJourneyProgress()), planPage = 0, message = null, error = false))
                 JourneyStage.REVIEW -> publish(current.copy(session = current.session.copy(progress = current.session.progress.copy(stage = JourneyStage.COMPARE)), message = null, error = false))
                 JourneyStage.ACTIVE -> publish(current.copy(cancelRequested = true))
@@ -574,7 +578,9 @@ internal fun SharedJourneyFlow(
         onEdit = {
             val current = runtime.latest
             if (idle() && current.session.progress.stage in listOf(JourneyStage.COMPARE, JourneyStage.REVIEW)) {
-                publish(current.copy(session = current.session.copy(progress = SharedJourneyProgress()), message = null, error = false, planPage = 0))
+                if (publish(current.copy(session = current.session.copy(progress = SharedJourneyProgress()), message = null, error = false, planPage = 0))) {
+                    onOpenEditor()
+                }
             }
         },
         onNewJourney = {
@@ -745,11 +751,18 @@ internal fun SharedJourneyFlow(
         guidanceZoneId = routing?.zoneId ?: java.time.ZoneId.systemDefault(),
         additionalTimeSuggestion = state.session.additionalTimeSuggestion,
     )
-    SharedVehicleScreen(ui, actions, VehicleNavigationUiState(
+    val vehicle = VehicleNavigationUiState(
         connection = connection, sending = state.sending, reading = state.reading || state.polling,
         message = state.message, error = state.error, snapshot = state.snapshot,
         roadComparisonAvailable = routeGateway != null, planning = state.planning,
-    ), interaction, modifier, toolbarActions)
+    )
+    if (showLanding && ui.stage == JourneyStage.INPUT && interaction.editingAllowed) {
+        SharedDepartureHome(ui, vehicle, actions, onOpenEditor = { if (idle()) onOpenEditor() },
+            onOpenBrowserDropoff = { if (idle()) onOpenBrowserDropoff() }, modifier = modifier)
+    } else {
+        SharedVehicleScreen(ui, actions, vehicle, interaction, modifier, toolbarActions,
+            onShowLanding = { if (idle()) onShowLanding() })
+    }
 
     state.picker?.takeIf { interaction.editingAllowed }?.let { selection ->
         val title = when (val target = selection.target) {

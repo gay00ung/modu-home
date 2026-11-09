@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -26,7 +27,7 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 internal fun VehicleActionBar(
-    caption: String,
+    caption: String?,
     actionLabel: String,
     actionEnabled: Boolean,
     onAction: () -> Unit,
@@ -40,7 +41,7 @@ internal fun VehicleActionBar(
             BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 40.dp, vertical = 24.dp)) {
                 if (maxWidth < 1000.dp || fontScale > 1.1f) {
                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        VehicleActionCaption(caption)
+                        if (caption != null) VehicleActionCaption(caption)
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                             secondaryAction?.invoke()
@@ -51,7 +52,8 @@ internal fun VehicleActionBar(
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                         secondaryAction?.invoke()
-                        VehicleActionCaption(caption, Modifier.weight(1f))
+                        if (caption != null) VehicleActionCaption(caption, Modifier.weight(1f))
+                        else Spacer(Modifier.weight(1f))
                         VehiclePrimaryAction(actionLabel, actionEnabled, onAction, Modifier.widthIn(min = 420.dp))
                     }
                 }

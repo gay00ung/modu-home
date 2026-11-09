@@ -40,8 +40,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -85,35 +85,40 @@ internal fun SharedVehicleScreen(
     }
     val busy = vehicle.planning || vehicle.sending || vehicle.reading
     val canEdit = !busy
+    val comparing = state.stage == JourneyStage.COMPARE
+    val hasSelectedOrder = comparing && state.selectedPlan?.isValid == true
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
+            val errors = (if (state.showErrors) state.errors else emptyList()) +
+                listOfNotNull((vehicle.connection as? NavigationConnection.Failed)?.reason,
+                    vehicle.message?.takeIf { vehicle.error })
             Column(
-                Modifier.statusBarsPadding().padding(horizontal = 40.dp, vertical = 20.dp),
+                Modifier.statusBarsPadding().padding(horizontal = 40.dp,
+                    vertical = if (hasSelectedOrder && errors.isEmpty() && !busy) 0.dp else 20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                VehicleToolbar(title = sharedTitle(state.stage)) {
-                    if (state.stage == JourneyStage.REVIEW || state.stage == JourneyStage.ACTIVE) toolbarActions?.invoke(canEdit)
-                    if (state.stage == JourneyStage.INPUT) {
-                        if (onShowLanding != null) SharedAction("귀가 홈", canEdit, onShowLanding)
-                        SharedAction("휴대폰 연결", canEdit, actions.onOpenPhoneConnection)
-                        SharedAction("받은 제안 ${state.pendingProposalCount}", canEdit, actions.onOpenProposals)
-                        SharedAction("가는김에", canEdit, actions.onLeave)
-                    } else if (state.stage == JourneyStage.ACTIVE) {
-                        SharedAction("휴대폰 연결", canEdit, actions.onOpenPhoneConnection)
+                if (!hasSelectedOrder) {
+                    VehicleToolbar(title = sharedTitle(state.stage)) {
+                        if (state.stage == JourneyStage.REVIEW || state.stage == JourneyStage.ACTIVE) toolbarActions?.invoke(canEdit)
+                        if (state.stage == JourneyStage.INPUT) {
+                            if (onShowLanding != null) SharedAction("귀가 홈", canEdit, onShowLanding)
+                            SharedAction("휴대폰 연결", canEdit, actions.onOpenPhoneConnection)
+                            SharedAction("받은 제안 ${state.pendingProposalCount}", canEdit, actions.onOpenProposals)
+                            SharedAction("가는김에", canEdit, actions.onLeave)
+                        } else if (state.stage == JourneyStage.ACTIVE) {
+                            SharedAction("휴대폰 연결", canEdit, actions.onOpenPhoneConnection)
+                        }
                     }
                 }
-                SharedCaption(when (state.stage) {
+                when (state.stage) {
                     JourneyStage.INPUT -> "친구가 정한 곳에 내려주고, 가는 김에 볼일까지"
-                    JourneyStage.COMPARE -> "운전자와 동승자의 도착을 함께 비교해요"
+                    JourneyStage.COMPARE -> null
                     JourneyStage.REVIEW -> "지정한 하차지와 볼일의 전체 순서를 확인해주세요"
                     JourneyStage.ACTIVE -> "하차와 완료 확인은 정차한 뒤에 해주세요"
                     JourneyStage.COMPLETE -> "동승자 하차와 집 도착을 기록했어요"
-                })
-                val errors = (if (state.showErrors) state.errors else emptyList()) +
-                    listOfNotNull((vehicle.connection as? NavigationConnection.Failed)?.reason,
-                        vehicle.message?.takeIf { vehicle.error })
+                }?.let { SharedCaption(it) }
                 errors.distinct().take(2).forEach { SharedError(it) }
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
@@ -133,7 +138,9 @@ internal fun SharedVehicleScreen(
                     JourneyStage.ACTIVE -> SharedActive(state, actions, vehicle, canEdit)
                     JourneyStage.COMPLETE -> SharedComplete(state)
                 }
-                SharedNavigationStatus(state, vehicle, actions, canEdit)
+                if (!comparing || vehicle.connection != NavigationConnection.Ready) {
+                    SharedNavigationStatus(state, vehicle, actions, canEdit)
+                }
             }
         }
     }
@@ -295,27 +302,29 @@ private fun SharedComparison(state: SharedVehicleUiState, actions: SharedVehicle
                 if (current != null && other != null) current - other else null
             }
             val label = when {
+                firstAlternate == null || firstAlternate.place.id == firstPlaceId -> "다른 순서"
                 passenger != null && earlier != null && earlier > 0 -> "${passenger.name} ${earlier}분 먼저"
-                firstAlternate != null -> "${stopLabel(firstAlternate)} 먼저"
-                else -> "다른 순서"
+                else -> "${shortStopLabel(firstAlternate)} 먼저"
             }
             val currentHome = selected.driverHomeArrivalMinute
             val alternateHome = alternate.driverHomeArrivalMinute
             val delta = if (currentHome != null && alternateHome != null) alternateHome - currentHome else null
             val homeChange = when {
-                delta == null -> "집 도착 시간 확인"
-                delta == 0 -> "집 도착 시간 같음"
-                delta > 0 -> "집 도착 ${delta}분 늦게"
-                else -> "집 도착 ${-delta}분 빠르게"
+                delta == null -> null
+                delta == 0 -> "집 도착 같음"
+                delta > 0 -> "집 ${delta}분 늦게"
+                else -> "집 ${-delta}분 일찍"
             }
-            SharedAction("$label  |  $homeChange", canEdit, onClick = { actions.onSelectPlan(alternate.id) },
+            SharedAction(listOfNotNull(label, homeChange).joinToString(" · "), canEdit,
+                onClick = { actions.onSelectPlan(alternate.id) },
                 modifier = Modifier.fillMaxWidth())
         }
-        if (state.plans.size > 1) {
-            SharedAction(if (showAll) "전체 순서 접기" else "전체 순서 보기", canEdit, { showAll = !showAll })
+        val shownOrders = if (alternate == null) 1 else 2
+        if (state.plans.size > shownOrders) {
+            SharedAction(if (showAll) "순서 목록 접기" else "모든 순서", canEdit, { showAll = !showAll })
         }
-        if (!showAll) {
-            SharedEstimateNote(state)
+        if (!showAll || state.plans.size <= shownOrders) {
+            SharedComparisonSource(state)
             return
         }
     }
@@ -348,8 +357,7 @@ private fun SharedComparison(state: SharedVehicleUiState, actions: SharedVehicle
         SharedAction(if (page == 0) "다른 계획 보기 · ${state.plans.size - visible.size}개" else "앞의 계획 보기 · ${minOf(3, state.plans.size)}개",
             canEdit, onClick = { actions.onPlanPageChange((page + 1) % pages) }, modifier = Modifier.fillMaxWidth())
     }
-    state.selectedPlan?.let { SharedCaption("선택한 순서 · ${orderLabel(it)}") }
-    SharedEstimateNote(state)
+    SharedComparisonSource(state)
 }
 
 @Composable
@@ -367,13 +375,16 @@ private fun SharedSelectedRoute(plan: SharedJourneyPlan) {
                 is SharedScheduledStop.Dropoff -> plan.passengerArrivals.firstOrNull { it.passengerId == stop.passenger.id }?.dropoffMinute
                 is SharedScheduledStop.Errand -> stop.arrivalMinute
             }
-            SharedStopLine("${index + 1}", stop.place.point.name, stopLabel(stop), clock(arrival))
+            SharedStopLine("${index + 1}", stop.place.point.name, shortStopLabel(stop), clock(arrival),
+                timeStyle = TextStyle(fontSize = 48.sp, lineHeight = 60.sp, fontWeight = FontWeight.Bold))
         }
     }
     val home: @Composable () -> Unit = {
-        VehicleMetric("교통 제외 · 내 집 도착", clock(plan.driverHomeArrivalMinute))
+        SharedCaption("교통 제외 · 집 도착")
+        Text(clock(plan.driverHomeArrivalMinute), fontSize = 68.sp, lineHeight = 80.sp,
+            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
         plan.driverAdditionalMinutes?.let {
-            Text("직행보다 ${it}분 더", fontSize = 30.sp, lineHeight = 40.sp, fontWeight = FontWeight.SemiBold)
+            Text("직행 +${it}분", fontSize = 30.sp, lineHeight = 40.sp, fontWeight = FontWeight.SemiBold)
         }
     }
     val fontScale = LocalDensity.current.fontScale
@@ -421,9 +432,10 @@ private fun SharedPlanCard(
             })
             Text(orderLabel(plan), fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold,
                 maxLines = 3, overflow = TextOverflow.Ellipsis)
-            VehicleMetric("교통 제외 · 운전자 집 도착", clock(plan.driverHomeArrivalMinute))
-            Text(plan.driverAdditionalMinutes?.let { "집 직행보다 +${it}분" } ?: "추가시간 확인 필요", fontSize = 28.sp, lineHeight = 38.sp,
-                fontWeight = FontWeight.SemiBold)
+            VehicleMetric("교통 제외 · 집 도착", clock(plan.driverHomeArrivalMinute))
+            plan.driverAdditionalMinutes?.let {
+                Text("직행 +${it}분", fontSize = 28.sp, lineHeight = 38.sp, fontWeight = FontWeight.SemiBold)
+            }
             HorizontalDivider()
             plan.passengerArrivals.forEach { arrival ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
@@ -436,7 +448,6 @@ private fun SharedPlanCard(
             }
             plan.issues.take(2).forEach { SharedError(issueText(it, plan)) }
             if (plan.issues.size > 2) SharedCaption("그 밖에 ${plan.issues.size - 2}개 조건 확인")
-            if (plan.isValid) SharedCaption(if (selected) "이 순서를 확인하고 출발해요" else "눌러서 이 순서 선택")
         }
     }
 }
@@ -605,7 +616,7 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
             !connected || !vehicle.roadComparisonAvailable -> "내비 연결을 확인해주세요"
             else -> "방문 순서 비교"
         }
-        JourneyStage.COMPARE -> if (anyValid) "이 순서로 갈게요" else "조건 바꾸기"
+        JourneyStage.COMPARE -> if (anyValid) "순서 확인" else "조건 변경"
         JourneyStage.REVIEW -> if (vehicle.sending) "차량 내비 확인 중" else "내비 시작"
         JourneyStage.ACTIVE -> when {
             next == null && plan != null && state.completedStops == plan.stops.size -> "집에 도착했어요"
@@ -628,12 +639,8 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
         JourneyStage.COMPLETE -> true
     }
     val secondaryAction: (@Composable () -> Unit)? = when (state.stage) {
-        JourneyStage.COMPARE, JourneyStage.REVIEW -> ({
-            SharedAction(
-                if (state.stage == JourneyStage.COMPARE) "볼일·조건 바꾸기" else "다시 비교", canEdit,
-                onClick = { if (state.stage == JourneyStage.COMPARE) actions.onEdit() else actions.onBack() },
-            )
-        })
+        JourneyStage.COMPARE -> if (anyValid) ({ SharedAction("조건 변경", canEdit, actions.onEdit) }) else null
+        JourneyStage.REVIEW -> ({ SharedAction("다시 비교", canEdit, actions.onBack) })
         JourneyStage.ACTIVE -> ({
             TextButton(onClick = { if (canEdit) actions.onCancel() }, enabled = canEdit,
                 modifier = Modifier.heightIn(min = 88.dp)) { Text("계획 중단", fontSize = 28.sp) }
@@ -649,11 +656,7 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
                 !inputReady -> "차량 내비 연결을 확인해주세요"
                 else -> "방문 순서를 비교하고 출발할 계획을 골라요"
             }
-            JourneyStage.COMPARE -> when {
-                plan != null -> "${if (plan.isValid) "선택" else "조건 확인"} · ${orderLabel(plan)}"
-                anyValid -> "확인할 순서를 선택해주세요"
-                else -> "조건을 바꿔 다시 비교해주세요"
-            }
+            JourneyStage.COMPARE -> if (anyValid && plan?.isValid != true) "순서를 골라주세요" else null
             JourneyStage.REVIEW -> "운전자 집이 마지막 목적지예요"
             JourneyStage.ACTIVE -> "완료 확인은 정차한 뒤에"
             JourneyStage.COMPLETE -> "다음 귀가도 함께 편하게"
@@ -679,6 +682,13 @@ private fun SharedStagedGuidanceNote(message: String) {
         Text(message,
             Modifier.fillMaxWidth().padding(24.dp), fontSize = 28.sp, lineHeight = 40.sp, fontWeight = FontWeight.Medium)
     }
+}
+
+@Composable
+private fun SharedComparisonSource(state: SharedVehicleUiState) {
+    val source = state.estimateLabel ?: return
+    val hasNonRoadTimes = state.plans.any { it.includesSampleTimes || it.includesUserEstimates }
+    SharedCaption(if (hasNonRoadTimes) source else "© OpenStreetMap · ODbL")
 }
 
 @Composable
@@ -791,7 +801,13 @@ private fun SharedAction(label: String, enabled: Boolean, onClick: () -> Unit, m
 }
 
 @Composable
-private fun SharedStopLine(marker: String, place: String, label: String, time: String?) {
+private fun SharedStopLine(
+    marker: String,
+    place: String,
+    label: String,
+    time: String?,
+    timeStyle: TextStyle = TextStyle(fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.SemiBold),
+) {
     val fontScale = LocalDensity.current.fontScale
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val stacked = maxWidth < 800.dp || fontScale > 1.1f
@@ -802,9 +818,9 @@ private fun SharedStopLine(marker: String, place: String, label: String, time: S
                 Text(place, fontSize = 32.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                 SharedCaption(label)
-                if (stacked) time?.let { Text(it, fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.SemiBold) }
+                if (stacked) time?.let { Text(it, style = timeStyle) }
             }
-            if (!stacked) time?.let { Text(it, fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.SemiBold) }
+            if (!stacked) time?.let { Text(it, style = timeStyle) }
         }
     }
 }
@@ -828,12 +844,13 @@ private fun stopLabel(stop: SharedScheduledStop): String = when (stop) {
     is SharedScheduledStop.Errand -> errandLabel(stop.errand.visit.kind)
 }
 
-private fun orderLabel(plan: SharedJourneyPlan): String = plan.stops.joinToString(" → ") { stop ->
-    when (stop) {
-        is SharedScheduledStop.Dropoff -> stop.passenger.name
-        is SharedScheduledStop.Errand -> errandLabel(stop.errand.visit.kind)
-    }
+private fun shortStopLabel(stop: SharedScheduledStop): String = when (stop) {
+    is SharedScheduledStop.Dropoff -> stop.passenger.name
+    is SharedScheduledStop.Errand -> errandLabel(stop.errand.visit.kind)
 }
+
+private fun orderLabel(plan: SharedJourneyPlan): String =
+    plan.stops.joinToString(" → ", transform = ::shortStopLabel)
 
 private fun errandLabel(kind: VisitKind): String = when (kind) {
     VisitKind.PICKUP -> "픽업"

@@ -2,6 +2,7 @@ package io.moduhome.app.feature.transfer
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,6 +23,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -34,6 +37,94 @@ import java.net.URI
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+
+@Composable
+internal fun VehicleBrowserDropoffDialog(
+    state: ProposalRelayState,
+    pendingDropoffCount: Int,
+    configured: Boolean,
+    actions: ProposalRelayActions,
+    onOpenInbox: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val maximumHeight = LocalWindowInfo.current.containerDpSize.height * 0.90f
+    val qr = state.browserQr
+    val receiver = state.receiver
+    Dialog(onDismissRequest = actions.dismissVehicle, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            modifier.widthIn(max = 1120.dp).fillMaxWidth(0.92f).heightIn(max = maximumHeight),
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                BoxWithConstraints(
+                    Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()),
+                ) {
+                    val copy: @Composable () -> Unit = {
+                        Text(
+                            if (qr != null) "이 QR을 찍어주세요" else "하차지 받기",
+                            fontSize = 44.sp, lineHeight = 52.sp, fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            if (receiver != null && qr == null) "현재 연결을 종료한 뒤 하차지 QR을 열 수 있어요"
+                            else "휴대폰 브라우저에서 내릴 곳을 찍어 보내요",
+                            fontSize = 28.sp, lineHeight = 38.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text("받은 하차지 ${pendingDropoffCount}곳", fontSize = 30.sp, lineHeight = 40.sp,
+                            fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                        if (qr != null && receiver != null) Text(
+                            "${relayExpiryLabel(receiver.expiresAtMillis)}까지 연결",
+                            fontSize = 28.sp, lineHeight = 38.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        state.message?.let { Text(it, fontSize = 28.sp, lineHeight = 38.sp) }
+                    }
+                    if (qr != null && maxWidth >= 700.dp) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp), content = { copy() })
+                            BrowserDropoffQr(qr, Modifier.size(280.dp))
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            copy()
+                            if (qr != null) BrowserDropoffQr(qr, Modifier.sizeIn(maxWidth = 240.dp, maxHeight = 240.dp).size(240.dp))
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(
+                        onClick = actions.dismissVehicle, enabled = !state.busy,
+                        modifier = Modifier.weight(1f).heightIn(min = 80.dp),
+                    ) { Text("닫기", fontSize = 28.sp) }
+                    Button(
+                        onClick = when {
+                            pendingDropoffCount > 0 -> onOpenInbox
+                            receiver == null -> actions.createRoom
+                            else -> actions.closeRoom
+                        },
+                        enabled = !state.busy && (pendingDropoffCount > 0 || configured && qr == null),
+                        modifier = Modifier.weight(2f).heightIn(min = 96.dp),
+                    ) {
+                        Text(when {
+                            pendingDropoffCount > 0 || qr != null -> "받은 하차지 보기"
+                            receiver != null -> "기존 연결 종료"
+                            else -> "QR 열기"
+                        }, fontSize = 28.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BrowserDropoffQr(qr: androidx.compose.ui.graphics.ImageBitmap, modifier: Modifier = Modifier) {
+    Surface(modifier, color = Color.White, shape = RoundedCornerShape(18.dp)) {
+        Image(qr, "브라우저 하차지 연결 QR", Modifier.fillMaxWidth().padding(12.dp))
+    }
+}
 
 @Composable
 internal fun VehiclePhoneConnectionDialog(

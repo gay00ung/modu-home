@@ -9,6 +9,7 @@ import hmac
 import ipaddress
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+from pathlib import Path
 import re
 import secrets
 import ssl
@@ -31,6 +32,20 @@ _UUID = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F
 _ROOM_PATH = re.compile(rf"/v1/rooms/(?P<room>{_UUID})(?P<suffix>/messages(?:/(?P<message>{_UUID})(?P<ack>/ack)?)?)?")
 _ERRORS = {400: "invalid_request", 401: "unauthorized", 409: "conflict", 410: "gone", 429: "rate_limited", 500: "internal_error"}
 _PRIVATE_NETWORKS = tuple(ipaddress.ip_network(value) for value in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
+_WEB_ROOT = Path(__file__).with_name("dropoff_web")
+_WEB_ASSETS = {
+    "/dropoff/": ("index.html", "text/html; charset=utf-8"),
+    "/dropoff/dropoff.css": ("dropoff.css", "text/css; charset=utf-8"),
+    "/dropoff/dropoff.js": ("dropoff.js", "text/javascript; charset=utf-8"),
+    "/dropoff/leaflet.css": ("leaflet.css", "text/css; charset=utf-8"),
+    "/dropoff/leaflet.js": ("leaflet.js", "text/javascript; charset=utf-8"),
+}
+_WEB_CSP = (
+    "default-src 'none'; script-src 'self'; style-src 'self'; "
+    "img-src 'self' https://tile.openstreetmap.org data:; "
+    "connect-src 'self' https://photon.komoot.io; "
+    "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+)
 
 
 def _local_ipv4(value: str, *, listener: bool = False) -> ipaddress.IPv4Address:
@@ -303,18 +318,25 @@ class RelayHandler(BaseHTTPRequestHandler):
             return False
         return True
 
-    def _reply(self, status: int, payload: dict | None = None) -> None:
+    def _reply_bytes(self, status: int, body: bytes, media_type: str, *, browser: bool = False) -> None:
         self.close_connection = True
         self.request_version = "HTTP/1.1"
-        body = b"" if payload is None else json.dumps(payload, ensure_ascii=True, separators=(",", ":"), allow_nan=False).encode("ascii")
         self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", media_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("Connection", "close")
+        if browser:
+            self.send_header("Content-Security-Policy", _WEB_CSP)
+            self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+            self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
+
+    def _reply(self, status: int, payload: dict | None = None) -> None:
+        body = b"" if payload is None else json.dumps(payload, ensure_ascii=True, separators=(",", ":"), allow_nan=False).encode("ascii")
+        self._reply_bytes(status, body, "application/json; charset=utf-8")
 
     def _body_length(self) -> int:
         if self.headers.get_all("Transfer-Encoding") or self.headers.get_all("Expect") or self.headers.get_all("Upgrade"):
@@ -395,6 +417,12 @@ class RelayHandler(BaseHTTPRequestHandler):
 
     def _handle(self) -> None:
         try:
+            asset = _WEB_ASSETS.get(self.requestline.split(" ")[1])
+            if asset is not None and self.command in ("GET", "HEAD"):
+                self._body_length()
+                filename, media_type = asset
+                self._reply_bytes(200, (_WEB_ROOT / filename).read_bytes(), media_type, browser=True)
+                return
             status, payload = self._dispatch()
         except RelayError as error:
             status, payload = error.status, {"error": _ERRORS[error.status]}
@@ -408,6 +436,7 @@ class RelayHandler(BaseHTTPRequestHandler):
             self.close_connection = True
 
     do_GET = _handle
+    do_HEAD = _handle
     do_POST = _handle
     do_DELETE = _handle
 

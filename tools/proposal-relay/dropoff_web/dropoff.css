@@ -1,0 +1,133 @@
+:root {
+  color-scheme: light dark;
+  --paper: #fdf9f3;
+  --ground: #f3eee8;
+  --ink: #222840;
+  --muted: #526078;
+  --line: #ccd2e4;
+  --accent: #3549b9;
+  --on-accent: #fffdfb;
+  --soft: #e7eaff;
+  --peach: #ffd4b6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1b2033;
+    --ground: #14182a;
+    --ink: #f4f5ff;
+    --muted: #c2cbe4;
+    --line: #52607c;
+    --accent: #bec8ff;
+    --on-accent: #1b2348;
+    --soft: #343f69;
+    --peach: #62484a;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { overflow-x: clip; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 500 16px/1.45 "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+}
+main {
+  max-width: 540px;
+  margin: 0 auto;
+  min-height: 100svh;
+  padding: 0 20px max(24px, env(safe-area-inset-bottom));
+  background: var(--paper);
+}
+header, .brand { display: flex; align-items: center; gap: 8px; }
+header { min-height: 64px; justify-content: space-between; border-bottom: 1px solid var(--line); }
+header > span, .hint, label span, .selection span, #sent p { color: var(--muted); }
+.brand { font-weight: 800; letter-spacing: -.035em; }
+.brand svg { width: 30px; height: 30px; padding: 5px; border-radius: 10px; background: var(--accent); fill: var(--on-accent); }
+section { display: grid; gap: 12px; padding-block: 20px; }
+h1 { margin: 0; font-size: 29px; line-height: 1.16; letter-spacing: -.055em; overflow-wrap: break-word; }
+p { margin: 0; }
+button, input { font: inherit; }
+button, input, .notice { min-height: 48px; border-radius: 12px; }
+button { border: 1px solid transparent; padding: 8px 12px; font-weight: 750; }
+button:focus-visible, input:focus-visible, a:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 8px 12px;
+}
+.primary { width: 100%; min-height: 54px; background: var(--accent); color: var(--on-accent); }
+.primary:not(:disabled):active { transform: scale(.99); }
+.primary:disabled, .quiet:disabled { background: var(--soft); color: var(--muted); }
+.quiet { background: transparent; color: var(--accent); }
+.quiet:not(:disabled):hover { background: var(--soft); }
+.notice { padding: 12px; background: var(--soft); color: var(--ink); }
+#connection { margin-top: 16px; }
+.hint { font-size: 13px; }
+#search, .map-actions { display: flex; align-items: center; gap: 8px; }
+#search button { flex: none; }
+.map-actions { justify-content: space-between; }
+.map-actions button { font-size: 14px; }
+#map {
+  height: clamp(248px, 43dvh, 410px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--soft);
+  z-index: 0;
+}
+.leaflet-container .leaflet-control-attribution { padding: 2px 5px; font-size: 11px; }
+.leaflet-container .leaflet-bar a { width: 44px; height: 44px; line-height: 44px; }
+.leaflet-marker-icon.dropoff-pin {
+  border-radius: 50% 50% 50% 0;
+  border: 2px solid var(--on-accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  transform-origin: bottom left;
+  box-shadow: 0 2px 8px var(--muted);
+  display: grid;
+  place-items: center;
+}
+.dropoff-pin span { font-size: 18px; line-height: 1; }
+#results { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }
+#results button { width: 100%; text-align: start; border-bottom: 1px solid var(--line); }
+#results span, .selection span { display: block; font-size: 14px; }
+#results span { color: var(--muted); font-weight: 500; }
+.selection {
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--soft);
+  overflow-wrap: anywhere;
+}
+.selection span:empty { display: none; }
+#send { display: grid; gap: 8px; }
+label { font-weight: 750; }
+label span { font-size: 14px; font-weight: 500; }
+#send button { margin-top: 4px; }
+.back { justify-self: center; }
+.success {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 20px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 28px;
+  font-weight: 750;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

@@ -46,6 +46,8 @@ internal data class ProposalRelayState(
     val action: RelayManualAction? = null,
     val generation: Long = 0,
     val qr: ImageBitmap? = null,
+    val browserDropoff: Boolean = false,
+    val browserQr: ImageBitmap? = null,
     val outgoing: RelayMessage? = null,
     val delivery: RelayDeliveryStatus? = null,
     val message: String? = null,
@@ -93,6 +95,7 @@ internal fun ProposalRelayState.expire(nowMillis: Long): ProposalRelayState? {
     return copy(
         receiver = receiver.takeUnless { receiverExpired },
         qr = qr.takeUnless { receiverExpired },
+        browserQr = browserQr.takeUnless { receiverExpired },
         sender = sender.takeUnless { senderExpired },
         candidate = nextCandidate,
         outgoing = outgoing.takeUnless { senderExpired },
@@ -109,6 +112,7 @@ internal fun ProposalRelayState.expire(nowMillis: Long): ProposalRelayState? {
 
 internal data class ProposalRelayActions(
     val openVehicle: () -> Unit,
+    val openBrowserDropoff: () -> Unit,
     val chooseSeed: (VisitKind?) -> Unit,
     val createRoom: () -> Unit,
     val closeRoom: () -> Unit,

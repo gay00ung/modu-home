@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="map-tiles" content="https://tile.openstreetmap.org/{z}/{x}/{y}.png">
+  <meta name="place-search" content="https://photon.komoot.io/api/">
+  <title>내릴 곳 보내기 · 모두 집으로</title>
+  <link rel="stylesheet" href="/dropoff/leaflet.css">
+  <link rel="stylesheet" href="/dropoff/dropoff.css">
+  <script defer src="/dropoff/leaflet.js"></script>
+  <script defer src="/dropoff/dropoff.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20h-5v-6H9v6H4Z"/></svg>모두 집으로</div>
+      <span>동승자 링크</span>
+    </header>
+    <p id="connection" class="notice" role="status">차량 연결을 확인하고 있어요</p>
+    <section id="pick" aria-labelledby="pick-title" hidden>
+      <h1 id="pick-title">내릴 곳을 찍어주세요</h1>
+      <form id="search" role="search">
+        <label class="sr-only" for="query">공개 장소나 도로명 검색</label>
+        <input id="query" type="search" placeholder="공개 장소나 도로명 찾기" maxlength="80" autocomplete="off">
+        <button id="search-button" type="submit" class="quiet">검색</button>
+      </form>
+      <p class="hint">검색어는 Photon 지도 검색으로 전달돼요</p>
+      <p id="search-status" class="hint" role="status" hidden></p>
+      <ul id="results" aria-label="검색 결과" hidden></ul>
+      <div id="map" aria-label="내릴 지점을 고르는 지도"></div>
+      <div class="map-actions">
+        <button id="center" type="button" class="quiet">지도 가운데 선택</button>
+        <button id="locate" type="button" class="quiet">내 위치로 이동</button>
+      </div>
+      <p id="map-status" class="hint" role="status" hidden></p>
+      <div id="picked" class="selection" aria-live="polite">
+        <strong id="picked-name">지도를 확대해서 내릴 곳을 눌러주세요</strong>
+        <span id="picked-detail"></span>
+      </div>
+      <button id="review" type="button" class="primary" disabled>이 위치 선택</button>
+    </section>
+    <section id="review-panel" aria-labelledby="review-title" hidden>
+      <h1 id="review-title">여기서 내릴게요</h1>
+      <div class="selection"><strong id="review-name"></strong><span id="review-detail"></span></div>
+      <form id="send">
+        <label for="place-label">내릴 곳 이름 <span>선택</span></label>
+        <input id="place-label" maxlength="60" placeholder="예: 골목 입구 편의점" autocomplete="off">
+        <label for="passenger">내 이름 <span>선택</span></label>
+        <input id="passenger" maxlength="32" placeholder="운전자가 알아볼 이름" autocomplete="off">
+        <p id="send-status" class="notice" role="status" hidden></p>
+        <button id="send-button" type="submit" class="primary">차량으로 보내기</button>
+      </form>
+      <button id="back" type="button" class="quiet back">핀 다시 고르기</button>
+    </section>
+    <section id="sent" aria-labelledby="sent-title" hidden>
+      <span class="success" aria-hidden="true">✓</span>
+      <h1 id="sent-title">차량 수신함에<br>도착했어요</h1>
+      <p>운전자가 확인하면 경로에 들어가요</p>
+      <div class="selection"><strong id="sent-place"></strong></div>
+    </section>
+    <noscript><p>브라우저에서 자바스크립트를 켜고 차량 QR을 다시 열어주세요</p></noscript>
+  </main>
+</body>
+</html>

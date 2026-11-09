@@ -129,6 +129,19 @@ class RelayHTTPTest(unittest.TestCase):
         self.assertTrue(response.startswith(b"HTTP/1.1 "))
         return int(response.split(b" ", 2)[1])
 
+    def test_browser_picker_is_served_without_exposing_pairing_data(self):
+        status, body, headers = self.request("HEAD", "/dropoff/")
+        self.assertEqual(200, status)
+        self.assertIsNone(body)
+        self.assertEqual("text/html; charset=utf-8", headers["Content-Type"])
+        self.assertEqual("no-store", headers["Cache-Control"])
+        self.assertIn("frame-ancestors 'none'", headers["Content-Security-Policy"])
+        response = self.raw(b"GET /dropoff/ HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        self.assertIn(b'src="/dropoff/dropoff.js"', response)
+        self.assertNotIn(b"receiverToken", response)
+        self.assertEqual(400, self.request("GET", "/dropoff/../relay.py")[0])
+        self.assertEqual(400, self.request("POST", "/dropoff/", {})[0])
+
     def create(self, seed=None):
         status, room, _ = self.request("POST", "/v1/rooms", {} if seed is None else {"seedLink": seed})
         self.assertEqual(201, status)

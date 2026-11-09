@@ -107,15 +107,16 @@ internal fun rememberProposalRelayActions(
         job.start()
     }
 
+    fun openVehicle(browserDropoff: Boolean) {
+        if (!isVehicle || !manualAllowed() || current().busy) return
+        val choices = if (browserDropoff) emptyList() else seedReader().toList()
+        update(current().copy(vehicleDialogOpen = true, browserDropoff = browserDropoff, seedChoices = choices,
+            selectedSeedKind = choices.firstOrNull()?.kind, reviewedInteraction = interactionReader(), message = null))
+    }
+
     val actions = ProposalRelayActions(
-        openVehicle = {
-            if (isVehicle && manualAllowed() && !current().busy) {
-                val choices = seedReader().toList()
-                update(current().copy(vehicleDialogOpen = true, seedChoices = choices,
-                    selectedSeedKind = choices.firstOrNull()?.kind,
-                    reviewedInteraction = interactionReader(), message = null))
-            }
-        },
+        openVehicle = { openVehicle(browserDropoff = false) },
+        openBrowserDropoff = { openVehicle(browserDropoff = true) },
         chooseSeed = { kind ->
             if (isVehicle && manualAllowed() && !current().busy && current().receiver == null &&
                 current().vehicleDialogOpen && (kind == null || current().seedChoices.any { it.kind == kind })) {
@@ -149,10 +150,17 @@ internal fun rememberProposalRelayActions(
                         is RelayResult.Failure -> notice(result.reason)
                         is RelayResult.Success -> {
                             val room = result.value
-                            val qr = withContext(Dispatchers.Default) { ProposalQrCode.encode(RelayLinkCodec.encode(room.sender))?.asImageBitmap() }
+                            val (qr, browserQr) = withContext(Dispatchers.Default) {
+                                val appCode = ProposalQrCode.encode(RelayLinkCodec.encode(room.sender))?.asImageBitmap()
+                                val browserCode = if (seed == null) {
+                                    ProposalQrCode.encode(RelayLinkCodec.encodeBrowser(room.sender))?.asImageBitmap()
+                                } else null
+                                appCode to browserCode
+                            }
                             if (!manualMatches(token, expectedInteraction) || current().receiver != null) return@launchManual
-                            update(current().copy(receiver = room, qr = qr,
-                                message = if (qr == null) "연결 QR을 만들지 못했어요. 연결을 종료한 뒤 다시 시도해주세요"
+                            val displayedQr = if (before.browserDropoff) browserQr else qr
+                            update(current().copy(receiver = room, qr = qr, browserQr = browserQr,
+                                message = if (displayedQr == null) "연결 QR을 만들지 못했어요. 연결을 종료한 뒤 다시 시도해주세요"
                                     else null))
                             adopted = true
                         }
@@ -175,7 +183,7 @@ internal fun rememberProposalRelayActions(
                     if (!manualMatches(token, expectedInteraction) || current().receiver !== room) return@launchManual
                     when (result) {
                         is RelayResult.Failure -> notice(result.reason + " 연결 종료를 다시 시도할 수 있어요")
-                        is RelayResult.Success -> update(current().copy(receiver = null, qr = null,
+                        is RelayResult.Success -> update(current().copy(receiver = null, qr = null, browserQr = null,
                             message = "연결을 종료했어요. 이미 받은 제안은 수신함에 남아요"))
                     }
                 }
@@ -285,7 +293,7 @@ internal fun rememberProposalRelayActions(
             while (currentCoroutineContext().isActive && receivingAllowed(room)) {
                 when (val received = gateway(room.baseUrl).pending(room)) {
                     is RelayResult.Failure -> if (receivingAllowed(room)) {
-                        if (received.code == RelayFailure.CLOSED || received.code == RelayFailure.UNAUTHORIZED) update(current().copy(receiver = null, qr = null,
+                        if (received.code == RelayFailure.CLOSED || received.code == RelayFailure.UNAUTHORIZED) update(current().copy(receiver = null, qr = null, browserQr = null,
                             generation = current().generation + 1, message = "연결이 종료됐어요. 이미 받은 제안은 보관돼요"))
                         else notice(received.reason)
                     }

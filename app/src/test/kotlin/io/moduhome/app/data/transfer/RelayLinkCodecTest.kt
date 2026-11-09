@@ -4,6 +4,7 @@ import io.moduhome.app.core.transfer.RelayReceiverSession
 import io.moduhome.app.core.transfer.RelaySenderSession
 import org.junit.Assert.*
 import org.junit.Test
+import java.net.URI
 
 class RelayLinkCodecTest {
     private val now = 1_793_000_000_000L
@@ -28,6 +29,18 @@ class RelayLinkCodecTest {
         val link = RelayLinkCodec.encode(sender("http://192.168.10.5:48680"))
         assertTrue(RelayLinkCodec.decode(link, now) is RelayJoinDecodeResult.Invalid)
         assertTrue(RelayLinkCodec.decode(link, now, true) is RelayJoinDecodeResult.Valid)
+    }
+
+    @Test fun browserPairingPlacesTheSenderCredentialOnlyInTheFragment() {
+        val sender = sender()
+        val receiver = RelayReceiverSession(sender.baseUrl, room, "b".repeat(43), sender)
+        val link = URI(RelayLinkCodec.encodeBrowser(receiver.sender))
+        assertEquals("https", link.scheme)
+        assertEquals("relay.example.com", link.host)
+        assertEquals("/dropoff/", link.path)
+        assertNull(link.rawQuery)
+        assertEquals("v=1&room=$room&token=$token", link.rawFragment)
+        assertFalse(link.toString().contains(receiver.receiverToken))
     }
 
     @Test fun onlyCanonicalPrivateHttpHostsAreAccepted() {

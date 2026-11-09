@@ -18,6 +18,9 @@ internal object RelayLinkCodec {
         }
     }
 
+    fun encodeBrowser(session: RelaySenderSession): String =
+        "${session.baseUrl}/dropoff/#v=1&room=${session.roomId}&token=${session.senderToken}"
+
     fun decode(link: String, nowMillis: Long, allowLocalHttp: Boolean = false): RelayJoinDecodeResult {
         if (nowMillis < 0 || link.length > 8_192 || link.any { it.code !in 0x21..0x7e }) return invalid()
         return try {

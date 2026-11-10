@@ -494,7 +494,7 @@ private fun SharedActive(
             SharedProgressRail(
                 stopCount = plan.stops.size,
                 completedStops = state.completedStops,
-                guidanceReady = canEdit && !state.navigationPending && vehicle.connection == NavigationConnection.Ready,
+                guidanceReady = !vehicle.sending && !state.navigationPending && vehicle.connection == NavigationConnection.Ready,
             )
         }
     }

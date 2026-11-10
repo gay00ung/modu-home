@@ -1,7 +1,10 @@
 package io.moduhome.app.feature.shared
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,10 +29,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,7 +71,7 @@ private data class OrderArrival(
 
 @Composable
 internal fun SharedOrderPanel(plan: SharedJourneyPlan, modifier: Modifier = Modifier) {
-    val sweep = rememberOrderSweep(plan.id)
+    val sweep = rememberOrderSweep(enabled = plan.stops.isNotEmpty())
     val arrivals = plan.stops.mapIndexed { index, stop ->
         OrderArrival(index + 1, stop.place.point.name, shortStopLabel(stop), stop.arrivalMinute)
     } + OrderArrival(null, "집 도착", plan.driverAdditionalMinutes?.let { "직행 +${it}분" }, plan.driverHomeArrivalMinute)
@@ -234,9 +236,7 @@ internal fun SharedProgressRail(
     modifier: Modifier = Modifier,
 ) {
     val next = completedStops.coerceIn(0, stopCount)
-    val lifecycle = LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
-    // The navigation app can take the foreground when the next leg is sent.
-    val sweep = rememberOrderSweep(next, guidanceReady && lifecycle.value.isAtLeast(Lifecycle.State.RESUMED))
+    val sweep = rememberOrderSweep(enabled = next > 0 && guidanceReady)
     Row(
         modifier.fillMaxWidth().clearAndSetSemantics {},
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -263,21 +263,21 @@ internal fun SharedProgressRail(
     }
 }
 
-/** A restored or reopened screen starts settled. Only a change within this screen runs the sweep. */
 @Composable
-private fun rememberOrderSweep(step: Any, canAnimate: Boolean = true): State<Float> {
-    val previousStep = remember { mutableStateOf(step) }
-    val progress = remember { Animatable(1f) }
-    LaunchedEffect(step, canAnimate) {
-        if (!canAnimate) {
-            progress.snapTo(1f)
-        } else if (previousStep.value != step) {
-            previousStep.value = step
-            progress.snapTo(0f)
-            progress.animateTo(1f, tween(durationMillis = 880, easing = FastOutSlowInEasing))
-        }
+private fun rememberOrderSweep(enabled: Boolean): State<Float> {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+    if (!enabled || !lifecycle.value.isAtLeast(Lifecycle.State.RESUMED)) {
+        return remember { mutableFloatStateOf(1f) }
     }
-    return progress.asState()
+    return rememberInfiniteTransition(label = "route sweep").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3_200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "sweep position",
+    )
 }
 
 @Composable

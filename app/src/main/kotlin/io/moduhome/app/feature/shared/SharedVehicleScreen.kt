@@ -472,24 +472,30 @@ private fun SharedActive(
     }
     val next = plan.stops.getOrNull(state.completedStops)
     Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(28.dp)) {
-        Row(Modifier.fillMaxWidth().padding(36.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(40.dp)) {
-            Column(Modifier.weight(1.6f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                SharedCaption(if (next == null) "중간 정차를 마쳤어요 · 이제 운전자 집으로"
-                    else "다음 정차 · 완료 ${state.completedStops}/${plan.stops.size}곳")
-                Text(next?.place?.point?.name ?: state.draft.driverHome?.name ?: "운전자 집 확인 필요",
-                    fontSize = 48.sp, lineHeight = 62.sp, fontWeight = FontWeight.Bold,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                next?.let { Text(stopLabel(it), fontSize = 30.sp, lineHeight = 40.sp) }
-            }
-            val arrival = state.guidanceArrival
-            if (arrival != null) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SharedCaption("차량 내비 기준")
-                    VehicleMetric(state.arrivalLabel(), state.arrivalClock(arrival.readyAtMillis))
-                    SharedCaption("내비 주행 ${arrival.drivingMinutes}분")
+        Column(Modifier.fillMaxWidth().padding(36.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(40.dp)) {
+                Column(Modifier.weight(1.6f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    SharedCaption(if (next == null) "중간 정차를 마쳤어요 · 이제 운전자 집으로"
+                        else "다음 정차 · 완료 ${state.completedStops}/${plan.stops.size}곳")
+                    Text(next?.place?.point?.name ?: state.draft.driverHome?.name ?: "운전자 집 확인 필요",
+                        fontSize = 48.sp, lineHeight = 62.sp, fontWeight = FontWeight.Bold,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    next?.let { Text(stopLabel(it), fontSize = 30.sp, lineHeight = 40.sp) }
                 }
-            } else VehicleMetric("정차 완료", "${state.completedStops}/${plan.stops.size}곳", Modifier.weight(1f))
+                val arrival = state.guidanceArrival
+                if (arrival != null) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SharedCaption("차량 내비 기준")
+                        VehicleMetric(state.arrivalLabel(), state.arrivalClock(arrival.readyAtMillis))
+                        SharedCaption("내비 주행 ${arrival.drivingMinutes}분")
+                    }
+                } else VehicleMetric("정차 완료", "${state.completedStops}/${plan.stops.size}곳", Modifier.weight(1f))
+            }
+            SharedProgressRail(
+                stopCount = plan.stops.size,
+                completedStops = state.completedStops,
+                guidanceReady = canEdit && !state.navigationPending && vehicle.connection == NavigationConnection.Ready,
+            )
         }
     }
     state.arrivalWarning()?.let { SharedError(it) }

@@ -1,5 +1,9 @@
 package io.moduhome.app.feature.shared
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -18,16 +22,23 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
@@ -38,6 +49,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.moduhome.app.R
 import io.moduhome.app.core.planning.formatJourneyMinute
 import io.moduhome.app.core.shared.SharedJourneyPlan
@@ -52,6 +65,7 @@ private data class OrderArrival(
 
 @Composable
 internal fun SharedOrderPanel(plan: SharedJourneyPlan, modifier: Modifier = Modifier) {
+    val sweep = rememberOrderSweep(plan.id)
     val arrivals = plan.stops.mapIndexed { index, stop ->
         OrderArrival(index + 1, stop.place.point.name, shortStopLabel(stop), stop.arrivalMinute)
     } + OrderArrival(null, "집 도착", plan.driverAdditionalMinutes?.let { "직행 +${it}분" }, plan.driverHomeArrivalMinute)
@@ -91,9 +105,9 @@ internal fun SharedOrderPanel(plan: SharedJourneyPlan, modifier: Modifier = Modi
                 color = MaterialTheme.colorScheme.surfaceContainer,
             ) {
                 if (useHorizontalRoute) {
-                    HorizontalOrder(arrivals, Modifier.padding(48.dp))
+                    HorizontalOrder(arrivals, sweep, Modifier.padding(48.dp))
                 } else {
-                    VerticalOrder(arrivals, inlineClock = canLayOutSideBySide, modifier = Modifier.padding(28.dp))
+                    VerticalOrder(arrivals, sweep, inlineClock = canLayOutSideBySide, modifier = Modifier.padding(28.dp))
                 }
             }
         }
@@ -148,7 +162,7 @@ internal fun SharedOrderSwapButton(
 }
 
 @Composable
-private fun HorizontalOrder(arrivals: List<OrderArrival>, modifier: Modifier = Modifier) {
+private fun HorizontalOrder(arrivals: List<OrderArrival>, sweep: State<Float>, modifier: Modifier = Modifier) {
     Row(
         modifier.fillMaxWidth().height(IntrinsicSize.Min),
     ) {
@@ -156,12 +170,11 @@ private fun HorizontalOrder(arrivals: List<OrderArrival>, modifier: Modifier = M
             val hasNext = index < arrivals.lastIndex
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    OrderMarker(arrival.position)
+                    OrderMarker(arrival.position, Modifier.size(72.dp))
                     if (hasNext) {
-                        HorizontalDivider(
-                            Modifier.weight(1f).padding(horizontal = 12.dp),
-                            thickness = 4.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                        OrderConnector(
+                            phase = { sweep.value * arrivals.lastIndex - index },
+                            modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
                         )
                     }
                 }
@@ -179,22 +192,112 @@ private fun HorizontalOrder(arrivals: List<OrderArrival>, modifier: Modifier = M
 }
 
 @Composable
-private fun VerticalOrder(arrivals: List<OrderArrival>, inlineClock: Boolean, modifier: Modifier = Modifier) {
+private fun VerticalOrder(
+    arrivals: List<OrderArrival>,
+    sweep: State<Float>,
+    inlineClock: Boolean,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         arrivals.forEachIndexed { index, arrival ->
-            if (index > 0) HorizontalDivider(Modifier.padding(start = 96.dp))
+            if (index > 0) {
+                OrderConnector(
+                    phase = { sweep.value * arrivals.lastIndex - (index - 1) },
+                    modifier = Modifier.fillMaxWidth().padding(start = 96.dp),
+                )
+            }
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(24.dp),
                 verticalAlignment = if (inlineClock) Alignment.CenterVertically else Alignment.Top,
             ) {
-                OrderMarker(arrival.position)
+                OrderMarker(arrival.position, Modifier.size(72.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OrderPlace(arrival, large = false)
                     if (!inlineClock) OrderClock(arrival, large = false)
                 }
                 if (inlineClock) OrderClock(arrival, large = false)
             }
+        }
+    }
+}
+
+@Composable
+internal fun SharedProgressRail(
+    stopCount: Int,
+    completedStops: Int,
+    guidanceReady: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val next = completedStops.coerceIn(0, stopCount)
+    val lifecycle = LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+    // The navigation app can take the foreground when the next leg is sent.
+    val sweep = rememberOrderSweep(next, guidanceReady && lifecycle.value.isAtLeast(Lifecycle.State.RESUMED))
+    Row(
+        modifier.fillMaxWidth().clearAndSetSemantics {},
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        for (index in 0..stopCount) {
+            if (index > 0) {
+                OrderConnector(
+                    phase = { if (index == next) sweep.value else 1f },
+                    highlighted = index == next,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            OrderMarker(
+                position = if (index == stopCount) null else index + 1,
+                modifier = Modifier.size(56.dp),
+                state = when {
+                    index < next -> OrderMarkerState.COMPLETE
+                    index == next -> OrderMarkerState.NEXT
+                    else -> OrderMarkerState.WAITING
+                },
+            )
+        }
+    }
+}
+
+/** A restored or reopened screen starts settled. Only a change within this screen runs the sweep. */
+@Composable
+private fun rememberOrderSweep(step: Any, canAnimate: Boolean = true): State<Float> {
+    val previousStep = remember { mutableStateOf(step) }
+    val progress = remember { Animatable(1f) }
+    LaunchedEffect(step, canAnimate) {
+        if (!canAnimate) {
+            progress.snapTo(1f)
+        } else if (previousStep.value != step) {
+            previousStep.value = step
+            progress.snapTo(0f)
+            progress.animateTo(1f, tween(durationMillis = 640, easing = LinearEasing))
+        }
+    }
+    return progress.asState()
+}
+
+@Composable
+private fun OrderConnector(
+    phase: () -> Float,
+    modifier: Modifier = Modifier,
+    highlighted: Boolean = false,
+) {
+    val colors = MaterialTheme.colorScheme
+    val track = if (highlighted) colors.primary.copy(alpha = 0.55f) else colors.outlineVariant
+    Canvas(modifier.height(8.dp)) {
+        val start = Offset(4.dp.toPx(), center.y)
+        val end = Offset((size.width - start.x).coerceAtLeast(start.x), center.y)
+        drawLine(track, start, end, strokeWidth = 4.dp.toPx(), cap = StrokeCap.Round)
+        val fraction = phase()
+        if (fraction > 0f && fraction < 1f) {
+            val opacity = ((1f - fraction) * 5f).coerceAtMost(1f)
+            drawLine(
+                colors.primary.copy(alpha = opacity),
+                start,
+                Offset(start.x + (end.x - start.x) * fraction, center.y),
+                strokeWidth = 8.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
         }
     }
 }
@@ -215,17 +318,34 @@ private fun OrderNote(text: String) {
     Text(text, fontSize = 28.sp, lineHeight = 40.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
+private enum class OrderMarkerState { PREVIEW, COMPLETE, NEXT, WAITING }
+
 @Composable
-private fun OrderMarker(position: Int?) {
+private fun OrderMarker(
+    position: Int?,
+    modifier: Modifier = Modifier,
+    state: OrderMarkerState = OrderMarkerState.PREVIEW,
+) {
     val colors = MaterialTheme.colorScheme
+    val accent = state == OrderMarkerState.NEXT || (state == OrderMarkerState.PREVIEW && position == null)
     Surface(
-        modifier = Modifier.size(72.dp),
+        modifier = modifier,
         shape = CircleShape,
-        color = if (position == null) colors.primary else colors.primaryContainer,
-        contentColor = if (position == null) colors.onPrimary else colors.primary,
+        color = when {
+            accent -> colors.primary
+            state == OrderMarkerState.PREVIEW -> colors.primaryContainer
+            else -> colors.surface
+        },
+        contentColor = when {
+            accent -> colors.onPrimary
+            state == OrderMarkerState.PREVIEW -> colors.primary
+            else -> colors.onSurfaceVariant
+        },
     ) {
         Box(contentAlignment = Alignment.Center) {
-            if (position == null) {
+            if (state == OrderMarkerState.COMPLETE) {
+                Text("✓", fontSize = 32.sp, lineHeight = 40.sp, fontWeight = FontWeight.SemiBold)
+            } else if (position == null) {
                 Icon(painterResource(R.drawable.ic_journey_notification), contentDescription = null, modifier = Modifier.size(38.dp))
             } else {
                 Text(position.toString(), fontSize = 36.sp, lineHeight = 44.sp, fontWeight = FontWeight.SemiBold)

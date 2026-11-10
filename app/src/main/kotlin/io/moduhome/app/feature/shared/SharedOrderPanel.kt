@@ -1,9 +1,8 @@
 package io.moduhome.app.feature.shared
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -34,8 +33,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -270,7 +272,7 @@ private fun rememberOrderSweep(step: Any, canAnimate: Boolean = true): State<Flo
         } else if (previousStep.value != step) {
             previousStep.value = step
             progress.snapTo(0f)
-            progress.animateTo(1f, tween(durationMillis = 640, easing = LinearEasing))
+            progress.animateTo(1f, tween(durationMillis = 880, easing = FastOutSlowInEasing))
         }
     }
     return progress.asState()
@@ -284,22 +286,43 @@ private fun OrderConnector(
 ) {
     val colors = MaterialTheme.colorScheme
     val track = if (highlighted) colors.primary.copy(alpha = 0.55f) else colors.outlineVariant
-    Canvas(modifier.height(8.dp)) {
-        val start = Offset(4.dp.toPx(), center.y)
-        val end = Offset((size.width - start.x).coerceAtLeast(start.x), center.y)
-        drawLine(track, start, end, strokeWidth = 4.dp.toPx(), cap = StrokeCap.Round)
-        val fraction = phase()
-        if (fraction > 0f && fraction < 1f) {
-            val opacity = ((1f - fraction) * 5f).coerceAtMost(1f)
-            drawLine(
-                colors.primary.copy(alpha = opacity),
-                start,
-                Offset(start.x + (end.x - start.x) * fraction, center.y),
-                strokeWidth = 8.dp.toPx(),
-                cap = StrokeCap.Round,
+    Spacer(
+        modifier.height(8.dp).drawWithCache {
+            val strokeWidth = 4.dp.toPx()
+            val start = Offset(strokeWidth, size.height / 2f)
+            val end = Offset((size.width - start.x).coerceAtLeast(start.x), start.y)
+            val length = end.x - start.x
+            val radius = (length * 0.24f).coerceIn(1f, 192.dp.toPx())
+            val accent = colors.primary
+            val transparent = accent.copy(alpha = 0f)
+            val shoulder = accent.copy(alpha = 0.18f)
+            val glow = Brush.horizontalGradient(
+                0f to transparent,
+                0.28f to shoulder,
+                0.5f to accent.copy(alpha = 0.42f),
+                0.72f to shoulder,
+                1f to transparent,
+                startX = -radius,
+                endX = radius,
             )
-        }
-    }
+            onDrawBehind {
+                drawLine(track, start, end, strokeWidth = strokeWidth, cap = StrokeCap.Round)
+                val fraction = phase()
+                if (fraction > 0f && fraction < 1f && length > 0f) {
+                    val glowCenter = start.x - radius + (length + 2f * radius) * fraction
+                    translate(left = glowCenter) {
+                        drawLine(
+                            glow,
+                            start.copy(x = start.x - glowCenter),
+                            end.copy(x = end.x - glowCenter),
+                            strokeWidth = strokeWidth,
+                            cap = StrokeCap.Round,
+                        )
+                    }
+                }
+            }
+        },
+    )
 }
 
 @Composable

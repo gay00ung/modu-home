@@ -59,7 +59,6 @@ import io.moduhome.app.core.vehicle.restrictContent
 import io.moduhome.app.feature.vehicle.VehicleActionBar
 import io.moduhome.app.feature.vehicle.VehicleAdditionalTimeSuggestion
 import io.moduhome.app.feature.vehicle.VehicleMetric
-import io.moduhome.app.feature.vehicle.VehicleMetrics
 import io.moduhome.app.feature.vehicle.VehicleToolbar
 import io.moduhome.app.feature.home.VehicleNavigationUiState
 import java.time.Instant
@@ -67,7 +66,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
-private val SharedComparisonMaxWidth = 2_160.dp
+private val SharedRouteMaxWidth = 2_160.dp
 
 /** Pure vehicle presentation. Place lookup, user confirmations, routing and persistence belong to the app. */
 @Composable
@@ -87,7 +86,8 @@ internal fun SharedVehicleScreen(
     val busy = vehicle.planning || vehicle.sending || vehicle.reading
     val canEdit = !busy
     val comparing = state.stage == JourneyStage.COMPARE
-    val hasSelectedOrder = comparing && state.selectedPlan?.isValid == true
+    val reviewing = state.stage == JourneyStage.REVIEW
+    val hasSelectedOrder = (comparing || reviewing) && state.selectedPlan?.isValid == true
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
@@ -115,8 +115,7 @@ internal fun SharedVehicleScreen(
                 }
                 when (state.stage) {
                     JourneyStage.INPUT -> "친구가 정한 곳에 내려주고, 가는 김에 볼일까지"
-                    JourneyStage.COMPARE -> null
-                    JourneyStage.REVIEW -> "지정한 하차지와 볼일의 전체 순서를 확인해주세요"
+                    JourneyStage.COMPARE, JourneyStage.REVIEW -> null
                     JourneyStage.ACTIVE -> "하차와 완료 확인은 정차한 뒤에 해주세요"
                     JourneyStage.COMPLETE -> "동승자 하차와 집 도착을 기록했어요"
                 }?.let { SharedCaption(it) }
@@ -138,19 +137,25 @@ internal fun SharedVehicleScreen(
             ) {
                 when (state.stage) {
                     JourneyStage.INPUT -> SharedInput(state.draft, actions, vehicle, canEdit)
-                    JourneyStage.COMPARE -> Column(
+                    JourneyStage.COMPARE, JourneyStage.REVIEW -> Column(
                         Modifier.align(Alignment.CenterHorizontally)
-                            .then(if (hasSelectedOrder) Modifier.widthIn(max = SharedComparisonMaxWidth) else Modifier)
+                            .then(if (hasSelectedOrder) Modifier.widthIn(max = SharedRouteMaxWidth) else Modifier)
                             .fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(24.dp),
                     ) {
-                        SharedComparison(state, actions, canEdit)
+                        if (comparing) {
+                            SharedComparison(state, actions, canEdit)
+                        } else {
+                            if (hasSelectedOrder) {
+                                VehicleToolbar(title = sharedTitle(JourneyStage.REVIEW)) { toolbarActions?.invoke(canEdit) }
+                            }
+                            SharedReview(state)
+                        }
                     }
-                    JourneyStage.REVIEW -> SharedReview(state)
                     JourneyStage.ACTIVE -> SharedActive(state, actions, vehicle, canEdit)
                     JourneyStage.COMPLETE -> SharedComplete(state)
                 }
-                if (!comparing || vehicle.connection != NavigationConnection.Ready) {
+                if ((!comparing && !reviewing) || vehicle.connection != NavigationConnection.Ready) {
                     SharedNavigationStatus(state, vehicle, actions, canEdit)
                 }
             }
@@ -429,33 +434,21 @@ private fun SharedReview(state: SharedVehicleUiState) {
         SharedError("확정할 계획을 다시 선택해주세요")
         return
     }
-    Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp)) {
-        Column(Modifier.fillMaxWidth().padding(32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            VehicleMetrics(listOf("교통 제외 · 집 도착" to clock(plan.driverHomeArrivalMinute),
-                "집 직행보다 추가" to (plan.driverAdditionalMinutes?.let { "+${it}분" } ?: "확인 필요"),
-                "중간 정차" to "${plan.stops.size}곳"), modifier = Modifier.fillMaxWidth(), spacing = 32.dp)
-            HorizontalDivider()
-            plan.stops.forEachIndexed { index, stop ->
-                val arrivalMinute = when (stop) {
-                    is SharedScheduledStop.Dropoff -> plan.passengerArrivals
-                        .singleOrNull { it.passengerId == stop.passenger.id }?.dropoffMinute
-                    is SharedScheduledStop.Errand -> stop.arrivalMinute
-                }
-                SharedStopLine("${index + 1}", stop.place.point.name, stopLabel(stop), clock(arrivalMinute))
-            }
-            SharedStopLine("집", state.draft.driverHome?.name ?: "운전자 집 확인 필요", "운전자의 마지막 목적지", clock(plan.driverHomeArrivalMinute))
-        }
-    }
     val home = state.draft.driverHome
+    SharedOrderPanel(plan, departureHome = home?.name ?: "운전자 집 확인 필요")
     val window = home?.let { plan.currentWindow(it, 0) }
     if (window != null && window.destination != home) {
         val end = plan.stops.firstOrNull { it.place.point == window.destination }
-        SharedStagedGuidanceNote("${end?.let(::stopLabel) ?: "선택한 주소"}까지 먼저 안내해요. 정차 완료 후 남은 순서와 운전자 집으로 이어가요")
+        SharedStagedGuidanceNote("${end?.let(::stopLabel) ?: "선택한 주소"}까지 먼저 안내 · 정차 완료 후 다음 목적지로")
     } else if (plan.stops.size == 3) {
-        SharedStagedGuidanceNote("중간 정차가 3곳이에요. 첫 정차를 완료하면 나머지 경유지를 차량 내비에 반영해요")
+        SharedStagedGuidanceNote("첫 정차 완료 후 다음 경유지를 내비에 반영해요")
     }
     plan.issues.forEach { SharedError(issueText(it, plan)) }
-    SharedEstimateNote(state)
+    val source = if (state.estimateLabel != null && !plan.includesSampleTimes && !plan.includesUserEstimates) {
+        "© OpenStreetMap contributors · ODbL · openstreetmap.org/copyright"
+    } else null
+    val details = listOfNotNull(state.directHomeMinutes?.let { "집 직행 ${it}분" }, source)
+    if (details.isNotEmpty()) SharedCaption(details.joinToString(" · "))
 }
 
 @Composable
@@ -633,7 +626,7 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
                 else -> "방문 순서를 비교하고 출발할 계획을 골라요"
             }
             JourneyStage.COMPARE -> if (anyValid && plan?.isValid != true) "순서를 골라주세요" else null
-            JourneyStage.REVIEW -> "운전자 집이 마지막 목적지예요"
+            JourneyStage.REVIEW -> null
             JourneyStage.ACTIVE -> "완료 확인은 정차한 뒤에"
             JourneyStage.COMPLETE -> "다음 귀가도 함께 편하게"
         },
@@ -648,7 +641,9 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
                 JourneyStage.COMPLETE -> actions.onNewJourney()
             }
         },
-        contentWidth = if (state.stage == JourneyStage.COMPARE && plan?.isValid == true) SharedComparisonMaxWidth else null,
+        contentWidth = if (plan?.isValid == true && (state.stage == JourneyStage.COMPARE || state.stage == JourneyStage.REVIEW)) {
+            SharedRouteMaxWidth
+        } else null,
         secondaryAction = secondaryAction,
     )
 }

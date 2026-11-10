@@ -67,14 +67,23 @@ private data class OrderArrival(
     val place: String,
     val detail: String?,
     val minute: Int?,
+    val maxPlaceLines: Int,
 )
 
 @Composable
-internal fun SharedOrderPanel(plan: SharedJourneyPlan, modifier: Modifier = Modifier) {
-    val sweep = rememberOrderSweep(enabled = plan.stops.isNotEmpty())
+internal fun SharedOrderPanel(
+    plan: SharedJourneyPlan,
+    modifier: Modifier = Modifier,
+    departureHome: String? = null,
+) {
+    val confirmingDeparture = departureHome != null
+    val sweep = rememberOrderSweep(enabled = !confirmingDeparture && plan.stops.isNotEmpty())
+    val placeLines = if (confirmingDeparture) Int.MAX_VALUE else 2
+    val extraTime = plan.driverAdditionalMinutes?.let { "직행 +${it}분" }
+    val homeDetail = if (confirmingDeparture) listOfNotNull("집 도착", extraTime).joinToString(" · ") else extraTime
     val arrivals = plan.stops.mapIndexed { index, stop ->
-        OrderArrival(index + 1, stop.place.point.name, shortStopLabel(stop), stop.arrivalMinute)
-    } + OrderArrival(null, "집 도착", plan.driverAdditionalMinutes?.let { "직행 +${it}분" }, plan.driverHomeArrivalMinute)
+        OrderArrival(index + 1, stop.place.point.name, shortStopLabel(stop), stop.arrivalMinute, placeLines)
+    } + OrderArrival(null, departureHome ?: "집 도착", homeDetail, plan.driverHomeArrivalMinute, placeLines)
     val title = when {
         plan.stops.any { it is SharedScheduledStop.Errand } -> "방문 순서"
         plan.stops.isNotEmpty() -> "하차 순서"
@@ -90,7 +99,9 @@ internal fun SharedOrderPanel(plan: SharedJourneyPlan, modifier: Modifier = Modi
         val canLayOutSideBySide = fontScale <= 1.15f && maxWidth >= 840.dp
         val useHorizontalRoute = canLayOutSideBySide && maxWidth >= (arrivals.size * 440 + 96).dp
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            if (canLayOutSideBySide) {
+            if (confirmingDeparture) {
+                OrderNote(estimate, Modifier.align(Alignment.End))
+            } else if (canLayOutSideBySide) {
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -344,8 +355,8 @@ private fun OrderHeading(title: String) {
 }
 
 @Composable
-private fun OrderNote(text: String) {
-    Text(text, fontSize = 28.sp, lineHeight = 40.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun OrderNote(text: String, modifier: Modifier = Modifier) {
+    Text(text, modifier, fontSize = 28.sp, lineHeight = 40.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 private enum class OrderMarkerState { PREVIEW, COMPLETE, NEXT, WAITING }
@@ -393,7 +404,7 @@ private fun OrderPlace(arrival: OrderArrival, large: Boolean, modifier: Modifier
             fontSize = if (large) 52.sp else 40.sp,
             lineHeight = if (large) 64.sp else 48.sp,
             fontWeight = FontWeight.SemiBold,
-            maxLines = 2,
+            maxLines = arrival.maxPlaceLines,
             overflow = TextOverflow.Ellipsis,
         )
     }

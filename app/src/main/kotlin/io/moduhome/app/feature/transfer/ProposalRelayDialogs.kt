@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.moduhome.app.core.planning.VisitKind
+import io.moduhome.app.feature.vehicle.VehicleDialog
 import java.net.URI
 import java.time.Instant
 import java.time.ZoneId
@@ -49,69 +50,66 @@ internal fun VehicleBrowserDropoffDialog(
     val maximumHeight = LocalWindowInfo.current.containerDpSize.height * 0.90f
     val qr = state.browserQr
     val receiver = state.receiver
-    Dialog(onDismissRequest = actions.dismissVehicle, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(
-            modifier.widthIn(max = 1120.dp).fillMaxWidth(0.92f).heightIn(max = maximumHeight),
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.background,
-        ) {
-            Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                BoxWithConstraints(
-                    Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()),
-                ) {
-                    val copy: @Composable () -> Unit = {
-                        Text(
-                            if (qr != null) "이 QR을 찍어주세요" else "하차지 받기",
-                            fontSize = 44.sp, lineHeight = 52.sp, fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            if (receiver != null && qr == null) "현재 연결을 종료한 뒤 하차지 QR을 열 수 있어요"
-                            else "휴대폰 브라우저에서 내릴 곳을 찍어 보내요",
-                            fontSize = 28.sp, lineHeight = 38.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text("받은 하차지 ${pendingDropoffCount}곳", fontSize = 30.sp, lineHeight = 40.sp,
-                            fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                        if (qr != null && receiver != null) Text(
-                            "${relayExpiryLabel(receiver.expiresAtMillis)}까지 연결",
-                            fontSize = 28.sp, lineHeight = 38.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        state.message?.let { Text(it, fontSize = 28.sp, lineHeight = 38.sp) }
+    VehicleDialog(
+        onDismissRequest = actions.dismissVehicle,
+        modifier = modifier.widthIn(max = 1120.dp).fillMaxWidth(0.92f).heightIn(max = maximumHeight),
+    ) {
+        Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            BoxWithConstraints(
+                Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()),
+            ) {
+                val copy: @Composable () -> Unit = {
+                    Text(
+                        if (qr != null) "이 QR을 찍어주세요" else "하차지 받기",
+                        fontSize = 44.sp, lineHeight = 52.sp, fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        if (receiver != null && qr == null) "현재 연결을 종료한 뒤 하차지 QR을 열 수 있어요"
+                        else "휴대폰 브라우저에서 내릴 곳을 찍어 보내요",
+                        fontSize = 28.sp, lineHeight = 38.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text("받은 하차지 ${pendingDropoffCount}곳", fontSize = 30.sp, lineHeight = 40.sp,
+                        fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                    if (qr != null && receiver != null) Text(
+                        "${relayExpiryLabel(receiver.expiresAtMillis)}까지 연결",
+                        fontSize = 28.sp, lineHeight = 38.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    state.message?.let { Text(it, fontSize = 28.sp, lineHeight = 38.sp) }
+                }
+                if (qr != null && maxWidth >= 700.dp) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp), content = { copy() })
+                        BrowserDropoffQr(qr, Modifier.size(280.dp))
                     }
-                    if (qr != null && maxWidth >= 700.dp) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp), content = { copy() })
-                            BrowserDropoffQr(qr, Modifier.size(280.dp))
-                        }
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            copy()
-                            if (qr != null) BrowserDropoffQr(qr, Modifier.sizeIn(maxWidth = 240.dp, maxHeight = 240.dp).size(240.dp))
-                        }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        copy()
+                        if (qr != null) BrowserDropoffQr(qr, Modifier.sizeIn(maxWidth = 240.dp, maxHeight = 240.dp).size(240.dp))
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(
-                        onClick = actions.dismissVehicle, enabled = !state.busy,
-                        modifier = Modifier.weight(1f).heightIn(min = 80.dp),
-                    ) { Text("닫기", fontSize = 28.sp) }
-                    Button(
-                        onClick = when {
-                            pendingDropoffCount > 0 -> onOpenInbox
-                            receiver == null -> actions.createRoom
-                            else -> actions.closeRoom
-                        },
-                        enabled = !state.busy && (pendingDropoffCount > 0 || configured && qr == null),
-                        modifier = Modifier.weight(2f).heightIn(min = 96.dp),
-                    ) {
-                        Text(when {
-                            pendingDropoffCount > 0 || qr != null -> "받은 하차지 보기"
-                            receiver != null -> "기존 연결 종료"
-                            else -> "QR 열기"
-                        }, fontSize = 28.sp)
-                    }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(
+                    onClick = actions.dismissVehicle, enabled = !state.busy,
+                    modifier = Modifier.weight(1f).heightIn(min = 80.dp),
+                ) { Text("닫기", fontSize = 28.sp) }
+                Button(
+                    onClick = when {
+                        pendingDropoffCount > 0 -> onOpenInbox
+                        receiver == null -> actions.createRoom
+                        else -> actions.closeRoom
+                    },
+                    enabled = !state.busy && (pendingDropoffCount > 0 || configured && qr == null),
+                    modifier = Modifier.weight(2f).heightIn(min = 96.dp),
+                ) {
+                    Text(when {
+                        pendingDropoffCount > 0 || qr != null -> "받은 하차지 보기"
+                        receiver != null -> "기존 연결 종료"
+                        else -> "QR 열기"
+                    }, fontSize = 28.sp)
                 }
             }
         }
@@ -133,67 +131,67 @@ internal fun VehiclePhoneConnectionDialog(
     modifier: Modifier = Modifier,
 ) {
     val maximumHeight = LocalWindowInfo.current.containerDpSize.height * 0.90f
-    Dialog(onDismissRequest = actions.dismissVehicle, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(modifier.widthIn(max = 1280.dp).fillMaxWidth(0.92f).heightIn(max = maximumHeight),
-            shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface) {
-            Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                Text("휴대폰 연결", fontSize = 36.sp, lineHeight = 48.sp, fontWeight = FontWeight.Bold)
-                if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    state.message?.let { Text(it, fontSize = 28.sp, lineHeight = 40.sp, color = MaterialTheme.colorScheme.primary) }
-                    val receiver = state.receiver
-                    if (receiver == null) {
-                        Text("휴대폰에서 보낸 하차지와 볼일을 받아요. 운전자가 확인한 뒤 계획에 반영해요",
-                            fontSize = 28.sp, lineHeight = 40.sp)
-                        Text("연결은 15분 동안 열려요. 휴대폰에서 QR 링크를 열거나 QR 이미지를 선택해주세요",
-                            fontSize = 28.sp, lineHeight = 40.sp)
-                        Text("연결 주소 · ${if (configuredBaseUrl.isBlank()) "현재 연결 사용 불가" else relayServerLabel(configuredBaseUrl)}",
-                            fontSize = 28.sp, lineHeight = 40.sp)
-                        if (state.seedChoices.isNotEmpty()) {
-                            Text("선택한 볼일도 함께 공유", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
-                            state.seedChoices.forEach { choice ->
-                                RelayLargeChoice(
-                                    label = "${if (choice.kind == VisitKind.PICKUP) "픽업" else "장보기"} · ${choice.place.name}",
-                                    selected = state.selectedSeedKind == choice.kind,
-                                    enabled = !state.busy,
-                                    onClick = { actions.chooseSeed(choice.kind) },
-                                )
-                            }
-                            RelayLargeChoice("볼일 공유 없이 연결", state.selectedSeedKind == null, !state.busy,
-                                onClick = { actions.chooseSeed(null) })
-                            Text(if (state.selectedSeedKind == null) "차량의 볼일을 공유하지 않고 휴대폰만 연결해요"
-                                else "선택한 한 곳의 장소와 볼일 조건만 공유해요", fontSize = 28.sp, lineHeight = 40.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        } else {
-                            Text("공유할 볼일 없이도 연결할 수 있어요. 휴대폰에서 하차지나 새 볼일을 작성해주세요",
-                                fontSize = 28.sp, lineHeight = 40.sp)
+    VehicleDialog(
+        onDismissRequest = actions.dismissVehicle,
+        modifier = modifier.widthIn(max = 1280.dp).fillMaxWidth(0.92f).heightIn(max = maximumHeight),
+    ) {
+        Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            Text("휴대폰 연결", fontSize = 36.sp, lineHeight = 48.sp, fontWeight = FontWeight.Bold)
+            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                state.message?.let { Text(it, fontSize = 28.sp, lineHeight = 40.sp, color = MaterialTheme.colorScheme.primary) }
+                val receiver = state.receiver
+                if (receiver == null) {
+                    Text("휴대폰에서 보낸 하차지와 볼일을 받아요. 운전자가 확인한 뒤 계획에 반영해요",
+                        fontSize = 28.sp, lineHeight = 40.sp)
+                    Text("연결은 15분 동안 열려요. 휴대폰에서 QR 링크를 열거나 QR 이미지를 선택해주세요",
+                        fontSize = 28.sp, lineHeight = 40.sp)
+                    Text("연결 주소 · ${if (configuredBaseUrl.isBlank()) "현재 연결 사용 불가" else relayServerLabel(configuredBaseUrl)}",
+                        fontSize = 28.sp, lineHeight = 40.sp)
+                    if (state.seedChoices.isNotEmpty()) {
+                        Text("선택한 볼일도 함께 공유", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
+                        state.seedChoices.forEach { choice ->
+                            RelayLargeChoice(
+                                label = "${if (choice.kind == VisitKind.PICKUP) "픽업" else "장보기"} · ${choice.place.name}",
+                                selected = state.selectedSeedKind == choice.kind,
+                                enabled = !state.busy,
+                                onClick = { actions.chooseSeed(choice.kind) },
+                            )
                         }
+                        RelayLargeChoice("볼일 공유 없이 연결", state.selectedSeedKind == null, !state.busy,
+                            onClick = { actions.chooseSeed(null) })
+                        Text(if (state.selectedSeedKind == null) "차량의 볼일을 공유하지 않고 휴대폰만 연결해요"
+                            else "선택한 한 곳의 장소와 볼일 조건만 공유해요", fontSize = 28.sp, lineHeight = 40.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
-                        Text("휴대폰에서 QR 링크를 열거나 QR 이미지를 선택해주세요", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
-                        state.qr?.let { qr ->
-                            Surface(color = Color.White, shape = MaterialTheme.shapes.small) {
-                                Image(qr, "동승자 휴대폰 연결 QR", Modifier.padding(16.dp).size(336.dp))
-                            }
-                        }
-                        Text("연결 주소 · ${relayServerLabel(receiver.sender.baseUrl)}", fontSize = 28.sp, lineHeight = 40.sp)
-                        Text("${relayExpiryLabel(receiver.expiresAtMillis)}까지 연결", fontSize = 28.sp, lineHeight = 40.sp)
-                        Text("차량 앱을 열면 제안을 받아요. 받은 제안에서 확인해주세요",
+                        Text("공유할 볼일 없이도 연결할 수 있어요. 휴대폰에서 하차지나 새 볼일을 작성해주세요",
                             fontSize = 28.sp, lineHeight = 40.sp)
                     }
+                } else {
+                    Text("휴대폰에서 QR 링크를 열거나 QR 이미지를 선택해주세요", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
+                    state.qr?.let { qr ->
+                        Surface(color = Color.White, shape = MaterialTheme.shapes.small) {
+                            Image(qr, "동승자 휴대폰 연결 QR", Modifier.padding(16.dp).size(336.dp))
+                        }
+                    }
+                    Text("연결 주소 · ${relayServerLabel(receiver.sender.baseUrl)}", fontSize = 28.sp, lineHeight = 40.sp)
+                    Text("${relayExpiryLabel(receiver.expiresAtMillis)}까지 연결", fontSize = 28.sp, lineHeight = 40.sp)
+                    Text("차량 앱을 열면 제안을 받아요. 받은 제안에서 확인해주세요",
+                        fontSize = 28.sp, lineHeight = 40.sp)
                 }
-                HorizontalDivider()
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    OutlinedButton(onClick = actions.dismissVehicle, enabled = !state.busy,
-                        modifier = Modifier.weight(1f).heightIn(min = 88.dp), shape = MaterialTheme.shapes.medium) {
-                        Text("닫기", fontSize = 28.sp)
-                    }
-                    Button(onClick = if (state.receiver == null) actions.createRoom else actions.closeRoom,
-                        enabled = !state.busy && (state.receiver != null || configuredBaseUrl.isNotBlank()),
-                        modifier = Modifier.weight(1.4f).heightIn(min = 88.dp), shape = MaterialTheme.shapes.medium) {
-                        Text(if (state.busy) "연결 확인 중" else if (state.receiver == null) "연결 시작" else "연결 종료",
-                            fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                    }
+            }
+            HorizontalDivider()
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                OutlinedButton(onClick = actions.dismissVehicle, enabled = !state.busy,
+                    modifier = Modifier.weight(1f).heightIn(min = 88.dp), shape = MaterialTheme.shapes.medium) {
+                    Text("닫기", fontSize = 28.sp)
+                }
+                Button(onClick = if (state.receiver == null) actions.createRoom else actions.closeRoom,
+                    enabled = !state.busy && (state.receiver != null || configuredBaseUrl.isNotBlank()),
+                    modifier = Modifier.weight(1.4f).heightIn(min = 88.dp), shape = MaterialTheme.shapes.medium) {
+                    Text(if (state.busy) "연결 확인 중" else if (state.receiver == null) "연결 시작" else "연결 종료",
+                        fontSize = 28.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

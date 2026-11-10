@@ -28,14 +28,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import io.moduhome.app.core.planning.VisitKind
 import io.moduhome.app.core.transfer.ErrandProposal
 import io.moduhome.app.core.transfer.JourneyProposal
 import io.moduhome.app.core.transfer.DropoffProposal
 import io.moduhome.app.core.transfer.JourneyProposalInbox
 import io.moduhome.app.core.transfer.ProposalReviewStatus
+import io.moduhome.app.feature.vehicle.VehicleDialog
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -77,84 +76,81 @@ internal fun SharedProposalDialog(
     val previousProposal = pending.getOrNull(selectedIndex - 1).takeIf { selectedIndex > 0 }
     val nextProposal = pending.getOrNull(if (selectedIndex < 0) 0 else selectedIndex + 1)
 
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(
-            modifier = modifier.widthIn(max = 1480.dp).fillMaxWidth(0.94f).heightIn(max = maximumHeight),
-            color = MaterialTheme.colorScheme.surface,
-            shape = MaterialTheme.shapes.extraLarge,
-        ) {
-            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                SharedProposalHeader(
-                    title = if (selectedProposal is DropoffProposal) "받은 하차지" else "받은 제안",
-                    showPager = pending.size > 1 || (pending.isNotEmpty() && selectedIndex < 0),
-                    position = if (selectedIndex >= 0) selectedIndex + 1 else 0,
-                    total = pending.size,
-                    previous = previousProposal,
-                    next = nextProposal,
-                    onSelect = onSelect,
-                )
-                message?.takeIf(String::isNotBlank)?.let { selectedMessage ->
-                    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
-                        Text(selectedMessage, Modifier.fillMaxWidth().padding(16.dp), fontSize = 28.sp, lineHeight = 40.sp,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer)
-                    }
+    VehicleDialog(
+        onDismissRequest = onDismiss,
+        modifier = modifier.widthIn(max = 1480.dp).fillMaxWidth(0.94f).heightIn(max = maximumHeight),
+    ) {
+        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SharedProposalHeader(
+                title = if (selectedProposal is DropoffProposal) "받은 하차지" else "받은 제안",
+                showPager = pending.size > 1 || (pending.isNotEmpty() && selectedIndex < 0),
+                position = if (selectedIndex >= 0) selectedIndex + 1 else 0,
+                total = pending.size,
+                previous = previousProposal,
+                next = nextProposal,
+                onSelect = onSelect,
+            )
+            message?.takeIf(String::isNotBlank)?.let { selectedMessage ->
+                Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
+                    Text(selectedMessage, Modifier.fillMaxWidth().padding(16.dp), fontSize = 28.sp, lineHeight = 40.sp,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer)
                 }
-                key(selectedProposal?.id, selectedProposal?.revision) {
-                    Column(
-                        Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        when {
-                            selectedProposal == null -> Text(
-                                if (pending.isEmpty()) "아직 받은 제안이 없어요" else "다음을 눌러 받은 제안을 확인해주세요",
-                                fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.Medium,
-                            )
-                            selectedProposal is DropoffProposal -> SharedDropoffReview(
-                                selectedProposal, currentReview, onChoosePassenger,
-                            )
-                            received != null -> {
-                                Text("받은 제안의 조건이에요", fontSize = 28.sp, lineHeight = 40.sp,
-                                    color = MaterialTheme.colorScheme.primary)
-                                if (existing?.deadlineAtMillis != null && received.deadlineAtMillis == null) {
-                                    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
-                                        Text("기존 완료 마감 ${sharedProposalDeadline(existing.deadlineAtMillis, zoneId)}이 없어져요",
-                                            Modifier.fillMaxWidth().padding(16.dp), fontSize = 28.sp, lineHeight = 40.sp,
-                                            color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.SemiBold)
-                                    }
+            }
+            key(selectedProposal?.id, selectedProposal?.revision) {
+                Column(
+                    Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    when {
+                        selectedProposal == null -> Text(
+                            if (pending.isEmpty()) "아직 받은 제안이 없어요" else "다음을 눌러 받은 제안을 확인해주세요",
+                            fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.Medium,
+                        )
+                        selectedProposal is DropoffProposal -> SharedDropoffReview(
+                            selectedProposal, currentReview, onChoosePassenger,
+                        )
+                        received != null -> {
+                            Text("받은 제안의 조건이에요", fontSize = 28.sp, lineHeight = 40.sp,
+                                color = MaterialTheme.colorScheme.primary)
+                            if (existing?.deadlineAtMillis != null && received.deadlineAtMillis == null) {
+                                Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
+                                    Text("기존 완료 마감 ${sharedProposalDeadline(existing.deadlineAtMillis, zoneId)}이 없어져요",
+                                        Modifier.fillMaxWidth().padding(16.dp), fontSize = 28.sp, lineHeight = 40.sp,
+                                        color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.SemiBold)
                                 }
-                                BoxWithConstraints(Modifier.fillMaxWidth()) {
-                                    if (maxWidth >= 1000.dp) {
-                                        SharedProposalComparison(existing, received, zoneId)
-                                    } else {
-                                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                            if (existing != null) {
-                                                SharedProposalCompactConditions("기존 볼일", existing, zoneId)
-                                            }
-                                            SharedProposalCompactConditions("새 볼일", received, zoneId)
+                            }
+                            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                                if (maxWidth >= 1000.dp) {
+                                    SharedProposalComparison(existing, received, zoneId)
+                                } else {
+                                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                        if (existing != null) {
+                                            SharedProposalCompactConditions("기존 볼일", existing, zoneId)
                                         }
+                                        SharedProposalCompactConditions("새 볼일", received, zoneId)
                                     }
                                 }
-                                if (received.kind == VisitKind.PICKUP || existing?.kind == VisitKind.PICKUP) {
-                                    Text("수령 준비는 제안이나 계획에 저장된 상태이며 매장 확인 정보는 아니에요",
-                                        fontSize = 28.sp, lineHeight = 40.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
+                            }
+                            if (received.kind == VisitKind.PICKUP || existing?.kind == VisitKind.PICKUP) {
+                                Text("수령 준비는 제안이나 계획에 저장된 상태이며 매장 확인 정보는 아니에요",
+                                    fontSize = 28.sp, lineHeight = 40.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
                 }
-                HorizontalDivider()
-                Text(if (selectedProposal is DropoffProposal) "차가 들어가고 잠깐 정차할 수 있는 곳인지 확인해주세요"
-                    else "반영 후 경로를 다시 비교해요. 현재 내비 안내는 바꾸지 않아요",
-                    fontSize = 28.sp, lineHeight = 40.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                SharedProposalFooter(
-                    approveLabel = if (selectedProposal is DropoffProposal) "정차 확인하고 반영" else if (existing != null) "이 볼일로 바꾸기" else "계획에 추가",
-                    approveEnabled = approveEnabled,
-                    declineEnabled = selectedIndex >= 0,
-                    onApprove = { if (approveEnabled) onApprove() },
-                    onDecline = { if (selectedIndex >= 0) selectedProposal?.let { onDecline(it.id, it.revision) } },
-                    onDismiss = onDismiss,
-                )
             }
+            HorizontalDivider()
+            Text(if (selectedProposal is DropoffProposal) "차가 들어가고 잠깐 정차할 수 있는 곳인지 확인해주세요"
+                else "반영 후 경로를 다시 비교해요. 현재 내비 안내는 바꾸지 않아요",
+                fontSize = 28.sp, lineHeight = 40.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SharedProposalFooter(
+                approveLabel = if (selectedProposal is DropoffProposal) "정차 확인하고 반영" else if (existing != null) "이 볼일로 바꾸기" else "계획에 추가",
+                approveEnabled = approveEnabled,
+                declineEnabled = selectedIndex >= 0,
+                onApprove = { if (approveEnabled) onApprove() },
+                onDecline = { if (selectedIndex >= 0) selectedProposal?.let { onDecline(it.id, it.revision) } },
+                onDismiss = onDismiss,
+            )
         }
     }
 }

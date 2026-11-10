@@ -15,7 +15,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,8 +29,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import io.moduhome.app.core.voice.JourneyVoiceCommand
 import io.moduhome.app.core.voice.VoiceInputState
 
@@ -46,7 +43,10 @@ internal fun VehicleVoiceDialog(
 ) {
     val maximumHeight = LocalWindowInfo.current.containerDpSize.height * 0.86f
     val canConfirm = command != null && state == VoiceInputState.Idle
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    VehicleDialog(
+        onDismissRequest = onDismiss,
+        modifier = modifier.widthIn(max = 1200.dp).fillMaxWidth(0.86f).heightIn(max = maximumHeight),
+    ) {
         val windowFocused = LocalWindowInfo.current.isWindowFocused
         var wasFocused by remember { mutableStateOf(false) }
         val latestOnDismiss by rememberUpdatedState(onDismiss)
@@ -54,73 +54,68 @@ internal fun VehicleVoiceDialog(
             if (windowFocused) wasFocused = true
             else if (wasFocused) latestOnDismiss()
         }
-        Surface(
-            modifier = modifier.widthIn(max = 1200.dp).fillMaxWidth(0.86f).heightIn(max = maximumHeight),
-            color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.extraLarge,
-        ) {
-            Column(Modifier.padding(36.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
-                Text(if (state is VoiceInputState.Failed) "음성 입력을 확인해주세요" else if (command == null) "말로 계획 바꾸기" else "이렇게 바꿀까요?",
-                    fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.Bold)
-                Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                    when (state) {
-                        VoiceInputState.Preparing -> {
-                            LinearProgressIndicator(Modifier.fillMaxWidth())
-                            Text("차량 음성 입력을 준비하고 있어요", fontSize = 30.sp, lineHeight = 42.sp)
-                        }
-                        is VoiceInputState.Listening -> {
-                            LinearProgressIndicator(Modifier.fillMaxWidth())
-                            Text("듣고 있어요", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
-                            if (state.partialText.isNotBlank()) {
-                                Text(state.partialText.take(200), fontSize = 30.sp, lineHeight = 42.sp,
-                                    maxLines = 4, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-                        VoiceInputState.Stopping -> {
-                            LinearProgressIndicator(Modifier.fillMaxWidth())
-                            Text("음성 입력을 멈추고 있어요", fontSize = 30.sp, lineHeight = 42.sp)
-                        }
-                        VoiceInputState.Processing -> {
-                            LinearProgressIndicator(Modifier.fillMaxWidth())
-                            Text("말씀을 확인하고 있어요", fontSize = 30.sp, lineHeight = 42.sp)
-                        }
-                        is VoiceInputState.Failed -> {
-                            Text("음성 입력 종료를 확인하지 못했어요", fontSize = 30.sp, lineHeight = 42.sp,
-                                fontWeight = FontWeight.SemiBold)
-                            Text(state.reason, fontSize = 28.sp, lineHeight = 38.sp)
-                        }
-                        VoiceInputState.Idle -> Unit
+        Column(Modifier.padding(36.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
+            Text(if (state is VoiceInputState.Failed) "음성 입력을 확인해주세요" else if (command == null) "말로 계획 바꾸기" else "이렇게 바꿀까요?",
+                fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.Bold)
+            Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                when (state) {
+                    VoiceInputState.Preparing -> {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text("차량 음성 입력을 준비하고 있어요", fontSize = 30.sp, lineHeight = 42.sp)
                     }
-                    if (command != null) {
-                        Text(command.confirmationText, fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
-                        Text("적용을 누르면 이번 계획에 반영해요", fontSize = 28.sp, lineHeight = 38.sp)
-                    } else {
-                        if (!message.isNullOrBlank() && state !is VoiceInputState.Failed) {
-                            Text(message, fontSize = 28.sp, lineHeight = 38.sp)
+                    is VoiceInputState.Listening -> {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text("듣고 있어요", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
+                        if (state.partialText.isNotBlank()) {
+                            Text(state.partialText.take(200), fontSize = 30.sp, lineHeight = 42.sp,
+                                maxLines = 4, overflow = TextOverflow.Ellipsis)
                         }
-                        if (state is VoiceInputState.Failed) {
-                            Text("이 화면을 닫고 터치로 계획을 선택해주세요", fontSize = 28.sp, lineHeight = 38.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        } else if (state == VoiceInputState.Idle && !message.isNullOrBlank()) {
-                            Text("다시 말하려면 닫은 뒤 ‘말로 선택’을 눌러주세요", fontSize = 28.sp, lineHeight = 38.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        } else if (state == VoiceInputState.Preparing || state is VoiceInputState.Listening) {
-                            Text("‘장도 보고 갈래’ 또는 ‘추가 20분’", fontSize = 28.sp, lineHeight = 40.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                    }
+                    VoiceInputState.Stopping -> {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text("음성 입력을 멈추고 있어요", fontSize = 30.sp, lineHeight = 42.sp)
+                    }
+                    VoiceInputState.Processing -> {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text("말씀을 확인하고 있어요", fontSize = 30.sp, lineHeight = 42.sp)
+                    }
+                    is VoiceInputState.Failed -> {
+                        Text("음성 입력 종료를 확인하지 못했어요", fontSize = 30.sp, lineHeight = 42.sp,
+                            fontWeight = FontWeight.SemiBold)
+                        Text(state.reason, fontSize = 28.sp, lineHeight = 38.sp)
+                    }
+                    VoiceInputState.Idle -> Unit
+                }
+                if (command != null) {
+                    Text(command.confirmationText, fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
+                    Text("적용을 누르면 이번 계획에 반영해요", fontSize = 28.sp, lineHeight = 38.sp)
+                } else {
+                    if (!message.isNullOrBlank() && state !is VoiceInputState.Failed) {
+                        Text(message, fontSize = 28.sp, lineHeight = 38.sp)
+                    }
+                    if (state is VoiceInputState.Failed) {
+                        Text("이 화면을 닫고 터치로 계획을 선택해주세요", fontSize = 28.sp, lineHeight = 38.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else if (state == VoiceInputState.Idle && !message.isNullOrBlank()) {
+                        Text("다시 말하려면 닫은 뒤 ‘말로 선택’을 눌러주세요", fontSize = 28.sp, lineHeight = 38.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else if (state == VoiceInputState.Preparing || state is VoiceInputState.Listening) {
+                        Text("‘장도 보고 갈래’ 또는 ‘추가 20분’", fontSize = 28.sp, lineHeight = 40.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                HorizontalDivider()
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    Spacer(Modifier.weight(1f))
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.widthIn(min = 220.dp).heightIn(min = 88.dp),
-                        shape = MaterialTheme.shapes.medium) {
-                        Text("닫기", fontSize = 28.sp)
-                    }
-                    Button(onClick = { if (canConfirm) onConfirm() }, enabled = canConfirm,
-                        modifier = Modifier.widthIn(min = 260.dp).heightIn(min = 88.dp), shape = MaterialTheme.shapes.medium) {
-                        Text("적용", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
-                    }
+            }
+            HorizontalDivider()
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                Spacer(Modifier.weight(1f))
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.widthIn(min = 220.dp).heightIn(min = 88.dp),
+                    shape = MaterialTheme.shapes.medium) {
+                    Text("닫기", fontSize = 28.sp)
+                }
+                Button(onClick = { if (canConfirm) onConfirm() }, enabled = canConfirm,
+                    modifier = Modifier.widthIn(min = 260.dp).heightIn(min = 88.dp), shape = MaterialTheme.shapes.medium) {
+                    Text("적용", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }

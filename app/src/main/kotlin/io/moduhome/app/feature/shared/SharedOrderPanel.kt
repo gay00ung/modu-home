@@ -287,20 +287,27 @@ private fun OrderConnector(
     highlighted: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
-    val track = if (highlighted) colors.primary.copy(alpha = 0.55f) else colors.outlineVariant
+    val track = if (highlighted) {
+        lerp(colors.outlineVariant, colors.primary, 0.28f)
+    } else {
+        lerp(colors.outlineVariant, colors.primaryContainer, 0.30f)
+    }
     Spacer(
-        modifier.height(8.dp).drawWithCache {
-            val strokeWidth = 4.dp.toPx()
-            val start = Offset(strokeWidth, size.height / 2f)
-            val end = Offset((size.width - start.x).coerceAtLeast(start.x), start.y)
+        modifier.height(20.dp).drawWithCache {
+            val strokeWidth = 16.dp.toPx().coerceAtMost(size.width)
+            val capInset = strokeWidth / 2f
+            val start = Offset(capInset, size.height / 2f)
+            val end = Offset(size.width - capInset, start.y)
             val length = end.x - start.x
-            val radius = (length * 0.24f).coerceIn(1f, 192.dp.toPx())
-            val lavender = lerp(colors.primary, Color(0xFFA178E5), 0.65f)
-            val skyBlue = lerp(colors.primary, Color(0xFF54B7F0), 0.65f)
+            val radius = (length * 0.30f).coerceIn(1f, 240.dp.toPx())
+            val lavender = lerp(colors.primary, Color(0xFF9566DE), 0.76f)
+            val blue = lerp(colors.primary, Color(0xFF617CF0), 0.70f)
+            val skyBlue = lerp(colors.primary, Color(0xFF59C5F4), 0.78f)
             val glow = Brush.horizontalGradient(
                 0f to lavender.copy(alpha = 0f),
-                0.34f to lavender.copy(alpha = 0.42f),
-                0.66f to skyBlue.copy(alpha = 0.42f),
+                0.23f to lavender.copy(alpha = 0.82f),
+                0.51f to blue.copy(alpha = 0.94f),
+                0.75f to skyBlue.copy(alpha = 0.86f),
                 1f to skyBlue.copy(alpha = 0f),
                 startX = -radius,
                 endX = radius,

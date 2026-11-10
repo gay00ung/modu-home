@@ -7,11 +7,12 @@ const placeSearchUrl = document.querySelector('meta[name="place-search"]').conte
 const tileUrl = document.querySelector('meta[name="map-tiles"]').content;
 const sections = ["pick", "review-panel", "sent"];
 const searchCache = new Map();
+const minimumPickZoom = 14;
 
 let pairing;
 let expiresAt = 0;
 let map;
-let marker;
+let searchedPlace;
 let point;
 let pending;
 let delivery;
@@ -87,47 +88,37 @@ function cleanText(value, maximum) {
   return typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f-\u009f]/g, "").trim().slice(0, maximum) : "";
 }
 
-function pointDetail() {
+function pointDetail(point) {
   return point.address || point.lat.toFixed(6) + ", " + point.lon.toFixed(6);
 }
 
-function choosePoint(position, place) {
-  const { lat, lng } = map.wrapLatLng(position);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 85 || Math.abs(lng) > 180 ||
-      (lat === 0 && lng === 0)) return;
-  point = {
-    lat, lon: lng,
-    name: cleanText(place?.name, 120) || "동승자가 찍은 하차지",
-    address: cleanText(place?.address, 300),
-  };
-  if (!marker) {
-    marker = L.marker([lat, lng], {
-      icon: L.divIcon({
-        className: "dropoff-pin", html: '<span aria-hidden="true">●</span>',
-        iconSize: [34, 34], iconAnchor: [5, 32],
-      }),
-      title: "선택한 하차지", alt: "선택한 하차지",
-    }).addTo(map);
-  } else {
-    marker.setLatLng([lat, lng]);
+function updateMapPoint() {
+  if (byId("pick").hidden) return;
+  const center = map.wrapLatLng(map.getCenter());
+  const { lat, lng } = center;
+  point = undefined;
+  if (map.getZoom() >= minimumPickZoom && Number.isFinite(lat) && Number.isFinite(lng) &&
+      Math.abs(lat) <= 85 && Math.abs(lng) <= 180 && (lat !== 0 || lng !== 0)) {
+    // 확대할 때 생기는 픽셀 반올림으로 검색 주소가 사라지지 않게 한다.
+    const place = searchedPlace && center.distanceTo([searchedPlace.lat, searchedPlace.lon]) < 1
+      ? searchedPlace : undefined;
+    point = {
+      lat, lon: lng,
+      name: place?.name ?? "지도에서 고른 하차지",
+      address: place?.address ?? "",
+    };
   }
-  byId("picked-name").textContent = point.name;
-  byId("picked-detail").textContent = pointDetail();
-  byId("review").disabled = false;
-  announce("map-status", "");
-}
-
-function pickFromMap(position) {
-  if (map.getZoom() < 14) {
-    map.setView(position, 16);
-    announce("map-status", "확대한 지도에서 실제로 내릴 지점을 눌러주세요");
-    return;
-  }
-  choosePoint(position);
+  byId("picked-name").textContent = point?.name ?? "내릴 곳 주변으로 확대해주세요";
+  byId("picked-detail").textContent = point ? pointDetail(point) : "";
+  byId("review").disabled = !point;
 }
 
 function openMap() {
-  map = L.map("map", { minZoom: 5, maxZoom: 19, worldCopyJump: true }).setView([36.4, 127.8], 7);
+  map = L.map("map", {
+    minZoom: 5, maxZoom: 19, worldCopyJump: true, zoomControl: false,
+    touchZoom: "center", scrollWheelZoom: "center", doubleClickZoom: "center",
+  }).setView([36.4, 127.8], 7);
+  L.control.zoom({ zoomInTitle: "확대", zoomOutTitle: "축소" }).addTo(map);
   map.attributionControl.setPrefix(false);
   const tiles = L.tileLayer(tileUrl, {
     maxZoom: 19,
@@ -138,7 +129,14 @@ function openMap() {
     if (byId("map-status").textContent.startsWith("일부 지도")) announce("map-status", "");
   });
   tiles.addTo(map);
-  map.on("click", (event) => pickFromMap(event.latlng));
+  map.on("movestart", () => {
+    byId("review").disabled = true;
+  });
+  map.on("moveend", updateMapPoint);
+  map.on("click", ({ latlng }) => {
+    if (map.getZoom() < minimumPickZoom) map.setView(latlng, 16);
+  });
+  updateMapPoint();
 }
 
 function resultsFrom(data) {
@@ -170,9 +168,10 @@ function showResults(places) {
     address.textContent = place.address;
     button.append(name, address);
     button.addEventListener("click", () => {
-      map.setView([place.lat, place.lon], 17);
-      choosePoint(L.latLng(place.lat, place.lon), place);
+      searchedPlace = place;
       list.hidden = true;
+      map.setView([place.lat, place.lon], 17, { animate: false });
+      byId("map").focus({ preventScroll: true });
     });
     item.append(button);
     list.append(item);
@@ -198,13 +197,13 @@ async function search(event) {
   announce("search-status", "장소를 찾고 있어요");
   try {
     const url = new URL(placeSearchUrl);
-    url.search = new URLSearchParams({ q: query, limit: "5", bbox: "124,33,132,39" });
+    url.search = new URLSearchParams({ q: query, limit: "5", bbox: "124,33,132,39", lang: "default" });
     const places = resultsFrom(await jsonRequest(url));
     if (searchCache.size >= 20) searchCache.delete(searchCache.keys().next().value);
     searchCache.set(key, places);
     showResults(places);
   } catch {
-    announce("search-status", "검색을 마치지 못했어요. 다시 검색하거나 지도에서 직접 찍어주세요");
+    announce("search-status", "검색을 마치지 못했어요. 다시 검색하거나 지도를 움직여주세요");
   } finally {
     searching = false;
     byId("search-button").disabled = false;
@@ -222,8 +221,11 @@ function locate() {
     announce("map-status", message);
   };
   navigator.geolocation.getCurrentPosition(({ coords }) => {
-    map.setView([coords.latitude, coords.longitude], 17);
-    done("지도에서 실제로 내릴 지점을 눌러주세요");
+    if (available() && !byId("pick").hidden) {
+      searchedPlace = undefined;
+      map.setView([coords.latitude, coords.longitude], 17, { animate: false });
+    }
+    done("");
   }, () => done("현재 위치를 확인하지 못했어요. 장소를 검색하거나 지도를 움직여주세요"),
   { timeout: 7_000, maximumAge: 10_000 });
 }
@@ -348,13 +350,12 @@ byId("passenger").addEventListener("input", (event) => {
   event.target.removeAttribute("aria-invalid");
   announce("send-status", "");
 });
-byId("center").addEventListener("click", () => pickFromMap(map.getCenter()));
 byId("locate").addEventListener("click", locate);
 byId("back").addEventListener("click", () => show("pick"));
 byId("review").addEventListener("click", () => {
   if (!point || !available()) return;
   byId("review-name").textContent = point.name;
-  byId("review-detail").textContent = pointDetail();
+  byId("review-detail").textContent = pointDetail(point);
   byId("place-label").value = "";
   show("review-panel");
 });

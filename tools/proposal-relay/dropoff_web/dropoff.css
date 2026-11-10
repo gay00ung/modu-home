@@ -75,7 +75,8 @@ input {
 #search, .map-actions { display: flex; align-items: center; gap: 8px; }
 #search button { flex: none; }
 .map-actions { justify-content: space-between; }
-.map-actions button { font-size: 14px; }
+.map-actions button { flex: none; font-size: 14px; }
+.map-frame { position: relative; isolation: isolate; }
 #map {
   height: clamp(236px, 35dvh, 390px);
   border: 1px solid var(--line);
@@ -85,17 +86,19 @@ input {
 }
 .leaflet-container .leaflet-control-attribution { padding: 2px 5px; font-size: 11px; }
 .leaflet-container .leaflet-bar a { width: 44px; height: 44px; line-height: 44px; }
-.leaflet-marker-icon.dropoff-pin {
-  border-radius: 50% 50% 50% 0;
-  border: 2px solid var(--on-accent);
-  background: var(--accent);
-  color: var(--on-accent);
-  transform-origin: bottom left;
-  box-shadow: 0 2px 8px var(--muted);
-  display: grid;
-  place-items: center;
+.map-pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 38px;
+  height: auto;
+  transform: translate(-50%, -100%);
+  z-index: 1;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 3px #22284055);
 }
-.dropoff-pin span { font-size: 18px; line-height: 1; }
+.map-pin path { fill: var(--accent); stroke: var(--on-accent); stroke-width: 2; stroke-linejoin: round; }
+.map-pin circle { fill: var(--on-accent); }
 #results { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }
 #results button { width: 100%; text-align: start; border-bottom: 1px solid var(--line); }
 #results span, .selection span { display: block; font-size: 14px; }

@@ -3,11 +3,11 @@
   "versionCode": 4,
   "versionName": "0.3.1",
   "apk": "modu-home_모두집으로_release.apk",
-  "sha256": "66ef5b36eec19f16e0078be5f649dda909fb18679491d85a3c131b376c53512b",
+  "sha256": "f677da355570e5a3c91456a89b066f3136d3dad57fc9d51696e1db917c366046",
   "certificateSha256": "b26f2c765c60f13f823e3f6bcdce22695496b81dc713a15fe9d74727c99c5c03",
   "signatureVerified": true,
   "routingBaseUrl": "https://modu-home.lateinit.net",
   "proposalRelayBaseUrl": "https://modu-home.lateinit.net",
   "vehicleVoiceEnabled": false,
-  "buildSourceCommit": "63e0a025ea610c1b26df5d2f8a29ca57b9b6297a"
+  "buildSourceCommit": "9be5e9baf789861ef77ec2c9afadce8eebd1b055"
 }

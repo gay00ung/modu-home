@@ -74,7 +74,7 @@ internal fun CompanionAddressPicker(
                 horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(if (purpose == CompanionAddressPurpose.DROPOFF) "내 하차지 선택" else "주소로 새 볼일", modifier = Modifier.weight(1f), fontSize = 24.sp, lineHeight = 32.sp,
                     fontWeight = FontWeight.Bold)
-                TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 56.dp)) {
+                TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 56.dp), shape = MaterialTheme.shapes.medium) {
                     Text("닫기", fontSize = 16.sp)
                 }
             }
@@ -92,7 +92,7 @@ internal fun CompanionAddressPicker(
                     keyboardActions = KeyboardActions(onSearch = { search() }),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
                 )
-                Button(onClick = search, enabled = canSearch, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+                Button(onClick = search, enabled = canSearch, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = MaterialTheme.shapes.medium) {
                     Text(if (loading) "주소 검색 중" else "주소 검색", fontSize = 16.sp)
                 }
                 Text("주소 기준 위치예요. 실제 출입구와 정차 위치를 확인해주세요",
@@ -125,7 +125,7 @@ internal fun CompanionAddressPicker(
                 }
                 Button(onClick = { keyboard?.hide(); onConfirm() },
                     enabled = editingAllowed && !loading && selectionValid,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = MaterialTheme.shapes.medium) {
                     Text(when {
                         !selectionValid -> "주소를 선택해주세요"
                         purpose == CompanionAddressPurpose.DROPOFF -> "하차지·도착 시간 정하기"
@@ -161,7 +161,7 @@ private fun CompanionAddressCandidate(
             RadioButton(selected = selected, onClick = null, enabled = enabled)
         }
         TextButton(onClick = onViewLocation, enabled = enabled,
-            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp).heightIn(min = 56.dp)) {
+            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp).heightIn(min = 56.dp), shape = MaterialTheme.shapes.medium) {
             Text("지도에서 위치 확인", fontSize = 16.sp)
         }
     }

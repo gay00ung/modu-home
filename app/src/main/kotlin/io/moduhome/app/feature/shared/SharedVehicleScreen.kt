@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -58,15 +57,19 @@ import io.moduhome.app.core.vehicle.DrivingInteraction
 import io.moduhome.app.core.vehicle.restrictContent
 import io.moduhome.app.feature.vehicle.VehicleActionBar
 import io.moduhome.app.feature.vehicle.VehicleAdditionalTimeSuggestion
+import io.moduhome.app.feature.vehicle.VehicleCompletionPanel
 import io.moduhome.app.feature.vehicle.VehicleMetric
+import io.moduhome.app.feature.vehicle.VehicleNextStopPanel
+import io.moduhome.app.feature.vehicle.VehicleOrderSwapButton
+import io.moduhome.app.feature.vehicle.VehiclePageWidth
+import io.moduhome.app.feature.vehicle.VehicleProgressRail
+import io.moduhome.app.feature.vehicle.VehicleRouteDetails
 import io.moduhome.app.feature.vehicle.VehicleToolbar
 import io.moduhome.app.feature.home.VehicleNavigationUiState
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
-
-private val SharedRouteMaxWidth = 2_160.dp
 
 /** Pure vehicle presentation. Place lookup, user confirmations, routing and persistence belong to the app. */
 @Composable
@@ -96,31 +99,30 @@ internal fun SharedVehicleScreen(
                 listOfNotNull((vehicle.connection as? NavigationConnection.Failed)?.reason,
                     vehicle.message?.takeIf { vehicle.error })
             Column(
-                Modifier.statusBarsPadding().padding(horizontal = 40.dp,
+                Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 40.dp,
                     vertical = if (hasSelectedOrder && errors.isEmpty() && !busy) 0.dp else 20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                if (!hasSelectedOrder) {
-                    VehicleToolbar(title = sharedTitle(state.stage)) {
-                        if (state.stage == JourneyStage.REVIEW || state.stage == JourneyStage.ACTIVE) toolbarActions?.invoke(canEdit)
-                        if (state.stage == JourneyStage.INPUT) {
-                            if (onShowLanding != null) SharedAction("귀가 홈", canEdit, onShowLanding)
-                            SharedAction("휴대폰 연결", canEdit, actions.onOpenPhoneConnection)
-                            SharedAction("받은 제안 ${state.pendingProposalCount}", canEdit, actions.onOpenProposals)
-                            SharedAction("가는김에", canEdit, actions.onLeave)
-                        } else if (state.stage == JourneyStage.ACTIVE) {
-                            SharedAction("휴대폰 연결", canEdit, actions.onOpenPhoneConnection)
+                Column(
+                    Modifier.widthIn(max = VehiclePageWidth).fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (!hasSelectedOrder) {
+                        VehicleToolbar(title = sharedTitle(state.stage)) {
+                            if (state.stage == JourneyStage.REVIEW || state.stage == JourneyStage.ACTIVE) toolbarActions?.invoke(canEdit)
+                            if (state.stage == JourneyStage.INPUT) {
+                                if (onShowLanding != null) SharedAction("귀가 홈", canEdit, onShowLanding)
+                                SharedAction("휴대폰 연결", canEdit, actions.onOpenPhoneConnection)
+                                SharedAction("받은 제안 ${state.pendingProposalCount}", canEdit, actions.onOpenProposals)
+                                SharedAction("가는김에", canEdit, actions.onLeave)
+                            } else if (state.stage == JourneyStage.ACTIVE) {
+                                SharedAction("휴대폰 연결", canEdit, actions.onOpenPhoneConnection)
+                            }
                         }
                     }
+                    errors.distinct().take(2).forEach { SharedError(it) }
+                    if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
-                when (state.stage) {
-                    JourneyStage.INPUT -> "친구가 정한 곳에 내려주고, 가는 김에 볼일까지"
-                    JourneyStage.COMPARE, JourneyStage.REVIEW -> null
-                    JourneyStage.ACTIVE -> "하차와 완료 확인은 정차한 뒤에 해주세요"
-                    JourneyStage.COMPLETE -> "동승자 하차와 집 도착을 기록했어요"
-                }?.let { SharedCaption(it) }
-                errors.distinct().take(2).forEach { SharedError(it) }
-                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
         },
         bottomBar = { SharedFooter(state, actions, vehicle, canEdit) },
@@ -129,34 +131,30 @@ internal fun SharedVehicleScreen(
             Column(
                 Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
                     .verticalScroll(rememberScrollState()).padding(horizontal = 40.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = if (hasSelectedOrder && vehicle.connection == NavigationConnection.Ready) {
-                    Arrangement.spacedBy(24.dp, Alignment.CenterVertically)
+                    Arrangement.Center
                 } else {
-                    Arrangement.spacedBy(24.dp)
+                    Arrangement.Top
                 },
             ) {
-                when (state.stage) {
-                    JourneyStage.INPUT -> SharedInput(state.draft, actions, vehicle, canEdit)
-                    JourneyStage.COMPARE, JourneyStage.REVIEW -> Column(
-                        Modifier.align(Alignment.CenterHorizontally)
-                            .then(if (hasSelectedOrder) Modifier.widthIn(max = SharedRouteMaxWidth) else Modifier)
-                            .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(24.dp),
-                    ) {
-                        if (comparing) {
-                            SharedComparison(state, actions, canEdit)
-                        } else {
+                Column(Modifier.widthIn(max = VehiclePageWidth).fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                    when (state.stage) {
+                        JourneyStage.INPUT -> SharedInput(state.draft, actions, vehicle, canEdit)
+                        JourneyStage.COMPARE -> SharedComparison(state, actions, canEdit)
+                        JourneyStage.REVIEW -> {
                             if (hasSelectedOrder) {
                                 VehicleToolbar(title = sharedTitle(JourneyStage.REVIEW)) { toolbarActions?.invoke(canEdit) }
                             }
                             SharedReview(state)
                         }
+                        JourneyStage.ACTIVE -> SharedActive(state, actions, vehicle, canEdit)
+                        JourneyStage.COMPLETE -> SharedComplete(state)
                     }
-                    JourneyStage.ACTIVE -> SharedActive(state, actions, vehicle, canEdit)
-                    JourneyStage.COMPLETE -> SharedComplete(state)
-                }
-                if ((!comparing && !reviewing) || vehicle.connection != NavigationConnection.Ready) {
-                    SharedNavigationStatus(state, vehicle, actions, canEdit)
+                    if (vehicle.connection != NavigationConnection.Ready || state.stage == JourneyStage.INPUT) {
+                        SharedNavigationStatus(state, vehicle, actions, canEdit)
+                    }
                 }
             }
         }
@@ -171,7 +169,7 @@ private fun SharedInput(
     canEdit: Boolean,
 ) {
     val canChoose = canEdit && vehicle.connection == NavigationConnection.Ready
-    Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp)) {
+    Surface(color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.large) {
         Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(24.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -208,7 +206,7 @@ private fun SharedInput(
             }
         }
     }
-    Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp)) {
+    Surface(color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.large) {
         Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Text("가는 김에 들를 곳", fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -246,7 +244,7 @@ private fun SharedInput(
             }
         }
     }
-    Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp)) {
+    Surface(color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.large) {
         Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -272,7 +270,7 @@ private fun SharedPassengerCard(
     modifier: Modifier = Modifier,
 ) {
     val confirmed = dropoffConfirmed(passenger)
-    Surface(modifier, color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp),
+    Surface(modifier, color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.large,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Text("${passenger.name} · 지정 하차지", fontSize = 32.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold)
@@ -282,7 +280,6 @@ private fun SharedPassengerCard(
                 val time = DateTimeFormatter.ofPattern("M월 d일 HH:mm").format(Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()))
                 Text("도착 희망 · $time", fontSize = 30.sp, lineHeight = 42.sp, color = MaterialTheme.colorScheme.primary)
             }
-            SharedCaption("동승자가 내릴 위치와 차량 정차 가능 여부를 확인해주세요")
             SharedChoice(
                 label = if (confirmed) "✓ 이 하차지에서 내릴 수 있어요" else "이 하차지에 정차해 내릴 수 있어요",
                 selected = confirmed,
@@ -332,7 +329,7 @@ private fun SharedComparison(state: SharedVehicleUiState, actions: SharedVehicle
                 delta > 0 -> "집 ${delta}분 늦게"
                 else -> "집 ${-delta}분 일찍"
             }
-            SharedOrderSwapButton(
+            VehicleOrderSwapButton(
                 detail = listOfNotNull(label, homeChange).joinToString(" · "),
                 enabled = canEdit,
                 onClick = { actions.onSelectPlan(alternate.id) },
@@ -393,7 +390,7 @@ private fun SharedPlanCard(
         modifier.selectable(selected = selected, enabled = enabled, role = Role.RadioButton,
             onClick = { if (enabled) onSelect() }),
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(24.dp),
+        shape = MaterialTheme.shapes.large,
         border = BorderStroke(if (selected) 3.dp else 1.dp,
             if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
     ) {
@@ -464,41 +461,33 @@ private fun SharedActive(
         return
     }
     val next = plan.stops.getOrNull(state.completedStops)
-    Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(28.dp)) {
-        Column(Modifier.fillMaxWidth().padding(36.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(40.dp)) {
-                Column(Modifier.weight(1.6f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    SharedCaption(if (next == null) "중간 정차를 마쳤어요 · 이제 운전자 집으로"
-                        else "다음 정차 · 완료 ${state.completedStops}/${plan.stops.size}곳")
-                    Text(next?.place?.point?.name ?: state.draft.driverHome?.name ?: "운전자 집 확인 필요",
-                        fontSize = 48.sp, lineHeight = 62.sp, fontWeight = FontWeight.Bold,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    next?.let { Text(stopLabel(it), fontSize = 30.sp, lineHeight = 40.sp) }
-                }
-                val arrival = state.guidanceArrival
-                if (arrival != null) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SharedCaption("차량 내비 기준")
-                        VehicleMetric(state.arrivalLabel(), state.arrivalClock(arrival.readyAtMillis))
-                        SharedCaption("내비 주행 ${arrival.drivingMinutes}분")
-                    }
-                } else VehicleMetric("정차 완료", "${state.completedStops}/${plan.stops.size}곳", Modifier.weight(1f))
-            }
-            SharedProgressRail(
+    VehicleNextStopPanel(
+        place = next?.place?.point?.name ?: state.draft.driverHome?.name ?: "운전자 집 확인 필요",
+        label = if (next == null) "마지막 목적지 · 집" else "다음 정차 · ${state.completedStops + 1}/${plan.stops.size}곳",
+        detail = next?.let(::stopLabel),
+        modifier = Modifier.fillMaxWidth(),
+        progress = {
+            VehicleProgressRail(
                 stopCount = plan.stops.size,
                 completedStops = state.completedStops,
                 guidanceReady = !vehicle.sending && !state.navigationPending && vehicle.connection == NavigationConnection.Ready,
             )
+        },
+    ) {
+        val arrival = state.guidanceArrival
+        if (arrival != null) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                VehicleMetric(state.arrivalLabel(), state.arrivalClock(arrival.readyAtMillis))
+                SharedCaption("차량 내비 기준 · 주행 ${arrival.drivingMinutes}분")
+            }
+        } else {
+            VehicleMetric("도착 예상", if (vehicle.reading || vehicle.sending) "확인 중" else "내비에서 확인")
         }
     }
     state.arrivalWarning()?.let { SharedError(it) }
-    if (state.guidanceArrival != null) {
-        when (next) {
-            is SharedScheduledStop.Dropoff -> SharedCaption("동승자가 지정한 하차지까지의 도착 예상이에요")
-            is SharedScheduledStop.Errand -> SharedCaption("가게까지 편도 도보 ${next.errand.visit.walkingMinutesOneWay}분 · 체류 ${next.errand.visit.stayMinutes}분 포함")
-            null -> Unit
-        }
-    } else if (!state.navigationPending) SharedCaption("현재 도착 예상은 차량 내비에서 확인해주세요")
+    if (state.guidanceArrival != null && next is SharedScheduledStop.Errand) {
+        SharedCaption("편도 도보 ${next.errand.visit.walkingMinutesOneWay}분 · 체류 ${next.errand.visit.stayMinutes}분 포함")
+    }
     if (state.navigationPending && next != null) {
         if (state.terminalStopCompletionAvailable) {
             SharedCaption("현재 길안내가 없어요. 이 장소에서 실제 정차를 마쳤다면 아래에서 완료를 확인해주세요")
@@ -506,7 +495,7 @@ private fun SharedActive(
             SharedCaption("차량 내비의 남은 순서를 확인하고 있어요")
         } else SharedError("차량 내비의 남은 순서를 확인하지 못했어요")
         if (state.canConfirmPassedStop) {
-            Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(24.dp)) {
+            Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
                 Column(Modifier.fillMaxWidth().padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                     SharedCaption(if (state.passedStopCount == 2) "차량 내비는 다음 목적지를 안내하고 있어요. 지난 두 정차를 모두 마쳤다면 직접 확인해주세요"
                         else "차량 내비는 다음 목적지를 안내하고 있어요. 이 정차를 실제로 마쳤다면 직접 확인해주세요")
@@ -536,34 +525,29 @@ private fun SharedActive(
     } else if (plan.stops.size == 3 && state.completedStops == 0) {
         SharedStagedGuidanceNote("정차를 완료할 때마다 남은 순서를 확인해요. 새 주소는 해당 볼일이나 하차 장소까지 안내한 뒤 집으로 이어가요")
     }
-    Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp)) {
-        Column(Modifier.fillMaxWidth().padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            Text("함께 가는 전체 순서", fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
-            plan.stops.forEachIndexed { index, stop ->
-                SharedStopLine(if (index < state.completedStops) "✓" else "${index + 1}", stop.place.point.name,
-                    if (index < state.completedStops) "${stopLabel(stop)} · 완료 확인" else stopLabel(stop), null)
-            }
-            SharedStopLine("집", state.draft.driverHome?.name ?: "운전자 집 확인 필요", "마지막 목적지", null)
+    VehicleRouteDetails(Modifier.fillMaxWidth()) {
+        plan.stops.forEachIndexed { index, stop ->
+            SharedStopLine(if (index < state.completedStops) "✓" else "${index + 1}", stop.place.point.name,
+                if (index < state.completedStops) "${stopLabel(stop)} · 완료 확인" else stopLabel(stop), null)
         }
-    }
-    if (!state.navigationPending) {
-        SharedAction("차량 내비에 남은 순서 다시 반영", canEdit && vehicle.connection == NavigationConnection.Ready,
-            actions.onRetryNavigation, Modifier.fillMaxWidth())
+        SharedStopLine("집", state.draft.driverHome?.name ?: "운전자 집 확인 필요", "마지막 목적지", null)
+        if (!state.navigationPending) {
+            SharedAction("차량 내비에 남은 순서 다시 반영", canEdit && vehicle.connection == NavigationConnection.Ready,
+                actions.onRetryNavigation, Modifier.fillMaxWidth())
+        }
     }
 }
 
 @Composable
 private fun SharedComplete(state: SharedVehicleUiState) {
-    Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(28.dp)) {
-        Column(Modifier.fillMaxWidth().padding(36.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            Text("모두 집으로", fontSize = 52.sp, lineHeight = 66.sp, fontWeight = FontWeight.Bold)
-            state.selectedPlan?.stops?.forEach { stop ->
-                SharedStopLine("✓", stop.place.point.name, "${stopLabel(stop)} · 완료 확인", null)
-            }
-            SharedStopLine("✓", state.draft.driverHome?.name ?: "운전자 집", "집 도착 확인", null)
+    val home = state.draft.driverHome?.name ?: "운전자 집"
+    VehicleCompletionPanel(home, "동승자 하차와 집 도착을 기록했어요", Modifier.fillMaxWidth())
+    VehicleRouteDetails(Modifier.fillMaxWidth()) {
+        state.selectedPlan?.stops?.forEach { stop ->
+            SharedStopLine("✓", stop.place.point.name, "${stopLabel(stop)} · 완료 확인", null)
         }
+        SharedStopLine("✓", home, "집 도착 확인", null)
     }
-    SharedEstimateNote(state)
 }
 
 @Composable
@@ -628,7 +612,7 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
             JourneyStage.COMPARE -> if (anyValid && plan?.isValid != true) "순서를 골라주세요" else null
             JourneyStage.REVIEW -> null
             JourneyStage.ACTIVE -> "완료 확인은 정차한 뒤에"
-            JourneyStage.COMPLETE -> "다음 귀가도 함께 편하게"
+            JourneyStage.COMPLETE -> null
         },
         actionLabel = label,
         actionEnabled = enabled,
@@ -641,16 +625,13 @@ private fun SharedFooter(state: SharedVehicleUiState, actions: SharedVehicleActi
                 JourneyStage.COMPLETE -> actions.onNewJourney()
             }
         },
-        contentWidth = if (plan?.isValid == true && (state.stage == JourneyStage.COMPARE || state.stage == JourneyStage.REVIEW)) {
-            SharedRouteMaxWidth
-        } else null,
         secondaryAction = secondaryAction,
     )
 }
 
 @Composable
 private fun SharedStagedGuidanceNote(message: String) {
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(20.dp)) {
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
         Text(message,
             Modifier.fillMaxWidth().padding(24.dp), fontSize = 28.sp, lineHeight = 40.sp, fontWeight = FontWeight.Medium)
     }
@@ -661,16 +642,6 @@ private fun SharedComparisonSource(state: SharedVehicleUiState) {
     val source = state.estimateLabel ?: return
     val hasNonRoadTimes = state.plans.any { it.includesSampleTimes || it.includesUserEstimates }
     SharedCaption(if (hasNonRoadTimes) source else "© OpenStreetMap · ODbL")
-}
-
-@Composable
-private fun SharedEstimateNote(state: SharedVehicleUiState) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SharedCaption(state.estimateLabel ?: "이동시간 산출 기준을 확인해주세요")
-        state.directHomeMinutes?.let { SharedCaption("운전자 집 직행 ${it}분 · 정차와 체류시간 별도") }
-        SharedCaption("동승자 도착시각은 지정한 하차지 기준이에요")
-        SharedCaption("© OpenStreetMap contributors · ODbL · openstreetmap.org/copyright")
-    }
 }
 
 @Composable
@@ -690,7 +661,7 @@ private fun SharedNavigationStatus(
             else -> "차량 내비 연결됨"
         }
     }
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(20.dp)) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
         Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(status, fontSize = 28.sp, lineHeight = 38.sp, fontWeight = FontWeight.Medium)
             vehicle.message?.takeUnless { vehicle.error }?.let { SharedCaption(it) }
@@ -753,7 +724,7 @@ private fun SharedVehicleUiState.arrivalWarning(): String? {
 @Composable
 private fun SharedChoice(label: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     OutlinedButton(onClick = { if (enabled) onClick() }, enabled = enabled, modifier = modifier.heightIn(min = 80.dp),
-        shape = RoundedCornerShape(18.dp), border = BorderStroke(if (selected) 3.dp else 1.dp,
+        shape = MaterialTheme.shapes.medium, border = BorderStroke(if (selected) 3.dp else 1.dp,
             if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface),
@@ -765,7 +736,7 @@ private fun SharedChoice(label: String, selected: Boolean, enabled: Boolean, onC
 @Composable
 private fun SharedAction(label: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     OutlinedButton(onClick = { if (enabled) onClick() }, enabled = enabled,
-        modifier = modifier.heightIn(min = 88.dp).widthIn(min = 200.dp), shape = RoundedCornerShape(18.dp),
+        modifier = modifier.heightIn(min = 88.dp).widthIn(min = 200.dp), shape = MaterialTheme.shapes.medium,
         contentPadding = PaddingValues(horizontal = 22.dp, vertical = 18.dp)) {
         Text(label, fontSize = 28.sp, lineHeight = 38.sp, fontWeight = FontWeight.SemiBold,
             maxLines = 3, overflow = TextOverflow.Ellipsis)
@@ -840,9 +811,9 @@ private fun issueText(issue: SharedPlanIssue, plan: SharedJourneyPlan): String {
 }
 
 private fun sharedTitle(stage: JourneyStage): String = when (stage) {
-    JourneyStage.INPUT -> "모두 집으로 돌아가요"
+    JourneyStage.INPUT -> "함께 귀가 설정"
     JourneyStage.COMPARE -> "순서 비교"
     JourneyStage.REVIEW -> "이 순서로 출발할까요?"
-    JourneyStage.ACTIVE -> "한 명씩, 한 곳씩 집으로"
-    JourneyStage.COMPLETE -> "함께 귀가를 마쳤어요"
+    JourneyStage.ACTIVE -> "귀가 안내"
+    JourneyStage.COMPLETE -> "귀가 완료"
 }

@@ -68,8 +68,8 @@ internal fun CompanionDropoffEditor(
             }
             HorizontalDivider()
             Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onDismiss, Modifier.weight(1f).heightIn(min = 56.dp), enabled = editingAllowed) { Text("닫기") }
-                Button(onPrepare, Modifier.weight(2f).heightIn(min = 56.dp), enabled = editingAllowed) { Text("보낼 하차지 확인", fontSize = 16.sp) }
+                OutlinedButton(onDismiss, Modifier.weight(1f).heightIn(min = 56.dp), enabled = editingAllowed, shape = MaterialTheme.shapes.medium) { Text("닫기") }
+                Button(onPrepare, Modifier.weight(2f).heightIn(min = 56.dp), enabled = editingAllowed, shape = MaterialTheme.shapes.medium) { Text("보낼 하차지 확인", fontSize = 16.sp) }
             }
         }
     }

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -22,7 +21,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -33,7 +31,6 @@ internal fun VehicleActionBar(
     actionEnabled: Boolean,
     onAction: () -> Unit,
     modifier: Modifier = Modifier,
-    contentWidth: Dp? = null,
     secondaryAction: (@Composable () -> Unit)? = null,
 ) {
     val fontScale = LocalDensity.current.fontScale
@@ -42,7 +39,7 @@ internal fun VehicleActionBar(
             HorizontalDivider()
             BoxWithConstraints(
                 Modifier.padding(horizontal = 40.dp, vertical = 24.dp)
-                    .then(if (contentWidth == null) Modifier else Modifier.widthIn(max = contentWidth))
+                    .widthIn(max = VehiclePageWidth)
                     .fillMaxWidth(),
             ) {
                 if (maxWidth < 1000.dp || fontScale > 1.1f) {
@@ -77,7 +74,7 @@ private fun VehicleActionCaption(caption: String, modifier: Modifier = Modifier)
 @Composable
 private fun VehiclePrimaryAction(label: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
     Button(onClick = { if (enabled) onClick() }, enabled = enabled,
-        modifier = modifier.heightIn(min = 96.dp), shape = RoundedCornerShape(20.dp),
+        modifier = modifier.heightIn(min = 96.dp), shape = MaterialTheme.shapes.medium,
         contentPadding = PaddingValues(horizontal = 28.dp, vertical = 20.dp)) {
         Text(label, fontSize = 28.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold)
     }

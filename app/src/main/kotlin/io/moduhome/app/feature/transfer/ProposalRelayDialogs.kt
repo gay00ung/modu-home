@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -53,7 +52,7 @@ internal fun VehicleBrowserDropoffDialog(
     Dialog(onDismissRequest = actions.dismissVehicle, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
             modifier.widthIn(max = 1120.dp).fillMaxWidth(0.92f).heightIn(max = maximumHeight),
-            shape = RoundedCornerShape(28.dp),
+            shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.background,
         ) {
             Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -121,7 +120,7 @@ internal fun VehicleBrowserDropoffDialog(
 
 @Composable
 private fun BrowserDropoffQr(qr: androidx.compose.ui.graphics.ImageBitmap, modifier: Modifier = Modifier) {
-    Surface(modifier, color = Color.White, shape = RoundedCornerShape(18.dp)) {
+    Surface(modifier, color = Color.White, shape = MaterialTheme.shapes.medium) {
         Image(qr, "브라우저 하차지 연결 QR", Modifier.fillMaxWidth().padding(12.dp))
     }
 }
@@ -136,7 +135,7 @@ internal fun VehiclePhoneConnectionDialog(
     val maximumHeight = LocalWindowInfo.current.containerDpSize.height * 0.90f
     Dialog(onDismissRequest = actions.dismissVehicle, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(modifier.widthIn(max = 1280.dp).fillMaxWidth(0.92f).heightIn(max = maximumHeight),
-            shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surface) {
+            shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 Text("휴대폰 연결", fontSize = 36.sp, lineHeight = 48.sp, fontWeight = FontWeight.Bold)
                 if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -173,7 +172,7 @@ internal fun VehiclePhoneConnectionDialog(
                     } else {
                         Text("휴대폰에서 QR 링크를 열거나 QR 이미지를 선택해주세요", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
                         state.qr?.let { qr ->
-                            Surface(color = Color.White, shape = RoundedCornerShape(16.dp)) {
+                            Surface(color = Color.White, shape = MaterialTheme.shapes.small) {
                                 Image(qr, "동승자 휴대폰 연결 QR", Modifier.padding(16.dp).size(336.dp))
                             }
                         }
@@ -186,12 +185,12 @@ internal fun VehiclePhoneConnectionDialog(
                 HorizontalDivider()
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                     OutlinedButton(onClick = actions.dismissVehicle, enabled = !state.busy,
-                        modifier = Modifier.weight(1f).heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp)) {
+                        modifier = Modifier.weight(1f).heightIn(min = 88.dp), shape = MaterialTheme.shapes.medium) {
                         Text("닫기", fontSize = 28.sp)
                     }
                     Button(onClick = if (state.receiver == null) actions.createRoom else actions.closeRoom,
                         enabled = !state.busy && (state.receiver != null || configuredBaseUrl.isNotBlank()),
-                        modifier = Modifier.weight(1.4f).heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp)) {
+                        modifier = Modifier.weight(1.4f).heightIn(min = 88.dp), shape = MaterialTheme.shapes.medium) {
                         Text(if (state.busy) "연결 확인 중" else if (state.receiver == null) "연결 시작" else "연결 종료",
                             fontSize = 28.sp, fontWeight = FontWeight.Bold)
                     }
@@ -207,7 +206,7 @@ internal fun PhoneVehicleJoinDialog(state: ProposalRelayState, actions: Proposal
     val maximumHeight = LocalWindowInfo.current.containerDpSize.height * 0.90f
     Dialog(onDismissRequest = actions.dismissJoin, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(modifier.widthIn(max = 900.dp).fillMaxWidth(0.92f).heightIn(max = maximumHeight),
-            shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface) {
+            shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 Text("차량 연결", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
@@ -220,10 +219,10 @@ internal fun PhoneVehicleJoinDialog(state: ProposalRelayState, actions: Proposal
                 }
                 if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    OutlinedButton(onClick = actions.dismissJoin, enabled = !state.busy, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) {
+                    OutlinedButton(onClick = actions.dismissJoin, enabled = !state.busy, modifier = Modifier.weight(1f).heightIn(min = 56.dp), shape = MaterialTheme.shapes.medium) {
                         Text("닫기")
                     }
-                    Button(onClick = actions.joinVehicle, enabled = !state.busy, modifier = Modifier.weight(1.5f).heightIn(min = 56.dp)) {
+                    Button(onClick = actions.joinVehicle, enabled = !state.busy, modifier = Modifier.weight(1.5f).heightIn(min = 56.dp), shape = MaterialTheme.shapes.medium) {
                         Text(if (state.busy) "연결 중" else "이 주소로 연결")
                     }
                 }
@@ -235,7 +234,7 @@ internal fun PhoneVehicleJoinDialog(state: ProposalRelayState, actions: Proposal
 @Composable
 private fun RelayLargeChoice(label: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
     OutlinedButton(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 88.dp),
-        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp), shape = RoundedCornerShape(18.dp)) {
+        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp), shape = MaterialTheme.shapes.medium) {
         Text(if (selected) "✓ $label" else label, fontSize = 28.sp, lineHeight = 40.sp)
     }
 }

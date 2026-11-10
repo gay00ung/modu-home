@@ -13,8 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import io.moduhome.app.core.navigation.NavigationConnection
 import io.moduhome.app.feature.home.VehicleNavigationUiState
 import io.moduhome.app.feature.vehicle.VehicleActionBar
+import io.moduhome.app.feature.vehicle.VehiclePageWidth
 
 @Composable
 internal fun SharedDepartureHome(
@@ -96,16 +97,20 @@ internal fun SharedDepartureHome(
                 Text("${person.name}  ${person.dropoff?.name.orEmpty()}", fontSize = 28.sp, lineHeight = 38.sp)
             }
         }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (actionLabel != "하차지 받기") DepartureSecondary("하차지 받기", !busy, onOpenBrowserDropoff)
+            DepartureSecondary("차량에서 직접 설정", !busy, onOpenEditor)
+        }
     }
     Scaffold(
         modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            Column(Modifier.statusBarsPadding()) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 20.dp),
+            Column(Modifier.fillMaxWidth().statusBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(Modifier.padding(horizontal = 40.dp, vertical = 20.dp).widthIn(max = VehiclePageWidth).fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("모두 집으로", Modifier.weight(1f), fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.Bold)
-                    Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(20.dp)) {
+                    Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium) {
                         Text("정차 중", Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             fontSize = 28.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
@@ -126,26 +131,23 @@ internal fun SharedDepartureHome(
         Column(
             Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).verticalScroll(rememberScrollState())
                 .padding(horizontal = 32.dp, vertical = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
         ) {
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             vehicle.message?.takeIf { vehicle.error }?.let {
                 Text(it, fontSize = 28.sp, lineHeight = 38.sp, color = MaterialTheme.colorScheme.error)
             }
             val wideText = LocalDensity.current.fontScale <= 1.15f
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
+            BoxWithConstraints(Modifier.widthIn(max = VehiclePageWidth).fillMaxWidth()) {
                 if (maxWidth >= 800.dp && wideText) {
                     Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1.1f), verticalArrangement = Arrangement.spacedBy(12.dp)) { copy() }
-                        DepartureIllustration(Modifier.weight(0.9f).height(236.dp))
+                        DepartureIllustration(Modifier.weight(0.9f).height(332.dp))
                     }
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { copy() }
                 }
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (actionLabel != "하차지 받기") DepartureSecondary("하차지 받기", !busy, onOpenBrowserDropoff)
-                DepartureSecondary("차량에서 직접 설정", !busy, onOpenEditor)
             }
         }
     }
@@ -161,7 +163,7 @@ private fun DepartureSecondary(label: String, enabled: Boolean, onClick: () -> U
 @Composable
 private fun DepartureIllustration(modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
-    Surface(modifier, color = colors.primaryContainer, shape = RoundedCornerShape(32.dp)) {
+    Surface(modifier, color = colors.primaryContainer, shape = MaterialTheme.shapes.extraLarge) {
         Canvas(Modifier.fillMaxSize()) {
             val start = Offset(size.width * 0.19f, size.height * 0.36f)
             val middle = Offset(size.width * 0.49f, size.height * 0.32f)
@@ -169,7 +171,8 @@ private fun DepartureIllustration(modifier: Modifier = Modifier) {
             val radius = minOf(size.width, size.height) * 0.15f
             val route = Path().apply {
                 moveTo(start.x, start.y)
-                cubicTo(middle.x, start.y, home.x, middle.y - radius * 0.2f, home.x, home.y)
+                quadraticTo((start.x + middle.x) / 2f, start.y * 0.6f, middle.x, middle.y)
+                quadraticTo(home.x, middle.y, home.x, home.y)
             }
             drawPath(route, colors.primary.copy(alpha = 0.68f), style = Stroke(6.dp.toPx(), cap = StrokeCap.Round))
             drawCircle(colors.secondaryContainer, radius, start)

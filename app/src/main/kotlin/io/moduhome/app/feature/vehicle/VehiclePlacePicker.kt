@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -46,7 +45,7 @@ internal fun VehiclePlacePicker(
         Surface(
             modifier = modifier.widthIn(max = 1200.dp).fillMaxWidth(0.86f).heightIn(max = maximumHeight),
             color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(28.dp),
+            shape = MaterialTheme.shapes.extraLarge,
         ) {
             Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                 Text(title, fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.Bold)
@@ -83,11 +82,11 @@ internal fun VehiclePlacePicker(
                     Text("내비에서 추가했다면 새로고침하세요", Modifier.weight(1f), fontSize = 28.sp, lineHeight = 38.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(onClick = onDismiss, modifier = Modifier.widthIn(min = 180.dp).heightIn(min = 88.dp),
-                        shape = RoundedCornerShape(18.dp)) {
+                        shape = MaterialTheme.shapes.medium) {
                         Text("닫기", fontSize = 28.sp)
                     }
                     Button(onClick = onRefresh, enabled = !state.loading,
-                        modifier = Modifier.widthIn(min = 220.dp).heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp)) {
+                        modifier = Modifier.widthIn(min = 220.dp).heightIn(min = 88.dp), shape = MaterialTheme.shapes.medium) {
                         Text(if (state.loading) "불러오는 중" else "새로고침", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
@@ -109,7 +108,7 @@ private fun VehiclePlaceSection(
         OutlinedButton(
             onClick = { if (enabled) onChoose(point) }, enabled = enabled,
             modifier = Modifier.fillMaxWidth().heightIn(min = 104.dp),
-            shape = RoundedCornerShape(20.dp), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 20.dp),
+            shape = MaterialTheme.shapes.medium, contentPadding = PaddingValues(horizontal = 24.dp, vertical = 20.dp),
         ) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(point.name, fontSize = 30.sp, lineHeight = 40.sp, fontWeight = FontWeight.SemiBold,

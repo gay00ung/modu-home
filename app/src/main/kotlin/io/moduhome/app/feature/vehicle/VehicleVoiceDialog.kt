@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -57,7 +56,7 @@ internal fun VehicleVoiceDialog(
         }
         Surface(
             modifier = modifier.widthIn(max = 1200.dp).fillMaxWidth(0.86f).heightIn(max = maximumHeight),
-            color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.extraLarge,
         ) {
             Column(Modifier.padding(36.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
                 Text(if (state is VoiceInputState.Failed) "음성 입력을 확인해주세요" else if (command == null) "말로 계획 바꾸기" else "이렇게 바꿀까요?",
@@ -115,11 +114,11 @@ internal fun VehicleVoiceDialog(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     Spacer(Modifier.weight(1f))
                     OutlinedButton(onClick = onDismiss, modifier = Modifier.widthIn(min = 220.dp).heightIn(min = 88.dp),
-                        shape = RoundedCornerShape(18.dp)) {
+                        shape = MaterialTheme.shapes.medium) {
                         Text("닫기", fontSize = 28.sp)
                     }
                     Button(onClick = { if (canConfirm) onConfirm() }, enabled = canConfirm,
-                        modifier = Modifier.widthIn(min = 260.dp).heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp)) {
+                        modifier = Modifier.widthIn(min = 260.dp).heightIn(min = 88.dp), shape = MaterialTheme.shapes.medium) {
                         Text("적용", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }

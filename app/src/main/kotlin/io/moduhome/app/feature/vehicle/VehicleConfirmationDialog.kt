@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -39,7 +38,7 @@ internal fun VehicleConfirmationDialog(
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
             modifier = modifier.widthIn(max = 1200.dp).fillMaxWidth(0.86f).heightIn(max = maximumHeight),
-            color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.extraLarge,
         ) {
             Column(Modifier.padding(36.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
                 Text(title, fontSize = 36.sp, lineHeight = 48.sp, fontWeight = FontWeight.Bold)
@@ -49,9 +48,9 @@ internal fun VehicleConfirmationDialog(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     Spacer(Modifier.weight(1f))
                     OutlinedButton(onClick = onDismiss, modifier = Modifier.widthIn(min = 220.dp).heightIn(min = 88.dp),
-                        shape = RoundedCornerShape(18.dp)) { Text("닫기", fontSize = 28.sp) }
+                        shape = MaterialTheme.shapes.medium) { Text("닫기", fontSize = 28.sp) }
                     Button(onClick = onConfirm, modifier = Modifier.widthIn(min = 280.dp).heightIn(min = 88.dp),
-                        shape = RoundedCornerShape(18.dp)) {
+                        shape = MaterialTheme.shapes.medium) {
                         Text(confirmLabel, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }

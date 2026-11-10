@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -55,7 +54,7 @@ internal fun VehicleProposalDialog(
     Dialog(onDismissRequest = actions.onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
             modifier = modifier.widthIn(max = 1200.dp).fillMaxWidth(0.86f).heightIn(max = maximumHeight),
-            color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.extraLarge,
         ) {
             Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                 Text("차량에서 받은 제안", fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.Bold)
@@ -82,12 +81,12 @@ internal fun VehicleProposalDialog(
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                         OutlinedButton(onClick = { actions.onExport(VisitKind.PICKUP) },
                             enabled = state.pickupAvailable && !state.qrBusy,
-                            modifier = Modifier.weight(1f).heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp)) {
+                            modifier = Modifier.weight(1f).heightIn(min = 88.dp), shape = MaterialTheme.shapes.medium) {
                             Text("픽업 QR", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
                         }
                         OutlinedButton(onClick = { actions.onExport(VisitKind.GROCERIES) },
                             enabled = state.groceriesAvailable && !state.qrBusy,
-                            modifier = Modifier.weight(1f).heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp)) {
+                            modifier = Modifier.weight(1f).heightIn(min = 88.dp), shape = MaterialTheme.shapes.medium) {
                             Text("장보기 QR", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
@@ -104,7 +103,7 @@ internal fun VehicleProposalDialog(
                         state.qr?.let { qr ->
                             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                Surface(color = Color.White, shape = RoundedCornerShape(16.dp)) {
+                                Surface(color = Color.White, shape = MaterialTheme.shapes.small) {
                                     Image(bitmap = qr, contentDescription = "선택한 볼일 제안 QR 코드",
                                         modifier = Modifier.padding(16.dp).size(320.dp))
                                 }
@@ -117,7 +116,7 @@ internal fun VehicleProposalDialog(
                 HorizontalDivider()
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     OutlinedButton(onClick = actions.onDismiss,
-                        modifier = Modifier.widthIn(min = 240.dp).heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp)) {
+                        modifier = Modifier.widthIn(min = 240.dp).heightIn(min = 88.dp), shape = MaterialTheme.shapes.medium) {
                         Text("닫기", fontSize = 28.sp)
                     }
                 }
@@ -128,7 +127,7 @@ internal fun VehicleProposalDialog(
 
 @Composable
 private fun VehicleProposalCard(proposal: JourneyProposal, canApply: Boolean, onApprove: () -> Unit, onDecline: () -> Unit) {
-    OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+    OutlinedCard(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
         Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Text(proposalLabel(proposal), fontSize = 28.sp, lineHeight = 38.sp,
                 fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
@@ -158,9 +157,9 @@ private fun VehicleProposalCard(proposal: JourneyProposal, canApply: Boolean, on
                 fontWeight = FontWeight.Medium)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 OutlinedButton(onClick = onDecline, modifier = Modifier.weight(1f).heightIn(min = 88.dp),
-                    shape = RoundedCornerShape(18.dp)) { Text("넘기기", fontSize = 28.sp) }
+                    shape = MaterialTheme.shapes.medium) { Text("넘기기", fontSize = 28.sp) }
                 Button(onClick = { if (canApply) onApprove() }, enabled = canApply,
-                    modifier = Modifier.weight(1.4f).heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp)) {
+                    modifier = Modifier.weight(1.4f).heightIn(min = 88.dp), shape = MaterialTheme.shapes.medium) {
                     Text(if (proposal is DropoffProposal) "함께 귀가에서 검토" else "이번 계획에 추가", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
                 }
             }

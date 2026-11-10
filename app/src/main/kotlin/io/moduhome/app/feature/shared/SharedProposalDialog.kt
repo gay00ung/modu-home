@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -82,7 +81,7 @@ internal fun SharedProposalDialog(
         Surface(
             modifier = modifier.widthIn(max = 1480.dp).fillMaxWidth(0.94f).heightIn(max = maximumHeight),
             color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(28.dp),
+            shape = MaterialTheme.shapes.extraLarge,
         ) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 SharedProposalHeader(
@@ -95,7 +94,7 @@ internal fun SharedProposalDialog(
                     onSelect = onSelect,
                 )
                 message?.takeIf(String::isNotBlank)?.let { selectedMessage ->
-                    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(18.dp)) {
+                    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
                         Text(selectedMessage, Modifier.fillMaxWidth().padding(16.dp), fontSize = 28.sp, lineHeight = 40.sp,
                             color = MaterialTheme.colorScheme.onSecondaryContainer)
                     }
@@ -117,7 +116,7 @@ internal fun SharedProposalDialog(
                                 Text("받은 제안의 조건이에요", fontSize = 28.sp, lineHeight = 40.sp,
                                     color = MaterialTheme.colorScheme.primary)
                                 if (existing?.deadlineAtMillis != null && received.deadlineAtMillis == null) {
-                                    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(18.dp)) {
+                                    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
                                         Text("기존 완료 마감 ${sharedProposalDeadline(existing.deadlineAtMillis, zoneId)}이 없어져요",
                                             Modifier.fillMaxWidth().padding(16.dp), fontSize = 28.sp, lineHeight = 40.sp,
                                             color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.SemiBold)
@@ -198,20 +197,20 @@ private fun SharedProposalPager(
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         OutlinedButton(
             onClick = { previous?.let { onSelect(it.id, it.revision) } }, enabled = previous != null,
-            modifier = Modifier.weight(1f).heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp),
+            modifier = Modifier.weight(1f).heightIn(min = 88.dp), shape = MaterialTheme.shapes.medium,
         ) { Text("이전", fontSize = 28.sp) }
         Text("$position / $total", Modifier.widthIn(min = 88.dp), fontSize = 28.sp, lineHeight = 38.sp,
             textAlign = TextAlign.Center)
         OutlinedButton(
             onClick = { next?.let { onSelect(it.id, it.revision) } }, enabled = next != null,
-            modifier = Modifier.weight(1f).heightIn(min = 88.dp), shape = RoundedCornerShape(18.dp),
+            modifier = Modifier.weight(1f).heightIn(min = 88.dp), shape = MaterialTheme.shapes.medium,
         ) { Text("다음", fontSize = 28.sp) }
     }
 }
 
 @Composable
 private fun SharedProposalComparison(existing: SharedErrandDraft?, received: SharedErrandDraft, zoneId: ZoneId) {
-    Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(24.dp)) {
+    Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Spacer(Modifier.width(140.dp))
@@ -243,7 +242,7 @@ private fun SharedProposalComparisonRow(label: String, oldValue: String?, newVal
 
 @Composable
 private fun SharedProposalCompactConditions(title: String, condition: SharedErrandDraft, zoneId: ZoneId) {
-    Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(24.dp)) {
+    Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(title, fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold)
             SharedProposalComparisonRow("종류", null, sharedProposalKind(condition))
@@ -301,7 +300,7 @@ private fun SharedProposalFooter(
 @Composable
 private fun SharedProposalSecondaryAction(label: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
     OutlinedButton(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = 88.dp),
-        shape = RoundedCornerShape(18.dp), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp)) {
+        shape = MaterialTheme.shapes.medium, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp)) {
         Text(label, fontSize = 28.sp, lineHeight = 40.sp)
     }
 }
@@ -309,7 +308,7 @@ private fun SharedProposalSecondaryAction(label: String, enabled: Boolean, onCli
 @Composable
 private fun SharedProposalApproveAction(label: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
     Button(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = 96.dp),
-        shape = RoundedCornerShape(18.dp), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp)) {
+        shape = MaterialTheme.shapes.medium, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp)) {
         Text(label, fontSize = 28.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold)
     }
 }
@@ -339,7 +338,7 @@ private fun SharedDropoffReview(
     review.passengerChoices.forEach { passenger ->
         val selected = review.passengerId == passenger.id
         OutlinedButton(onClick = { onChoosePassenger(passenger.id) }, modifier = Modifier.fillMaxWidth().heightIn(min = 88.dp),
-            shape = RoundedCornerShape(18.dp)) {
+            shape = MaterialTheme.shapes.medium) {
             Text("${if (selected) "✓ " else ""}${passenger.name}${if (passenger.id !in review.session.draft.passengers.map { it.id }) " · 새 동승자" else ""}",
                 fontSize = 30.sp, lineHeight = 42.sp)
         }

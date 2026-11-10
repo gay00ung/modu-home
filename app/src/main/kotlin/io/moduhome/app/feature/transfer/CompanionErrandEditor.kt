@@ -61,7 +61,7 @@ internal fun CompanionErrandEditor(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("조건 정해 보내기", modifier = Modifier.weight(1f).padding(vertical = 12.dp),
                     fontSize = 24.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold)
-                TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 56.dp)) {
+                TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 56.dp), shape = MaterialTheme.shapes.medium) {
                     Text("닫기", fontSize = 16.sp)
                 }
             }
@@ -143,7 +143,7 @@ internal fun CompanionErrandEditor(
                 if (errors.isNotEmpty()) Text("입력한 조건을 다시 확인해주세요", fontSize = 16.sp, lineHeight = 24.sp,
                     color = MaterialTheme.colorScheme.error)
                 Button(onClick = { keyboard?.hide(); onPrepare() }, enabled = editingAllowed,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = MaterialTheme.shapes.medium) {
                     Text("보낼 조건 확인", fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold)
                 }
             }

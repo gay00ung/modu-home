@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -32,7 +31,7 @@ internal fun VehicleErrandAlternatives(
     onSelect: (ErrandAlternative) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp)) {
+    Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.large) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Text("시간은 그대로, 볼일은 한 가지만", fontSize = 32.sp, lineHeight = 44.sp, fontWeight = FontWeight.Bold)
             Text("추가 ${budgetMinutes}분 한도 유지", fontSize = 30.sp, lineHeight = 40.sp,
@@ -56,7 +55,7 @@ internal fun VehicleErrandAlternatives(
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             OutlinedButton(onClick = { if (enabled) onCompare() }, enabled = enabled,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp), shape = RoundedCornerShape(18.dp)) {
+                modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp), shape = MaterialTheme.shapes.medium) {
                 Text(if (options.isEmpty()) "픽업만·장보기만 비교" else "대안 경로 다시 조회",
                     fontSize = 28.sp, lineHeight = 38.sp)
             }
@@ -75,7 +74,7 @@ private fun AlternativeCard(
         VisitKind.PICKUP -> "픽업만"
         VisitKind.GROCERIES -> "장보기만"
     }
-    Surface(modifier, color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(20.dp)) {
+    Surface(modifier, color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(title, fontSize = 34.sp, lineHeight = 44.sp, fontWeight = FontWeight.Bold)
             VehicleMetrics(listOf("집 도착 예상" to formatJourneyMinute(option.plan.homeArrivalMinute),
@@ -85,7 +84,7 @@ private fun AlternativeCard(
                 fontSize = 28.sp, lineHeight = 38.sp)
             Button(onClick = { if (enabled && option.plan.isValid) onSelect(option) },
                 enabled = enabled && option.plan.isValid, modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
-                shape = RoundedCornerShape(18.dp)) {
+                shape = MaterialTheme.shapes.medium) {
                 Text("${title} 선택", fontSize = 28.sp, lineHeight = 38.sp)
             }
         }

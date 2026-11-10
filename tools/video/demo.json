@@ -32,63 +32,89 @@
       "speed": 1.9
     },
     {
-      "source": "phone-map.mp4",
+      "source": "phone-address-search-ko.mp4",
       "kind": "phone",
-      "start": 0.2,
-      "duration": 41.8,
-      "chapter": "02 · 지도에서 선택",
-      "title": "지도를 끌어\n골목 입구로",
+      "start": 0.12,
+      "duration": 5.7,
+      "chapter": "02 · 주소 검색",
+      "title": "주소로\n근처부터 찾아요",
       "bullets": [
-        "주소 검색 없이\n지도를 이동하고 확대해요"
+        "동승자가 내릴 곳 근처의\n판교역로146번길을 검색해요"
       ],
-      "speed": 3.9
+      "speed": 1.12,
+      "holdLast": 0.55
     },
     {
-      "source": "phone-map.mp4",
+      "source": "phone-address-zoom.mp4",
       "kind": "phone",
-      "start": 54.8,
-      "duration": 3.5,
-      "chapter": "02 · 지도에서 선택",
-      "title": "지도 가운데를\n하차지로",
+      "start": 0.18,
+      "duration": 7.4,
+      "chapter": "03 · 지도 확대와 핀",
+      "title": "지도를 확대해\n골목 입구까지",
+      "bullets": [
+        "검색 결과를 열고 + 버튼을 눌러\n골목이 보일 때까지 확대해요"
+      ],
+      "speed": 1.12,
+      "holdLast": 0.45
+    },
+    {
+      "source": "phone-alley-center.mp4",
+      "kind": "phone",
+      "start": 0.12,
+      "duration": 5.98,
+      "chapter": "03 · 지도 확대와 핀",
+      "title": "내릴 곳을\n정확히 찍어요",
       "bullets": [
         "골목 입구를 가운데에 맞추고\n‘지도 가운데 선택’을 눌러요"
       ],
-      "speed": 1.1,
-      "holdLast": 1.2
+      "speed": 1.06,
+      "holdLast": 1.45
     },
     {
-      "source": "phone-send.mp4",
+      "source": "phone-send-search.mp4",
       "kind": "phone",
-      "start": 2.2,
-      "duration": 17.8,
-      "chapter": "03 · 동승자 전송",
+      "start": 0.2,
+      "duration": 9.85,
+      "chapter": "04 · 동승자 전송",
       "title": "닉네임과 핀을\n함께 보내요",
       "bullets": [
-        "동승자는 ‘소라’로 보내고\n내릴 곳에 이름을 붙여요"
+        "‘소라’와 ‘판교역 서쪽 골목 입구’를\n차량에 보내요"
       ],
-      "speed": 2.1,
-      "holdLast": 0.5
+      "speed": 1.33,
+      "holdLast": 0.45
     },
     {
-      "source": "car-approve.mp4",
+      "source": "car-receive-search.mp4",
       "kind": "car",
-      "start": 0,
-      "duration": 5.72,
-      "chapter": "04 · 차량 수신",
-      "title": "보낸 이름 그대로 차량에 도착",
+      "start": 1.45,
+      "duration": 3.6,
+      "chapter": "05 · 차량 수신",
+      "title": "소라가 보낸 하차지가 차량에 도착",
       "bullets": [
-        "번호 선택 없이 정차 확인 후 반영"
+        "운전자는 정차할 수 있는 곳인지 확인"
       ],
-      "phoneStill": "phone-delivered.png",
-      "holdFirst": 2,
-      "holdLast": 0.8
+      "phoneStill": "phone-search-delivered.png",
+      "holdFirst": 1.1
+    },
+    {
+      "source": "car-approve-search.mp4",
+      "kind": "car",
+      "start": 0.15,
+      "duration": 4.6,
+      "chapter": "05 · 차량 수신",
+      "title": "정차 확인 후\n경로에 반영",
+      "bullets": [
+        "보낸 이름과 하차지가\n함께 귀가 계획에 들어가요"
+      ],
+      "speed": 1.2,
+      "holdLast": 0.5
     },
     {
       "source": "car-compare.mp4",
       "kind": "car",
       "start": 0.12,
       "duration": 5.1,
-      "chapter": "05 · 함께 귀가",
+      "chapter": "06 · 함께 귀가",
       "title": "두 사람의\n하차 순서",
       "bullets": [
         "소라와 민지의 하차지,\n운전자의 집을 함께 봐요"
@@ -100,7 +126,7 @@
       "kind": "car",
       "start": 10.4,
       "duration": 7.2,
-      "chapter": "05 · 함께 귀가",
+      "chapter": "06 · 함께 귀가",
       "title": "순서를 바꾸면\n도착 시간도",
       "bullets": [
         "이 예시에서 민지는 4분 먼저,\n운전자 집은 3분 늦게 도착"
@@ -113,7 +139,7 @@
       "kind": "car",
       "start": 0.4,
       "duration": 10.8,
-      "chapter": "06 · 차량 내비와 완료",
+      "chapter": "07 · 차량 내비와 완료",
       "title": "찍은 곳까지\n차량 내비로",
       "bullets": [
         "소라의 골목 입구가\n첫 안내 목적지로 들어가요"
@@ -125,7 +151,7 @@
       "kind": "car",
       "start": 0,
       "duration": 11.8,
-      "chapter": "06 · 차량 내비와 완료",
+      "chapter": "07 · 차량 내비와 완료",
       "title": "다음 하차지로\n안내가 이어져요",
       "bullets": [
         "소라 하차를 확인하면\n민지의 하차지를 안내해요"
@@ -137,7 +163,7 @@
       "kind": "car",
       "start": 47,
       "duration": 11.65,
-      "chapter": "06 · 차량 내비와 완료",
+      "chapter": "07 · 차량 내비와 완료",
       "title": "하차와 집 도착을\n기록해요",
       "bullets": [
         "정차한 AVD에서\n완료 입력을 시연했어요"
@@ -150,7 +176,7 @@
       "kind": "car",
       "start": 0.18,
       "duration": 15.4,
-      "chapter": "07 · 가는김에",
+      "chapter": "08 · 가는김에",
       "title": "오늘은\n20분까지",
       "bullets": [
         "두 볼일은 35분 추가",
@@ -164,7 +190,7 @@
       "kind": "car",
       "start": 0.2,
       "duration": 6.1,
-      "chapter": "08 · 픽업만",
+      "chapter": "09 · 픽업만",
       "title": "픽업만 고르면\n픽업과 집",
       "bullets": [
         "20분 한도 그대로\n선택한 볼일만 계획에 넣어요"
@@ -176,7 +202,7 @@
       "kind": "car",
       "start": 29,
       "duration": 17,
-      "chapter": "08 · 픽업만",
+      "chapter": "09 · 픽업만",
       "title": "수령 확인 후\n집으로",
       "bullets": [
         "픽업 완료를 확인하면\n집 안내로 이어져요"
@@ -188,7 +214,7 @@
       "kind": "car",
       "start": 0.15,
       "duration": 11,
-      "chapter": "09 · 장보기만",
+      "chapter": "10 · 장보기만",
       "title": "장보기만 골라도\n한도는 20분",
       "bullets": [
         "장보기 장소를 먼저 안내해요"
@@ -200,7 +226,7 @@
       "kind": "car",
       "start": 17.6,
       "duration": 19,
-      "chapter": "09 · 장보기만",
+      "chapter": "10 · 장보기만",
       "title": "장보기를 마치면\n집으로",
       "bullets": [
         "장보기와 집 도착을\n각각 완료로 남겨요"
@@ -212,7 +238,7 @@
       "kind": "car",
       "start": 57.8,
       "duration": 2.6,
-      "chapter": "09 · 장보기만",
+      "chapter": "10 · 장보기만",
       "title": "귀가 완료",
       "bullets": [
         "정차한 AVD에서\n완료 기록을 확인했어요"

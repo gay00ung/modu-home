@@ -7,107 +7,111 @@
   },
   "scenes": [
     {
-      "source": "car-qr.mp4",
+      "source": "car-fixed-qr.mp4",
       "kind": "car",
-      "start": 0.05,
-      "duration": 3.9,
+      "start": 0.12,
+      "duration": 4.8,
       "chapter": "01 · QR 연결",
       "title": "차량에서\n하차지 받기",
       "bullets": [
         "하차지 받기를 눌러\n동승자용 QR을 띄워요"
       ],
-      "speed": 1.2,
-      "holdLast": 0.35
+      "speed": 1.22,
+      "holdLast": 0.4
     },
     {
-      "source": "phone-qr.mp4",
+      "source": "phone-fixed-open-qr.mp4",
       "kind": "phone",
-      "start": 7.2,
-      "duration": 10.7,
+      "start": 0.12,
+      "duration": 5.5,
       "chapter": "01 · QR 연결",
-      "title": "QR을 찍으면\n바로 열려요",
+      "title": "QR을 읽고\n브라우저로",
       "bullets": [
-        "동승자 앱 설치 없이\n휴대폰 브라우저로 연결해요"
+        "동승자 앱 없이\n운영 페이지가 바로 열려요"
       ],
-      "speed": 1.9
+      "speed": 1.22,
+      "holdLast": 0.4,
+      "holdFirst": 0.9
     },
     {
-      "source": "phone-address-search-ko.mp4",
+      "source": "phone-fixed-search-live.mp4",
       "kind": "phone",
       "start": 0.12,
-      "duration": 5.7,
-      "chapter": "02 · 주소 검색",
-      "title": "주소로\n근처부터 찾아요",
+      "duration": 4.112,
+      "chapter": "02 · 한글 주소 검색",
+      "title": "한글 주소로\n근처까지 찾기",
       "bullets": [
-        "동승자가 내릴 곳 근처의\n판교역로146번길을 검색해요"
+        "판교역로146번길을 검색하면\n도로명과 지역이 한글로 나와요"
       ],
-      "speed": 1.12,
-      "holdLast": 0.55
+      "speed": 1.18,
+      "holdLast": 1.1
     },
     {
-      "source": "phone-address-zoom.mp4",
-      "kind": "phone",
-      "start": 0.18,
-      "duration": 7.4,
-      "chapter": "03 · 지도 확대와 핀",
-      "title": "지도를 확대해\n골목 입구까지",
-      "bullets": [
-        "검색 결과를 열고 + 버튼을 눌러\n골목이 보일 때까지 확대해요"
-      ],
-      "speed": 1.12,
-      "holdLast": 0.45
-    },
-    {
-      "source": "phone-alley-center.mp4",
+      "source": "phone-fixed-zoom-live.mp4",
       "kind": "phone",
       "start": 0.12,
-      "duration": 5.98,
-      "chapter": "03 · 지도 확대와 핀",
-      "title": "내릴 곳을\n정확히 찍어요",
+      "duration": 9.37,
+      "chapter": "03 · 고정 핀으로 하차지 선택",
+      "title": "핀을 중심으로\n지도를 확대해요",
       "bullets": [
-        "골목 입구를 가운데에 맞추고\n‘지도 가운데 선택’을 눌러요"
+        "확대해도 핀은 가운데에 있어요"
       ],
-      "speed": 1.06,
+      "speed": 1.14,
+      "holdLast": 0.5
+    },
+    {
+      "source": "phone-fixed-drag-live.mp4",
+      "kind": "phone",
+      "start": 0.12,
+      "duration": 4.839,
+      "chapter": "03 · 고정 핀으로 하차지 선택",
+      "title": "핀은 그대로\n지도만 움직여요",
+      "bullets": [
+        "골목 입구를 핀 아래에 맞추면\n하차지가 자동으로 바뀌어요"
+      ],
+      "speed": 1.12,
       "holdLast": 1.45
     },
     {
-      "source": "phone-send-search.mp4",
+      "source": "phone-fixed-send-live.mp4",
       "kind": "phone",
-      "start": 0.2,
-      "duration": 9.85,
+      "start": 0.12,
+      "duration": 5.984,
       "chapter": "04 · 동승자 전송",
-      "title": "닉네임과 핀을\n함께 보내요",
+      "title": "이 위치로 계속\n닉네임과 함께 보내기",
       "bullets": [
-        "‘소라’와 ‘판교역 서쪽 골목 입구’를\n차량에 보내요"
+        "‘소라’가 고른 골목 입구를\n차량으로 전송해요"
       ],
-      "speed": 1.33,
-      "holdLast": 0.45
+      "speed": 1.2,
+      "holdLast": 0.65
     },
     {
-      "source": "car-receive-search.mp4",
+      "source": "car-fixed-inbox.mp4",
       "kind": "car",
       "start": 1.45,
       "duration": 3.6,
       "chapter": "05 · 차량 수신",
-      "title": "소라가 보낸 하차지가 차량에 도착",
+      "title": "보낸 하차지를 차량에서 확인",
       "bullets": [
         "운전자는 정차할 수 있는 곳인지 확인"
       ],
-      "phoneStill": "phone-search-delivered.png",
-      "holdFirst": 1.1
+      "speed": 1.0,
+      "holdLast": 0.5,
+      "holdFirst": 1.1,
+      "phoneStill": "phone-fixed-live-delivered.png"
     },
     {
-      "source": "car-approve-search.mp4",
+      "source": "car-fixed-approved.mp4",
       "kind": "car",
-      "start": 0.15,
+      "start": 0.12,
       "duration": 4.6,
       "chapter": "05 · 차량 수신",
-      "title": "정차 확인 후\n경로에 반영",
+      "title": "정차 확인 후\n계획에 반영",
       "bullets": [
         "보낸 이름과 하차지가\n함께 귀가 계획에 들어가요"
       ],
-      "speed": 1.2,
-      "holdLast": 0.5
+      "speed": 1.18,
+      "holdLast": 0.55
     },
     {
       "source": "car-compare.mp4",

@@ -36,8 +36,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -293,15 +295,13 @@ private fun OrderConnector(
             val end = Offset((size.width - start.x).coerceAtLeast(start.x), start.y)
             val length = end.x - start.x
             val radius = (length * 0.24f).coerceIn(1f, 192.dp.toPx())
-            val accent = colors.primary
-            val transparent = accent.copy(alpha = 0f)
-            val shoulder = accent.copy(alpha = 0.18f)
+            val lavender = lerp(colors.primary, Color(0xFFA178E5), 0.65f)
+            val skyBlue = lerp(colors.primary, Color(0xFF54B7F0), 0.65f)
             val glow = Brush.horizontalGradient(
-                0f to transparent,
-                0.28f to shoulder,
-                0.5f to accent.copy(alpha = 0.42f),
-                0.72f to shoulder,
-                1f to transparent,
+                0f to lavender.copy(alpha = 0f),
+                0.34f to lavender.copy(alpha = 0.42f),
+                0.66f to skyBlue.copy(alpha = 0.42f),
+                1f to skyBlue.copy(alpha = 0f),
                 startX = -radius,
                 endX = radius,
             )

@@ -8,20 +8,20 @@
   --accent: #3549b9;
   --on-accent: #fffdfb;
   --soft: #e7eaff;
-  --peach: #ffd4b6;
+  --control-radius: 14px;
+  --panel-radius: 20px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --paper: #1b2033;
-    --ground: #14182a;
+    --ground: #252c43;
     --ink: #f4f5ff;
     --muted: #c2cbe4;
     --line: #52607c;
     --accent: #bec8ff;
     --on-accent: #1b2348;
     --soft: #343f69;
-    --peach: #62484a;
   }
 }
 
@@ -42,15 +42,15 @@ main {
   background: var(--paper);
 }
 header, .brand { display: flex; align-items: center; gap: 8px; }
-header { min-height: 64px; justify-content: space-between; border-bottom: 1px solid var(--line); }
+header { min-height: 64px; justify-content: space-between; }
 header > span, .hint, label span, .selection span, #sent p { color: var(--muted); }
 .brand { font-weight: 800; letter-spacing: -.035em; }
-.brand svg { width: 30px; height: 30px; padding: 5px; border-radius: 10px; background: var(--accent); fill: var(--on-accent); }
-section { display: grid; gap: 12px; padding-block: 20px; }
-h1 { margin: 0; font-size: 29px; line-height: 1.16; letter-spacing: -.055em; overflow-wrap: break-word; }
+.brand svg { width: 36px; height: 36px; padding: 7px; border-radius: 10px; background: var(--accent); fill: var(--on-accent); }
+section { display: grid; gap: 12px; padding-block: 18px; }
+h1 { margin: 0; font-size: 32px; line-height: 1.22; letter-spacing: -.045em; overflow-wrap: break-word; }
 p { margin: 0; }
 button, input { font: inherit; }
-button, input, .notice { min-height: 48px; border-radius: 12px; }
+button, input, .notice { min-height: 48px; border-radius: var(--control-radius); }
 button { border: 1px solid transparent; padding: 8px 12px; font-weight: 750; }
 button:focus-visible, input:focus-visible, a:focus-visible {
   outline: 3px solid var(--accent);
@@ -64,22 +64,22 @@ input {
   color: var(--ink);
   padding: 8px 12px;
 }
-.primary { width: 100%; min-height: 54px; background: var(--accent); color: var(--on-accent); }
+.primary { width: 100%; min-height: 56px; background: var(--accent); color: var(--on-accent); }
 .primary:not(:disabled):active { transform: scale(.99); }
 .primary:disabled, .quiet:disabled { background: var(--soft); color: var(--muted); }
-.quiet { background: transparent; color: var(--accent); }
+.quiet { background: transparent; color: var(--accent); border-color: var(--line); }
 .quiet:not(:disabled):hover { background: var(--soft); }
 .notice { padding: 12px; background: var(--soft); color: var(--ink); }
-#connection { margin-top: 16px; }
+#connection { padding: 10px 14px; min-height: 0; }
 .hint { font-size: 13px; }
 #search, .map-actions { display: flex; align-items: center; gap: 8px; }
 #search button { flex: none; }
 .map-actions { justify-content: space-between; }
 .map-actions button { font-size: 14px; }
 #map {
-  height: clamp(248px, 43dvh, 410px);
+  height: clamp(236px, 35dvh, 390px);
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: var(--panel-radius);
   background: var(--soft);
   z-index: 0;
 }
@@ -101,8 +101,8 @@ input {
 #results span, .selection span { display: block; font-size: 14px; }
 #results span { color: var(--muted); font-weight: 500; }
 .selection {
-  padding: 12px;
-  border-radius: 12px;
+  padding: 14px;
+  border-radius: var(--panel-radius);
   background: var(--soft);
   overflow-wrap: anywhere;
 }
@@ -111,13 +111,13 @@ input {
 label { font-weight: 750; }
 label span { font-size: 14px; font-weight: 500; }
 #send button { margin-top: 4px; }
-.back { justify-self: center; }
+.back { justify-self: center; border-color: transparent; }
 .success {
   display: grid;
   place-items: center;
   width: 56px;
   height: 56px;
-  border-radius: 20px;
+  border-radius: 50%;
   background: var(--accent);
   color: var(--on-accent);
   font-size: 28px;

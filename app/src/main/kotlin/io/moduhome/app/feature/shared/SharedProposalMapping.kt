@@ -55,7 +55,7 @@ internal class SharedProposalReview private constructor(
         }
 
     fun forPassenger(id: String): SharedProposalReview? =
-        if (proposal !is DropoffProposal || passengerChoices.none { it.id == id }) null
+        if (proposal !is DropoffProposal || proposal.isBrowserDropoff || passengerChoices.none { it.id == id }) null
         else if (passengerId == id) this
         else SharedProposalReview(session, proposal, zoneId, reviewedAtMillis, id, false)
 
@@ -85,7 +85,7 @@ internal class SharedProposalReview private constructor(
                     ?: return SharedProposalApplyResult.Rejected("하차할 동승자를 선택해주세요")
                 if (!dropoffConfirmed) return SharedProposalApplyResult.Rejected("받은 하차지에 정차해 내릴 수 있는지 확인해주세요")
                 val passenger = slot.chooseDropoff(value.place).copy(
-                    name = value.passengerName.takeUnless { it == "동승자" } ?: slot.name,
+                    name = if (!value.isBrowserDropoff && value.passengerName == "동승자") slot.name else value.passengerName,
                     latestArrivalAtMillis = value.deadlineAtMillis,
                     verification = DropoffVerification(AccessCheck.SUITABLE, "운전자가 받은 하차지를 직접 확인", nowMillis),
                 )
@@ -131,7 +131,17 @@ internal class SharedProposalReview private constructor(
                 progress = session.progress.copy(completedAtMillis = immutableCopy(session.progress.completedAtMillis)),
                 acceptedProposals = immutableCopy(session.acceptedProposals),
             )
-            return SharedProposalReviewResult.Ready(SharedProposalReview(snapshot, entry.proposal, zoneId, nowMillis))
+            val proposal = entry.proposal
+            val review = SharedProposalReview(snapshot, proposal, zoneId, nowMillis)
+            if (proposal !is DropoffProposal) return SharedProposalReviewResult.Ready(review)
+            val passenger = if (proposal.isBrowserDropoff) {
+                review.passengerChoices.firstOrNull { it.dropoff == null }
+                    ?: return SharedProposalReviewResult.Rejected("동승자 두 명의 하차지가 이미 정해져 있어요")
+            } else {
+                snapshot.draft.passengers.singleOrNull { it.dropoff == null }
+                    ?: return SharedProposalReviewResult.Ready(review)
+            }
+            return SharedProposalReviewResult.Ready(SharedProposalReview(snapshot, proposal, zoneId, nowMillis, passenger.id))
         }
     }
 }

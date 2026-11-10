@@ -40,6 +40,9 @@ internal data class DropoffProposal(
     val passengerName: String = "동승자",
     override val deadlineAtMillis: Long? = null,
 ) : JourneyProposal {
+    // The browser reserves this ID prefix while keeping the v2 link readable by older apps.
+    val isBrowserDropoff: Boolean get() = id.startsWith("web-")
+
     init {
         requireProposalFields(this)
         require(passengerName.isNotBlank() && proposalTextValid(passengerName, 32))

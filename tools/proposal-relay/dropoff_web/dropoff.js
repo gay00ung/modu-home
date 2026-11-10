@@ -236,17 +236,17 @@ function uuid() {
   return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
 }
 
-function makeDropoff() {
-  const id = uuid();
+function makeDropoff(passenger) {
+  const messageId = uuid();
   const created = Date.now();
   const name = cleanText(byId("place-label").value, 60) || point.name;
   const fields = new URLSearchParams({
-    v: "2", id, r: "1", created, expires: created + 24 * 60 * 60 * 1_000,
+    v: "2", id: "web-" + messageId, r: "1", created, expires: created + 24 * 60 * 60 * 1_000,
     kind: "DROPOFF", name, lat: point.lat.toFixed(6), lon: point.lon.toFixed(6),
     address: point.address, placeId: "", subId: "", provider: "",
-    passenger: cleanText(byId("passenger").value, 32) || "동승자", arrival: "",
+    passenger, arrival: "",
   });
-  return { messageId: id, name, link: "modu-home://proposal?" + fields.toString() };
+  return { messageId, name, passenger, link: "modu-home://proposal?" + fields.toString() };
 }
 
 function updateSendControls() {
@@ -260,6 +260,7 @@ function applyDelivery(result) {
   if (!["queued", "stored", "rejected"].includes(result?.status)) throw new Error("Invalid delivery");
   delivery = result.status;
   if (delivery === "stored") {
+    byId("sent-passenger").textContent = pending.passenger;
     byId("sent-place").textContent = pending.name;
     announce("connection", "");
     show("sent");
@@ -273,7 +274,17 @@ function applyDelivery(result) {
 async function send(event) {
   event.preventDefault();
   if (busy || !point || !available() || delivery === "stored") return;
-  pending ??= makeDropoff();
+  if (!pending) {
+    const nameInput = byId("passenger");
+    const passenger = cleanText(nameInput.value, 32);
+    if (!passenger) {
+      nameInput.setAttribute("aria-invalid", "true");
+      announce("send-status", "이름이나 닉네임을 입력해주세요");
+      nameInput.focus();
+      return;
+    }
+    pending = makeDropoff(passenger);
+  }
   busy = true;
   updateSendControls();
   announce("send-status", "차량 수신함에 저장됐는지 확인하고 있어요");
@@ -332,6 +343,11 @@ async function start() {
 
 byId("search").addEventListener("submit", search);
 byId("send").addEventListener("submit", send);
+byId("passenger").addEventListener("input", (event) => {
+  if (event.target.getAttribute("aria-invalid") !== "true") return;
+  event.target.removeAttribute("aria-invalid");
+  announce("send-status", "");
+});
 byId("center").addEventListener("click", () => pickFromMap(map.getCenter()));
 byId("locate").addEventListener("click", locate);
 byId("back").addEventListener("click", () => show("pick"));

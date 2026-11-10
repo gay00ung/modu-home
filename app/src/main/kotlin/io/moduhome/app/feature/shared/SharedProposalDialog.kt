@@ -329,7 +329,7 @@ private fun SharedDropoffReview(
     proposal.deadlineAtMillis?.let {
         Text("도착 희망 ${sharedProposalDeadline(it, review?.zoneId ?: ZoneId.systemDefault())}", fontSize = 30.sp, lineHeight = 42.sp)
     }
-    if (review == null) return
+    if (review == null || proposal.isBrowserDropoff) return
     Text("어느 동승자의 하차지인가요?", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold)
     review.passengerChoices.forEach { passenger ->
         val selected = review.passengerId == passenger.id

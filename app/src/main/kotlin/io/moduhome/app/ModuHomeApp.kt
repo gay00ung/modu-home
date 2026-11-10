@@ -477,11 +477,7 @@ internal fun ModuHomeApp(
         sharedProposalInteraction = restrictions.state.value
         when (val result = sharedState.session.reviewProposal(inbox, id, revision, sharedProposalNow)) {
             is SharedProposalReviewResult.Ready -> {
-                val review = result.review
-                val emptySeat = review.session.draft.passengers.singleOrNull { it.dropoff == null }
-                sharedProposalReview = if (review.proposal is DropoffProposal && emptySeat != null) {
-                    review.forPassenger(emptySeat.id) ?: review
-                } else review
+                sharedProposalReview = result.review
                 sharedProposalMessage = null
             }
             is SharedProposalReviewResult.Rejected -> {

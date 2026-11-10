@@ -44,11 +44,11 @@
     <section id="review-panel" aria-labelledby="review-title" hidden>
       <h1 id="review-title">여기서 내릴게요</h1>
       <div class="selection"><strong id="review-name"></strong><span id="review-detail"></span></div>
-      <form id="send">
+      <form id="send" novalidate>
+        <label for="passenger">이름 또는 닉네임</label>
+        <input id="passenger" maxlength="32" placeholder="운전자가 알아볼 이름" autocomplete="off" aria-describedby="send-status" required>
         <label for="place-label">내릴 곳 이름 <span>선택</span></label>
-        <input id="place-label" maxlength="60" placeholder="예: 골목 입구 편의점" autocomplete="off">
-        <label for="passenger">내 이름 <span>선택</span></label>
-        <input id="passenger" maxlength="32" placeholder="운전자가 알아볼 이름" autocomplete="off">
+        <input id="place-label" maxlength="60" placeholder="예시 · 골목 입구 편의점" autocomplete="off">
         <p id="send-status" class="notice" role="status" hidden></p>
         <button id="send-button" type="submit" class="primary">차량으로 보내기</button>
       </form>
@@ -58,7 +58,7 @@
       <span class="success" aria-hidden="true">✓</span>
       <h1 id="sent-title">차량 수신함에<br>도착했어요</h1>
       <p>운전자가 확인하면 경로에 들어가요</p>
-      <div class="selection"><strong id="sent-place"></strong></div>
+      <div class="selection"><strong id="sent-passenger"></strong><span id="sent-place"></span></div>
     </section>
     <noscript><p>브라우저에서 자바스크립트를 켜고 차량 QR을 다시 열어주세요</p></noscript>
   </main>

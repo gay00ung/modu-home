@@ -65,6 +65,41 @@ class SharedDropoffProposalTest {
         assertFalse(nextReview.forPassenger("p1")!!.dropoffConfirmed)
     }
 
+    @Test fun browserDropoffFillsAnOpenSeatUsingTheSubmittedNicknameAfterParkingApproval() {
+        val empty = SharedPassengerDraft("p2", "동승자 2")
+        val session = original.copy(draft = original.draft.copy(passengers = original.draft.passengers + empty))
+        val browser = proposal.copy(id = "web-dropoff-001", passengerName = "별이")
+        val preview = review(session, browser)
+
+        assertEquals(empty.id, preview.passengerId)
+        assertNull(preview.forPassenger("p1"))
+        assertTrue(session.approveProposal(preview, inbox(browser), now, zone) is SharedProposalApplyResult.Rejected)
+        val approved = session.approveProposal(preview.confirmDropoff(true)!!, inbox(browser), now, zone)
+            as SharedProposalApplyResult.Applied
+
+        assertEquals(original.draft.passengers.single(), approved.session.draft.passengers.first())
+        assertEquals("별이", approved.session.draft.passengers.last().name)
+        assertEquals(browser.place, approved.session.draft.passengers.last().dropoff)
+        assertEquals(approved.session, SharedJourneyJson.decode(SharedJourneyJson.encode(approved.session)!!, now))
+    }
+
+    @Test fun browserDropoffsDoNotOverwriteAnOccupiedSeatEvenWhenNicknamesMatch() {
+        val session = SharedJourneySession()
+        val first = proposal.copy(id = "web-dropoff-001", passengerName = "동승자")
+        val firstReview = review(session, first).confirmDropoff(true)!!
+        val firstResult = session.approveProposal(firstReview, inbox(first), now, zone) as SharedProposalApplyResult.Applied
+        val second = first.copy(id = "web-dropoff-002", place = NavigationPoint("두 번째 하차지", 37.57, 126.99))
+        val secondReview = review(firstResult.session, second).confirmDropoff(true)!!
+        val secondResult = firstResult.session.approveProposal(secondReview, inbox(second), now, zone)
+            as SharedProposalApplyResult.Applied
+
+        assertEquals(listOf(first.place, second.place), secondResult.session.draft.passengers.map { it.dropoff })
+        assertEquals(listOf("동승자", "동승자"), secondResult.session.draft.passengers.map { it.name })
+        val third = first.copy(id = "web-dropoff-003")
+        assertTrue(secondResult.session.reviewProposal(inbox(third), third.id, third.revision, now, zone)
+            is SharedProposalReviewResult.Rejected)
+    }
+
     @Test fun repeatingTheSamePassengerChoiceKeepsConfirmationButSwitchingPassengersClearsIt() {
         val selected = review().forPassenger("p1")!!.confirmDropoff(true)!!
         assertSame(selected, selected.forPassenger("p1"))

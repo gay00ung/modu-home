@@ -2,7 +2,7 @@
 
 동승자가 QR로 보낸 하차지와 귀갓길의 픽업·장보기를 모아 방문 순서와 도착 시각을 비교하는 Pleos Connect 차량용 앱
 
-**[배포 APK 0.3.1](apk/modu-home_모두집으로_release.apk)** · Pleos Connect Emulator 2.1.0 (API 34)
+**[배포 APK 0.3.1](apk/modu-home_모두집으로_release.apk)** · Pleos Connect Emulator 2.1.0 (API 34) · 2560×1440 px (가로) · 160 dpi
 
 <table>
   <thead>
